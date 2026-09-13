@@ -684,10 +684,7 @@ export default function Sidebar({
             badge="STORE"
             badgeColor="rgba(234,179,8,0.2)"
             active={activeTabId != null && activeTabId.startsWith('marketplace')}
-            onClick={() => {
-              openTab({ name: 'Skills' }, 'marketplace');
-              setSkillsExpanded(true);
-            }} 
+            onClick={() => setSkillsExpanded(prev => !prev)} 
             expandable={true}
             expanded={skillsExpanded}
             onToggleExpand={() => setSkillsExpanded(prev => !prev)}

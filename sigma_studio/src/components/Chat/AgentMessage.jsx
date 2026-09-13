@@ -759,20 +759,30 @@ export default function AgentMessage({
               }
             }
 
+            const isThinkingOpen = expandedThinking?.[mid] !== undefined
+              ? Boolean(expandedThinking[mid])
+              : Boolean(m.streamingThinking);
+
             return (
               <div key={idx} className={isGrouped && !isLast ? 'chat-msg-grouped-item chat-msg-grouped-border' : 'chat-msg-grouped-item'}>
                 {/* Thinking toggle */}
                 {!isUser && !isSystem && displayThinking && (
-                  <div className={`chat-thinking ${m.streamingThinking ? 'chat-thinking-streaming' : ''}`}>
-                    <button className="chat-thinking-toggle" onClick={() => onToggleThinking(mid)}>
+                  <div className={`chat-thinking ${m.streamingThinking && isThinkingOpen ? 'chat-thinking-streaming' : ''}`}>
+                    <button
+                      className="chat-thinking-toggle"
+                      onClick={() => onToggleThinking && onToggleThinking(mid, !isThinkingOpen)}
+                      title={isThinkingOpen ? "Richiudi ragionamento" : "Mostra ragionamento"}
+                    >
                       <span>
-                        🧠 {m.streamingThinking
-                          ? <span className="chat-thinking-live"><span className="thinking-pulse"></span> Ragionando...</span>
-                          : (expandedThinking?.[mid] ? 'Nascondi ragionamento' : 'Mostra ragionamento')
+                        🧠 {!isThinkingOpen
+                          ? 'Mostra ragionamento'
+                          : (m.streamingThinking
+                              ? <span className="chat-thinking-live"><span className="thinking-pulse"></span> Ragionando...</span>
+                              : 'Nascondi ragionamento')
                         }
                       </span>
                     </button>
-                    {(m.streamingThinking || expandedThinking?.[mid]) && (
+                    {isThinkingOpen && (
                       <div
                         className="chat-thinking-content chat-md"
                         onClick={e => {

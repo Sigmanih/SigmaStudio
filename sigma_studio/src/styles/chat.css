@@ -949,7 +949,7 @@
 .chat-error { color: var(--error); font-size: 0.75rem; margin-top: 4px; padding: 4px 8px; background: rgba(255,85,85,0.08); border-radius: 6px; }
 
 .chat-loading { display: flex; align-items: center; gap: 8px; color: var(--text-dim); }
-.chat-loading-cursor { color: var(--primary); font-size: 1rem; margin-top: 4px; animation: blink 1s step-end infinite; }
+.chat-loading-cursor { color: var(--primary); font-size: 0.9rem; line-height: 1; display: inline-flex; align-items: center; animation: blink 1s step-end infinite; }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -2412,17 +2412,15 @@ table.chat-table tr:hover td {
 
 /* Message entrance animation */
 .chat-message {
-  animation: messageSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  animation: messageSlideIn 0.2s ease-out;
+  transition: box-shadow 0.15s ease;
 }
 @keyframes messageSlideIn {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 

@@ -81,21 +81,47 @@ export function loadMessagesFromStorage(sessionId) {
   try {
     // 1. Primary key
     const saved = localStorage.getItem(`sigma_chat_msgs_${sessionId}`);
+    let list = null;
     if (saved) {
       const p = JSON.parse(saved);
-      if (Array.isArray(p) && p.length > 0) return p;
+      if (Array.isArray(p) && p.length > 0) list = p;
     }
     // 2. Legacy fallback key
-    const legacy = localStorage.getItem(`sigma_chat_session_${sessionId}`);
-    if (legacy) {
-      const p = JSON.parse(legacy);
-      if (Array.isArray(p) && p.length > 0) return p;
+    if (!list) {
+      const legacy = localStorage.getItem(`sigma_chat_session_${sessionId}`);
+      if (legacy) {
+        const p = JSON.parse(legacy);
+        if (Array.isArray(p) && p.length > 0) list = p;
+      }
     }
     // 3. Fallback: check session object itself
-    const sessions = loadSessions();
-    const match = sessions.find(s => s.id === sessionId);
-    if (match && Array.isArray(match.messages) && match.messages.length > 0) {
-      return match.messages;
+    if (!list) {
+      const sessions = loadSessions();
+      const match = sessions.find(s => s.id === sessionId);
+      if (match && Array.isArray(match.messages) && match.messages.length > 0) {
+        list = match.messages;
+      }
+    }
+
+    if (Array.isArray(list)) {
+      // Sanitizza messaggi orfani: se la sessione era stata interrotta a freddo,
+      // rimuove lo stato di streaming/statusMessage pendente evitando che la chat resti congelata.
+      return list.map(m => {
+        if (m && (m.streaming || m.streamingThinking)) {
+          const hasContent = Boolean(m.content && m.content.trim().length > 0);
+          const hasThinking = Boolean(m.thinking && m.thinking.trim().length > 0);
+          return {
+            ...m,
+            streaming: false,
+            streamingThinking: false,
+            statusMessage: undefined,
+            content: hasContent
+              ? m.content
+              : (hasThinking ? m.thinking : '⚠️ *Risposta interrotta prima del completamento.*')
+          };
+        }
+        return m;
+      });
     }
   } catch (e) {}
   return null;

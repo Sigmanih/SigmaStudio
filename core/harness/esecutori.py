@@ -467,3 +467,96 @@ def stato_sandbox() -> Dict[str, Any]:
         "docker_detail": dettaglio,
         "active": cfg.get("mode") == "container" and disponibile,
     }
+
+
+def preflight(esecutore) -> dict:
+    """Tre domande prima di avviare il contenitore; si ferma alla prima che va male.
+
+    1. Docker risponde?
+    2. L'immagine c'e' in locale?
+    3. Se no e la rete e' accesa, la scarica.
+
+    Il 'motivo' dice cosa fare, non solo cosa non va: chi legge il messaggio
+    sa il prossimo passo senza doverlo indovinare.
+    """
+    immagine = getattr(esecutore, "immagine", IMMAGINE_PREDEFINITA)
+    rete = bool(getattr(esecutore, "rete", False))
+
+    # 1. Docker risponde?
+    disponibile, dettaglio = docker_disponibile()
+    if not disponibile:
+        return {
+            "ok": False,
+            "motivo": f"{dettaglio} Avvia Docker Desktop e riprova.",
+            "immagine": immagine,
+            "scaricata": False,
+        }
+
+    eseguibile = trova_docker()
+    ambiente = _ambiente_per_docker()
+
+    # 2. L'immagine c'e' in locale?
+    try:
+        ispezione = subprocess.run(
+            [eseguibile, "image", "inspect", immagine],
+            capture_output=True, text=True, timeout=15,
+            env=ambiente,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "ok": False,
+            "motivo": f"Impossibile verificare l'immagine {immagine}: {exc}. Verifica la connessione a Docker.",
+            "immagine": immagine,
+            "scaricata": False,
+        }
+
+    if ispezione.returncode == 0:
+        return {
+            "ok": True,
+            "motivo": f"Immagine {immagine} presente in locale.",
+            "immagine": immagine,
+            "scaricata": False,
+        }
+
+    # 3. Immagine assente: se la rete e' accesa, scarica.
+    if not rete:
+        return {
+            "ok": False,
+            "motivo": (
+                f"L'immagine {immagine} non e' in locale e la rete e' spenta. "
+                f"Scaricala manualmente con: docker pull {immagine}, oppure "
+                f"accendi la rete nella configurazione della sandbox."
+            ),
+            "immagine": immagine,
+            "scaricata": False,
+        }
+
+    try:
+        scarica = subprocess.run(
+            [eseguibile, "pull", immagine],
+            capture_output=True, text=True, timeout=300,
+            env=ambiente,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "ok": False,
+            "motivo": f"Scaricamento di {immagine} fallito: {exc}. Verifica la connessione di rete.",
+            "immagine": immagine,
+            "scaricata": False,
+        }
+
+    if scarica.returncode != 0:
+        errore = (scarica.stderr or "").strip()[:200]
+        return {
+            "ok": False,
+            "motivo": f"docker pull {immagine} fallito: {errore}. Verifica il nome dell'immagine e la connessione al registro.",
+            "immagine": immagine,
+            "scaricata": False,
+        }
+
+    return {
+        "ok": True,
+        "motivo": f"Immagine {immagine} scaricata con successo.",
+        "immagine": immagine,
+        "scaricata": True,
+    }

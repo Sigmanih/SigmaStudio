@@ -108,7 +108,10 @@ export default function ChatWorkspaceTab() {
           loading={core.loading}
           actionsLog={core.actionsLog}
           expandedThinking={core.expandedThinking}
-          onToggleThinking={(id) => core.setExpandedThinking(prev => ({ ...prev, [id]: !prev[id] }))}
+          onToggleThinking={(id, forced) => core.setExpandedThinking(prev => ({
+            ...prev,
+            [id]: forced !== undefined ? forced : !prev[id]
+          }))}
           selectedModel={core.selectedModel}
           onDeleteMessage={core.deleteMessage}
           refs={core.refs}

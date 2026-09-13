@@ -107,7 +107,7 @@ export default function ChatMessages({
               msgId={`msg-${i}`}
               msgIndex={indexValue}
               expandedThinking={expandedThinking}
-              onToggleThinking={(id) => onToggleThinking(id)}
+              onToggleThinking={(id, forced) => onToggleThinking && onToggleThinking(id, forced)}
               effectiveModelName={selectedModel}
               onDeleteMessage={onDeleteMessage}
               activeManifesto={activeManifesto}
