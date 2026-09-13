@@ -640,6 +640,64 @@ def _as_history(full_text: str) -> str:
 SCRITTURE_SENZA_PROVA = 3
 
 
+def _riassunto_ricerca(result: Dict[str, Any]) -> str:
+    """Una riga che dice com'e' andata la ricerca, per chi guarda il pannello.
+
+    L'osservazione per il modello e' piu' lunga e consiglia cosa fare dopo;
+    questa e' il titolo del fatto, e serve a non lasciare una scheda vuota.
+    """
+    trovate = len(result.get("results") or [])
+    esaminati = int(result.get("scanned_files") or 0)
+    if not trovate:
+        if esaminati == 0 and not int(result.get("skipped_files") or 0):
+            return (f"Nessun file esaminato in '{result.get('path') or '.'}': "
+                    "il percorso non esiste o non contiene file di testo.")
+        return (f"Nessuna corrispondenza per '{result.get('query')}' "
+                f"in {esaminati} file esaminati.")
+    riga = (f"{trovate} corrispondenze per '{result.get('query')}' "
+            f"in {esaminati} file esaminati.")
+    if result.get("capped"):
+        riga += f" Elenco troncato ({result.get('stop_reason') or 'limite'})."
+    return riga
+
+
+def _ricerca_a_vuoto(result: Dict[str, Any]) -> str:
+    """Cosa dire quando una ricerca non trova niente.
+
+    Tre casi diversi che «nessuna corrispondenza» confondeva in uno:
+
+    - **zero file esaminati**: il percorso non esiste o e' vuoto. Cercare
+      un'altra parola non servira' a niente, e il rimedio e' guardare dove si
+      sta cercando;
+    - **file esaminati ma tutti saltati**: erano binari o troppo grandi;
+    - **molti file esaminati**: quel testo li' dentro non c'e', ed e' una
+      risposta utile — ci si puo' contare sopra invece di ricercare.
+    """
+    query = result.get("query")
+    dove = result.get("path") or "."
+    esaminati = int(result.get("scanned_files") or 0)
+    saltati = int(result.get("skipped_files") or 0)
+
+    if esaminati == 0 and saltati == 0:
+        return (
+            f"Nessuna corrispondenza per '{query}': ESAMINATI 0 FILE in "
+            f"'{dove}'. Non e' una risposta sul testo cercato — la cartella "
+            "non esiste, e' vuota, o non contiene file di testo. Verifica il "
+            "percorso con `list_dir` prima di cercare di nuovo: ripetere la "
+            "ricerca con un'altra parola dara' di nuovo zero."
+        )
+
+    riga = (f"Nessuna corrispondenza per '{query}' in '{dove}'. "
+            f"Esaminati {esaminati} file")
+    if saltati:
+        riga += f", {saltati} saltati perche' binari o troppo grandi"
+    riga += (". Il testo cercato li' dentro non c'e': e' una risposta "
+             "affidabile, non un errore. Se ti aspettavi di trovarlo, il nome "
+             "e' diverso da come lo ricordi — cerca una parte piu' corta, "
+             "oppure guarda con `list_dir` dove sta davvero.")
+    return riga
+
+
 def _promemoria_di_verifica(ledger: Any, verify_command: str = "") -> str:
     """La coda da mettere allo stato quando si scrive e non si dimostra.
 
@@ -1540,7 +1598,14 @@ def _execute_admin_tool_impl(
                 "error": "Nessun termine di ricerca fornito: specifica il campo 'query'."
             }
         res = search_workspace_files(full_path, query, should_cancel=should_cancel)
-        return {"tool": "search_code", "query": query, "path": raw_path, **res}
+        esito = {"tool": "search_code", "query": query, "path": raw_path, **res}
+        # Il risultato si descrive da solo. Senza, il pannello mostrava una
+        # scheda «AZIONE: SEARCH_CODE ✓ Completato» e dentro il vuoto: la
+        # ricerca era andata a buon fine e non si vedeva cosa avesse trovato,
+        # ne' quanto avesse guardato per non trovarlo.
+        if not esito.get("error"):
+            esito.setdefault("message", _riassunto_ricerca(esito))
+        return esito
 
     elif tool_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
         # La normalizzazione sta in `core.harness.plan` perche' non e' piu'
@@ -2959,7 +3024,15 @@ def _stream_agent_turn_impl(
                 if result.get("error"):
                     obs_str = f"Tool 'search_code' non eseguito: {result.get('error')}\n"
                 elif not matches:
-                    obs_str += f"Nessuna corrispondenza per '{result.get('query')}' in '{result.get('path')}'."
+                    # Una ricerca a vuoto non e' un'osservazione vuota: e'
+                    # un'informazione, ma solo se dice **quanto** ha guardato.
+                    # «Nessuna corrispondenza» dopo quattrocento file significa
+                    # che quel nome non esiste; dopo zero file significa che il
+                    # percorso e' sbagliato, ed e' un problema completamente
+                    # diverso. Il risultato portava gia' `scanned_files` e non
+                    # arrivava all'agente: leggeva una scatola vuota e ripeteva
+                    # la stessa ricerca con un termine simile.
+                    obs_str += _ricerca_a_vuoto(result)
                 else:
                     lines = [
                         f"{m.get('path')}:{m.get('line_number')}: {str(m.get('line_content', ''))[:160]}"
@@ -3114,6 +3187,11 @@ def _stream_agent_turn_impl(
         _chiusura["goal_reached"] = bool(goal_reached)
         _chiusura["apply_changes"] = applica
         _chiusura["delivered"] = consegnato
+        # Serve alla chiusura per recuperare cio' che git ignora.
+        try:
+            _chiusura["file_scritti"] = list(ledger.modified_files or [])
+        except Exception:
+            _chiusura["file_scritti"] = []
 
     # Se il run ha toccato dei file di un modulo, quel lavoro appartiene al
     # repository del modulo, non a questo. Senza questo passo non finirebbe in
@@ -3342,7 +3420,13 @@ def _chiudi_run(chiusura: Dict[str, Any]) -> Dict[str, Any]:
     try:
         if chiusura.get("worktree") is not None:
             esito = worktree.release_session_worktree(
-                session_id, apply_changes=raggiunto
+                session_id, apply_changes=raggiunto,
+                # I file che git ignora non passano dal diff: senza questo
+                # elenco sparirebbero con la cartella del run. In questo
+                # progetto e' meta' dell'interfaccia — `sigma_studio/src/
+                # modules/*` e' ignorato, e ogni lavoro sui moduli fatto in
+                # isolamento veniva buttato senza una parola.
+                percorsi_scritti=chiusura.get("file_scritti") or [],
             ) or {}
     except Exception as exc:
         log.warning("[AdminAgent] rilascio worktree non riuscito: %s", exc)

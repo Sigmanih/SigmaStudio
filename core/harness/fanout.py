@@ -367,7 +367,21 @@ def _esegui_voce(
     except Exception as exc:
         log.warning("[Fanout] voce '%s' interrotta da un errore: %s", voce.id, exc)
         esito.error = str(exc)
+        # Anche qui: se la voce e' gia' stata spezzata, farla fallire la
+        # riporterebbe in coda accanto ai propri pezzi.
+        if _e_stata_spezzata(coda, voce, esito, file_toccati):
+            return esito
         coda.fail(voce.id, esito.error)
+        return esito
+
+    # Se durante il run la voce e' stata spezzata — l'agente ha usato
+    # `queue_add` con `replaces` — non c'e' piu' niente da chiudere: i pezzi
+    # hanno preso il suo posto. Scriverci sopra un fallimento la riporterebbe
+    # in coda accanto ai propri pezzi, e verrebbe rifatta da capo mentre loro
+    # la stanno gia' facendo. E' successo: la voce risultava «spezzata in due»
+    # **e** fallita, e due lavoratori hanno prodotto lo stesso modulo con due
+    # nomi diversi.
+    if _e_stata_spezzata(coda, voce, esito, file_toccati):
         return esito
 
     esito.files = file_toccati
@@ -401,6 +415,30 @@ def _esegui_voce(
         _annota_la_diagnosi(coda, voce, esito, ultimo_stato)
         coda.fail(voce.id, esito.error)
     return esito
+
+
+def _e_stata_spezzata(coda: WorkQueue, voce: Voce, esito: EsitoVoce,
+                      file_toccati: List[str]) -> bool:
+    """Se durante il run l'agente ha spezzato la propria voce, non c'e' piu'
+    niente da chiudere: i pezzi hanno preso il suo posto.
+
+    Scriverci sopra un fallimento la riporterebbe in coda **accanto ai propri
+    pezzi**, e verrebbe rifatta da capo mentre loro la stanno gia' facendo. E'
+    successo su un ventaglio vero: la voce risultava «spezzata in due» e
+    fallita insieme, e due lavoratori hanno prodotto lo stesso modulo con due
+    nomi diversi.
+    """
+    aggiornata = next((v for v in coda.items() if v.id == voce.id), None)
+    pezzi = ((aggiornata.result if aggiornata else None) or {}).get("spezzata_in")
+    if not pezzi:
+        return False
+    esito.ok = True
+    esito.files = list(file_toccati)
+    esito.error = ""
+    esito.diagnosi = "spezzata"
+    log.info("[Fanout] '%s' non viene chiusa: spezzata in %s",
+             voce.id, ", ".join(pezzi))
+    return True
 
 
 def _annota_la_diagnosi(coda: WorkQueue, voce: Voce, esito: EsitoVoce,

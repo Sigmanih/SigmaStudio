@@ -216,7 +216,7 @@ class TestIlCicloRispettaLaDecisione:
         visto = {}
         monkeypatch.setattr(
             modulo_loop.worktree, "release_session_worktree",
-            lambda sid, apply_changes=False: visto.update(apply=apply_changes) or {},
+            lambda sid, apply_changes=False, **_: visto.update(apply=apply_changes) or {},
         )
         modulo_loop._chiudi_run({
             "session_id": "s", "review_gate": None, "worktree": object(),
@@ -230,7 +230,7 @@ class TestIlCicloRispettaLaDecisione:
         visto = {}
         monkeypatch.setattr(
             modulo_loop.worktree, "release_session_worktree",
-            lambda sid, apply_changes=False: visto.update(apply=apply_changes) or {},
+            lambda sid, apply_changes=False, **_: visto.update(apply=apply_changes) or {},
         )
         modulo_loop._chiudi_run({
             "session_id": "s", "review_gate": None, "worktree": object(),

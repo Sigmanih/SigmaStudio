@@ -388,7 +388,55 @@ def _lucchetto_repo(radice: Path) -> threading.Lock:
         return lucchetto
 
 
-def release_session_worktree(session_id: str, apply_changes: bool = False) -> Dict[str, Any]:
+def _salva_gli_ignorati(session: "WorktreeSession",
+                        percorsi: Optional[List[str]]) -> List[str]:
+    """Riporta nell'albero vero i file che git ignora ma l'agente ha scritto.
+
+    Un worktree porta soltanto cio' che e' versionato, e restituisce soltanto
+    cio' che finisce in un diff. Un file su un percorso **ignorato** non e' ne'
+    l'uno ne' l'altro: viene scritto nella cartella del run e sparisce con
+    essa, senza che nessuno lo dica.
+
+    Non e' un caso limite in questo progetto. `/sigma_studio/src/modules/*` e'
+    ignorato — i moduli vivono nel loro repository — quindi **ogni lavoro
+    sull'interfaccia fatto in isolamento veniva buttato**. Misurato su un
+    ventaglio vero: l'agente scrive `SandboxPanel.jsx`, `ActivityBar.jsx` e
+    `DeveloperStudio.jsx`, il ledger ne conta tre, il branch ne contiene zero,
+    e l'unico file sopravvissuto e' il test — che sta in `tests/`, versionato.
+
+    Si copia solo cio' che il ledger dichiara scritto: chiedere a git l'elenco
+    completo degli ignorati vorrebbe dire copiare `node_modules`, `var/` e le
+    cache. La precisione qui e' la differenza fra un recupero e un disastro.
+    """
+    recuperati: List[str] = []
+    for relativo in (percorsi or []):
+        pulito = str(relativo or "").replace("\\", "/").strip().lstrip("/")
+        if not pulito or ".." in pulito.split("/"):
+            continue
+        origine = session.worktree_path / pulito
+        if not origine.is_file():
+            continue
+        # Se git lo conosce, il diff lo ha gia' portato: ricopiarlo
+        # sovrascriverebbe l'esito della revisione con la versione grezza.
+        conosciuto = _run_git(["ls-files", "--error-unmatch", pulito],
+                              cwd=session.worktree_path)
+        if conosciuto.returncode == 0:
+            continue
+        destinazione = session.repo_root / pulito
+        try:
+            destinazione.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(str(origine), str(destinazione))
+            recuperati.append(pulito)
+        except OSError as exc:
+            log.warning("[Worktree] '%s' non recuperato: %s", pulito, exc)
+    if recuperati:
+        log.info("[Worktree] Recuperati %d file ignorati da git: %s",
+                 len(recuperati), ", ".join(recuperati[:6]))
+    return recuperati
+
+
+def release_session_worktree(session_id: str, apply_changes: bool = False,
+                             percorsi_scritti: Optional[List[str]] = None) -> Dict[str, Any]:
     """Chiude il worktree di una sessione e dice cosa ne e' stato del lavoro.
 
     **Un run che non raggiunge l'obiettivo non e' un run da buttare.** Qui
@@ -414,9 +462,13 @@ def release_session_worktree(session_id: str, apply_changes: bool = False) -> Di
 
     aveva_lavoro = session.has_work()
     applicato = False
+    ignorati: List[str] = []
     if apply_changes:
         with _lucchetto_repo(session.repo_root):
             applicato = session.apply_to_main()
+            # Dopo il diff, e solo se il lavoro e' stato approvato: cio' che
+            # git ignora non e' passato dal diff e andrebbe perso.
+            ignorati = _salva_gli_ignorati(session, percorsi_scritti)
 
     # Il branch si butta solo se il lavoro e' al sicuro altrove, o se non c'e'.
     scarta_branch = applicato or not aveva_lavoro
@@ -427,6 +479,7 @@ def release_session_worktree(session_id: str, apply_changes: bool = False) -> Di
         "applied": applicato,
         "branch": "" if scarta_branch else session.branch_name,
         "checkpoints": len([c for c in session.checkpoints if c.get("has_changes")]),
+        "ignored_recovered": ignorati,
     }
     if resoconto["branch"]:
         log.info(

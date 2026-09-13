@@ -90,7 +90,7 @@ class TestChiusuraDiUnRunAbbandonato:
         rilasciati = []
         monkeypatch.setattr(
             modulo_loop.worktree, "release_session_worktree",
-            lambda sid, apply_changes=False: rilasciati.append((sid, apply_changes)) or {},
+            lambda sid, apply_changes=False, **_: rilasciati.append((sid, apply_changes)) or {},
         )
 
         finto_wt = object()
@@ -151,7 +151,7 @@ class TestChiusuraDiUnRunAbbandonato:
         conta = []
         monkeypatch.setattr(
             modulo_loop.worktree, "release_session_worktree",
-            lambda sid, apply_changes=False: conta.append(sid) or {},
+            lambda sid, apply_changes=False, **_: conta.append(sid) or {},
         )
 
         def impl_finta(*args, **kwargs):
@@ -175,7 +175,7 @@ class TestChiusuraDiUnRunAbbandonato:
         """E' codice di pulizia: se rompe, lascia i residui che doveva togliere."""
         from core.harness import loop as modulo_loop
 
-        def esplode(sid, apply_changes=False):
+        def esplode(sid, apply_changes=False, **_):
             raise RuntimeError("git non risponde")
 
         monkeypatch.setattr(modulo_loop.worktree, "release_session_worktree", esplode)
@@ -312,7 +312,7 @@ class TestIlBranchConservatoVieneDetto:
 
         monkeypatch.setattr(
             modulo_loop.worktree, "release_session_worktree",
-            lambda sid, apply_changes=False: {
+            lambda sid, apply_changes=False, **_: {
                 "released": True, "applied": False,
                 "branch": "sigma-run/sess-x", "checkpoints": 3,
             },
@@ -423,7 +423,7 @@ class TestIlTrasferimentoAllAlberoPrincipale:
 
         monkeypatch.setattr(
             modulo_loop.worktree, "release_session_worktree",
-            lambda sid, apply_changes=False: {
+            lambda sid, apply_changes=False, **_: {
                 "released": True, "applied": False,
                 "branch": "sigma-run/sess-c", "checkpoints": 2,
             },

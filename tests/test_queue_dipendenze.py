@@ -314,3 +314,44 @@ class TestLAgenteSaSpezzare:
 
         testo = _prompt_voce(Voce(id="x", title="fai"), "obiettivo")
         assert "replaces" not in testo
+
+
+class TestUnaVoceSpezzataNonTornaInCoda:
+    """Trovato su un ventaglio vero: `04_pannello` risultava «spezzata in due»
+    **e** fallita insieme. Il lavoratore che l'aveva spezzata arrivava in fondo
+    al proprio run, non aveva chiuso nessun obiettivo, e la faceva fallire —
+    riportandola in coda accanto ai propri pezzi. Due lavoratori hanno prodotto
+    lo stesso modulo con due nomi diversi."""
+
+    def test_il_run_che_la_spezza_non_la_fa_fallire(self, coda, tmp_path,
+                                                    monkeypatch):
+        from core.harness import fanout
+
+        coda.add_many([{"id": "grande", "title": "fai tutto"}])
+        voce = coda.claim("w1")
+
+        # Il run non chiude nessun obiettivo: senza la guardia, finirebbe in
+        # `coda.fail`.
+        monkeypatch.setattr(fanout, "stream_admin_agent_turn", None, raising=False)
+        coda.sostituisci("grande", [{"id": "p1", "title": "pezzo"}],
+                         motivo="erano due lavori")
+
+        esito = fanout.EsitoVoce(item_id="grande", title="fai tutto", ok=False)
+        # Si esercita la sola parte che decide: la voce risulta gia' spezzata.
+        aggiornata = next(v for v in coda.items() if v.id == "grande")
+        assert (aggiornata.result or {}).get("spezzata_in") == ["p1"]
+        assert aggiornata.state == "done"
+
+    def test_il_ventaglio_controlla_prima_di_chiudere(self):
+        import inspect
+
+        from core.harness import fanout
+
+        sorgente = inspect.getsource(fanout._esegui_voce)
+        assert "_e_stata_spezzata(" in sorgente, (
+            "senza questo controllo la voce spezzata torna in coda accanto "
+            "ai propri pezzi")
+        # Vale per ENTRAMBE le uscite: il run che finisce male, e quello che
+        # va in eccezione dopo aver spezzato.
+        assert sorgente.count("_e_stata_spezzata(") == 2
+        assert sorgente.index("_e_stata_spezzata(") < sorgente.index("coda.fail(voce.id")
