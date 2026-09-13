@@ -385,7 +385,37 @@ def _extract_thinking_process(content: str) -> tuple[str, str | None]:
     return content, None
 
 
-def _clean_all_tags(content: str) -> tuple[str, str | None]:
+#: Quando la domanda chiede inglese, l'inglese nella risposta e' la risposta.
+#:
+#: Le euristiche 5 e 5.5 partono da un'assunzione che regge quasi sempre e
+#: cade proprio qui: «inglese = ragionamento, italiano = risposta». Nate per
+#: recuperare il ragionamento che certi modelli lasciavano colare in chiaro,
+#: distruggono qualunque risposta che contenga inglese per un motivo legittimo
+#: — una traduzione, una descrizione bilingue, un messaggio d'errore citato.
+#:
+#: Misurato: a «scrivimi una breve descrizione sia in italiano che in inglese»
+#: l'utente vedeva arrivare *soltanto* «Fammi sapere se desideri altre
+#: modifiche!». Tutto il resto finiva nel ragionamento.
+_RICHIESTA_IN_INGLESE = re.compile(
+    r"\b(?:in\s+inglese|in\s+english|english\s+version|traduci|traduzione|"
+    r"translate|translation|bilingue|due\s+lingue|entrambe\s+le\s+lingue|"
+    r"both\s+languages)\b",
+    re.IGNORECASE,
+)
+
+
+def richiesta_ammette_inglese(domanda: str) -> bool:
+    """Se la domanda chiede inglese, non si puo' scambiarlo per ragionamento."""
+    return bool(domanda) and bool(_RICHIESTA_IN_INGLESE.search(str(domanda)))
+
+
+#: Sotto questa frazione, un'euristica di lingua ha quasi certamente mangiato
+#: la risposta invece del ragionamento. Mostrare un po' di ragionamento e'
+#: fastidioso; perdere la risposta e' un guasto.
+_FRAZIONE_MINIMA_SUPERSTITE = 0.25
+
+
+def _clean_all_tags(content: str, domanda: str = "") -> tuple[str, str | None]:
     """Remove all container/thinking tags and extract thinking text.
 
     Multi-stage pipeline:
@@ -437,17 +467,27 @@ def _clean_all_tags(content: str) -> tuple[str, str | None]:
         if bullet_thinking:
             extracted = bullet_thinking
 
-    # 5 \u2014 English thinking process
-    if not extracted:
+    # 5 e 5.5 \u2014 Le due euristiche che distinguono ragionamento e risposta
+    # dalla LINGUA. Sono le uniche che possono sbagliarsi su un testo legittimo,
+    # e per questo sono le uniche con una rete sotto.
+    if not extracted and not richiesta_ammette_inglese(domanda):
+        prima_di_lingua = remaining
+
         remaining, english_thinking = _extract_english_thinking(remaining)
         if english_thinking:
             extracted = english_thinking
 
-    # 5.5 \u2014 Language transition splitting (English to Italian)
-    if not extracted:
-        remaining, transition_thinking = _split_by_language_transition(remaining)
-        if transition_thinking:
-            extracted = transition_thinking
+        if not extracted:
+            remaining, transition_thinking = _split_by_language_transition(remaining)
+            if transition_thinking:
+                extracted = transition_thinking
+
+        # La rete: se di una risposta e' sopravvissuto un quarto scarso, non e'
+        # stato tolto un preambolo — e' stata tolta la risposta. Si rimette
+        # tutto: un po' di ragionamento in chiaro si legge, una risposta che
+        # non c'e' non si recupera.
+        if extracted and len(remaining) < len(prima_di_lingua) * _FRAZIONE_MINIMA_SUPERSTITE:
+            remaining, extracted = prima_di_lingua, None
 
     # 6 \u2014 Generic XML tag cleanup
     remaining = re.sub(r"</?[a-zA-Z_][a-zA-Z0-9_]*>", "", remaining).strip()

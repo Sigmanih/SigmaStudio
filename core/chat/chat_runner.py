@@ -715,7 +715,9 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
 
         # Second pass for reasoning shapes no tag can catch (bullet monologues,
         # "done thinking." markers, English self-analysis preambles).
-        clean_text, extracted_thinking = _clean_all_tags(full_text)
+        # La domanda serve a non scambiare per ragionamento l'inglese
+        # che l'utente ha chiesto.
+        clean_text, extracted_thinking = _clean_all_tags(full_text, message)
         thinking_out = "\n\n".join(t for t in (full_thinking, extracted_thinking) if t and t.strip())
 
         # A reasoning-only answer is still an answer: don't leave the bubble empty.
