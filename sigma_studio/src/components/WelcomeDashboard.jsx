@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Home, 
-  MessageSquare, 
-  Scroll, 
+  Scroll,
   ExternalLink,
   DownloadCloud, 
   Layers, 
@@ -266,65 +265,6 @@ export default function WelcomeDashboard({ modules, openTab }) {
       </div>
 
       <div className="home-main-scrollable">
-        {/* ── Hero Section ad Alto Impatto ── */}
-        <section className="home-hero-section">
-          <div className="home-hero-glow" />
-          
-          <div className="home-hero-badge">
-            <Sparkles size={13} className="home-sparkle-icon" />
-            <span className="home-hero-badge-brand">Sigma Studio</span>
-            <span className="home-hero-badge-divider">•</span>
-            <span className="home-hero-badge-tag">Cognitive AI Kernel</span>
-          </div>
-
-          <h1 className="home-hero-title">
-            Intelligenza Artificiale Sovrana &<br />
-            <span className="home-hero-title-accent">Ambiente di Sviluppo Modulare</span>
-          </h1>
-
-          <p className="home-hero-subtitle">
-            Inferenza locale ad alte prestazioni, orchestratore multi-ruolo, protocollo MCP estendibile e zero dipendenze cloud.
-          </p>
-
-          {/* Quick Launchpad Buttons */}
-          <div className="home-quick-actions">
-            <button
-              className="home-cta-btn primary"
-              onClick={() => openTab({ name: 'Chat' }, 'chat')}
-              title="Apri l'interfaccia di conversazione AI"
-            >
-              <MessageSquare size={16} />
-              <span>Avvia Chat AI</span>
-            </button>
-
-            <button
-              className="home-cta-btn secondary"
-              onClick={openLocalModels}
-              title="Gestisci ed esegui i modelli locali GGUF e Safetensors"
-            >
-              <Cpu size={16} />
-              <span>Modelli Locali</span>
-            </button>
-
-            <button
-              className="home-cta-btn glass"
-              onClick={() => openTab({ name: 'Ruoli AI' }, 'whitepapers_lib')}
-              title="Esplora il catalogo dei ruoli specialistici e manifesti"
-            >
-              <Scroll size={16} />
-              <span>Ruoli & Specialisti</span>
-            </button>
-
-            <button
-              className="home-cta-btn glass"
-              onClick={() => openTab({ name: 'MCP Tools' }, 'mcp_hub')}
-              title="Apri il pannello degli strumenti di sistema e protocollo MCP"
-            >
-              <Terminal size={16} />
-              <span>Gateway MCP</span>
-            </button>
-          </div>
-        </section>
 
         {/* ── Bacheca di Sistema: Aggiornamenti Git & Ruoli ── */}
         <div className={`home-bacheca-card ${updateState.updateAvailable ? 'has-update' : ''}`}>

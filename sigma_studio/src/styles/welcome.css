@@ -579,158 +579,7 @@
   box-sizing: border-box;
 }
 
-/* 3. Hero Section ad Alto Impatto */
-.home-hero-section {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 32px 16px 24px 16px;
-  overflow: hidden;
-}
-
-.home-hero-glow {
-  position: absolute;
-  top: -80px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 500px;
-  height: 220px;
-  background: radial-gradient(ellipse at 50% 50%, rgba(0, 242, 254, 0.18) 0%, rgba(168, 85, 247, 0.08) 50%, transparent 80%);
-  pointer-events: none;
-  border-radius: 50%;
-}
-
-.home-hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 16px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(0, 210, 255, 0.12) 0%, rgba(168, 85, 247, 0.09) 100%);
-  border: 1px solid rgba(0, 210, 255, 0.32);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 18px rgba(0, 210, 255, 0.12);
-  margin-bottom: 16px;
-  user-select: none;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.home-hero-badge:hover {
-  border-color: rgba(0, 210, 255, 0.55);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 24px rgba(0, 210, 255, 0.2);
-  transform: translateY(-1px);
-}
-
-.home-sparkle-icon {
-  color: #00f2fe;
-  filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.5));
-}
-
-.home-hero-badge-brand {
-  font-size: 0.82rem;
-  font-weight: 800;
-  color: #ffffff;
-  letter-spacing: 0.3px;
-}
-
-.home-hero-badge-divider {
-  color: rgba(255, 255, 255, 0.3);
-  font-size: 0.70rem;
-}
-
-.home-hero-badge-tag {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #38bdf8;
-  letter-spacing: 0.4px;
-}
-
-.home-hero-title {
-  margin: 0 0 10px 0;
-  font-size: 2.2rem;
-  font-weight: 850;
-  letter-spacing: -0.8px;
-  color: #f8fafc;
-  line-height: 1.25;
-}
-
-.home-hero-title-accent {
-  background: linear-gradient(135deg, #00f2fe 0%, #38bdf8 50%, #bc8cff 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.home-hero-subtitle {
-  margin: 0 auto 24px auto;
-  font-size: 0.90rem;
-  color: #94a3b8;
-  max-width: 640px;
-  line-height: 1.55;
-}
-
-/* Quick Action CTA Buttons */
-.home-quick-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.home-cta-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: 12px;
-  font-size: 0.82rem;
-  font-weight: 750;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-sizing: border-box;
-}
-
-.home-cta-btn.primary {
-  background: linear-gradient(135deg, #00d2ff 0%, #0077ff 100%);
-  border: none;
-  color: #050b14;
-  font-weight: 850;
-  box-shadow: 0 4px 18px rgba(0, 210, 255, 0.35);
-}
-
-.home-cta-btn.primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(0, 210, 255, 0.5);
-  color: #000;
-}
-
-.home-cta-btn.secondary {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(0, 210, 255, 0.35);
-  color: #00d2ff;
-}
-
-.home-cta-btn.secondary:hover {
-  background: rgba(0, 210, 255, 0.12);
-  transform: translateY(-2px);
-  border-color: #00d2ff;
-}
-
-.home-cta-btn.glass {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #cbd5e1;
-}
-
-.home-cta-btn.glass:hover {
-  background: rgba(255, 255, 255, 0.08);
-  transform: translateY(-2px);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.25);
-}
-
-/* 4. Bacheca di Sistema & Aggiornamenti Git */
+/* 3. Bacheca di Sistema & Aggiornamenti Git */
 .home-bacheca-card {
   position: relative;
   display: flex;
@@ -1383,14 +1232,12 @@
 }
 
 .theme-light .home-kernel-badge,
-.theme-light .home-hero-title,
 .theme-light .home-section-title,
 .theme-light .home-pillar-title,
 .theme-light .home-stat-val {
   color: #0f172a !important;
 }
 
-.theme-light .home-hero-subtitle,
 .home-section-sub,
 .home-pillar-short-desc,
 .home-stat-lbl,
@@ -1416,16 +1263,4 @@
 .theme-light .home-stats-strip {
   background: #ffffff !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
-}
-
-.theme-light .home-cta-btn.glass {
-  background: #ffffff !important;
-  border-color: rgba(0, 0, 0, 0.12) !important;
-  color: #0f172a !important;
-}
-
-.theme-light .home-cta-btn.secondary {
-  background: rgba(14, 165, 233, 0.08) !important;
-  border-color: rgba(14, 165, 233, 0.4) !important;
-  color: #0284c7 !important;
 }
