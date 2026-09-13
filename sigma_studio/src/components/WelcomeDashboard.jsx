@@ -272,7 +272,9 @@ export default function WelcomeDashboard({ modules, openTab }) {
           
           <div className="home-hero-badge">
             <Sparkles size={13} className="home-sparkle-icon" />
-            <span>SIGMA AI STUDIO • SOVRANITÀ COGNITIVA LOCALE</span>
+            <span className="home-hero-badge-brand">Sigma Studio</span>
+            <span className="home-hero-badge-divider">•</span>
+            <span className="home-hero-badge-tag">Cognitive AI Kernel</span>
           </div>
 
           <h1 className="home-hero-title">

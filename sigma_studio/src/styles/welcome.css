@@ -605,21 +605,45 @@
 .home-hero-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 20px;
-  background: rgba(0, 242, 254, 0.08);
-  border: 1px solid rgba(0, 242, 254, 0.25);
-  color: #00f2fe;
-  font-size: 0.66rem;
-  font-weight: 800;
-  letter-spacing: 1px;
-  margin-bottom: 14px;
-  box-shadow: 0 0 16px rgba(0, 242, 254, 0.1);
+  gap: 8px;
+  padding: 5px 16px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(0, 210, 255, 0.12) 0%, rgba(168, 85, 247, 0.09) 100%);
+  border: 1px solid rgba(0, 210, 255, 0.32);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 18px rgba(0, 210, 255, 0.12);
+  margin-bottom: 16px;
+  user-select: none;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.home-hero-badge:hover {
+  border-color: rgba(0, 210, 255, 0.55);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 0 24px rgba(0, 210, 255, 0.2);
+  transform: translateY(-1px);
 }
 
 .home-sparkle-icon {
   color: #00f2fe;
+  filter: drop-shadow(0 0 6px rgba(0, 242, 254, 0.5));
+}
+
+.home-hero-badge-brand {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.3px;
+}
+
+.home-hero-badge-divider {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 0.70rem;
+}
+
+.home-hero-badge-tag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #38bdf8;
+  letter-spacing: 0.4px;
 }
 
 .home-hero-title {
