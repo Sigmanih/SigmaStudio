@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders, Square, ChevronDown } from 'lucide-react';
 import { setVoiceConfig as saveVoiceConfigToSpeechEngine, getVoiceConfig } from '../audioSpeech';
 import ModelSelector from '../ModelSelector';
@@ -32,6 +32,20 @@ export default function ChatInput({
       return updated;
     });
   };
+
+  // Ridimensionamento dinamico della textarea quando si scrive codice o testo multilinea
+  // e reset automatico all'altezza iniziale compatta quando il messaggio viene inviato
+  useEffect(() => {
+    const el = refs?.input?.current;
+    if (!el) return;
+    if (!input) {
+      el.style.height = '44px';
+      return;
+    }
+    el.style.height = 'auto';
+    const newHeight = Math.min(Math.max(el.scrollHeight, 44), 320);
+    el.style.height = `${newHeight}px`;
+  }, [input, refs?.input]);
 
   const effectiveFavs = Array.isArray(favoriteModels) && favoriteModels.length > 0 
     ? favoriteModels 
