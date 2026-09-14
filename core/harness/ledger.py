@@ -857,10 +857,45 @@ class DevSessionLedger:
 
     # -- prompt rendering ----------------------------------------------------
 
+
+    def _avviso_sulla_radice(self) -> str:
+        """Dire all'agente dove sta lavorando, quando il dove e' delicato.
+
+        Un compito che diceva «crea un programma **staccato da sigma**» e'
+        stato eseguito con la radice su Sigma Studio, e l'agente ha scritto
+        `backend/`, `frontend/` e `landing/` dentro il sorgente del programma
+        che lo stava eseguendo. Non aveva sbagliato a ragionare: nessuno gli
+        aveva detto dove si trovava, e una cartella vale l'altra finche' non
+        si sa che quella e' casa propria.
+
+        Non e' un divieto. Lavorare su Sigma Studio e' normale — questo
+        harness nasce cosi'. E' un avviso, e serve solo nel caso delicato:
+        quando la radice e' un'altra, non costa niente.
+        """
+        if not self.workspace_root:
+            return ""
+        try:
+            from pathlib import Path
+
+            from core import paths
+
+            qui = Path(str(self.workspace_root)).resolve()
+            casa = Path(paths.project_root()).resolve()
+        except (OSError, RuntimeError, ValueError, ImportError):
+            return ""
+        if qui != casa:
+            return ""
+        return (
+            "\n**Dove sei:** questa e' la cartella di Sigma Studio, il programma che ti sta eseguendo. Modificarlo e' legittimo se l'obiettivo parla di *lui*. Se invece l'obiettivo e' un applicativo nuovo e separato, qui non ci va: la sua casa e' l'indirizzo di sviluppo (`data/progetti/`), e crearlo qui dentro significa mescolarlo al sorgente di Sigma Studio e ai suoi commit. In quel caso dillo e fermati, invece di scrivere."
+        )
     def render_state_block(self) -> str:
         """The state block re-emitted into every prompt, in place of old turns."""
         with self._lock:
             parts: List[str] = ["## STATO DEL LAVORO (aggiornato automaticamente, non ripetere azioni gia svolte)"]
+
+            avviso = self._avviso_sulla_radice()
+            if avviso:
+                parts.append(avviso)
 
             if self.goal:
                 parts.append(f"\n**Obiettivo:** {self.goal}")
