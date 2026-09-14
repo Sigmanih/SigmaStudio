@@ -304,8 +304,9 @@ def lancia_container(
     workspace_root: Optional[str] = None,
     porte: Optional[List[str]] = None,
     comando: Optional[str] = None,
+    modalita: Optional[str] = "app",
 ) -> Dict[str, Any]:
-    """Crea e avvia un nuovo container sandbox in background."""
+    """Crea e avvia un nuovo container Docker (applicazione o sandbox) in background."""
     import re
     disponibile, err = docker_disponibile()
     if not disponibile:
@@ -316,6 +317,9 @@ def lancia_container(
     img = (immagine or "python:3.12-slim").strip()
 
     cmd = [eseguibile, "run", "-d"]
+    # Risoluzione host 'backend' per consentire ai container web/nginx di raggiungere il backend
+    cmd.extend(["--add-host", "backend:host-gateway"])
+
     if nome:
         pulito = re.sub(r"[^a-zA-Z0-9_.-]", "_", nome.strip())
         if pulito:
@@ -337,9 +341,27 @@ def lancia_container(
     cmd.append(img)
     if comando:
         cmd.extend(["sh", "-c", comando])
-    else:
-        # Mantiene il container vivo in background
+    elif modalita == "sandbox":
+        # Mantiene il container vivo in background per sandbox dell'agente
         cmd.extend(["sh", "-c", "tail -f /dev/null"])
+    else:
+        # Modalita' "app": verifica se l'immagine ha un comando/server nativo (es. nginx, node index.js)
+        has_native_cmd = False
+        try:
+            inspect_proc = subprocess.run(
+                [eseguibile, "inspect", img, "--format", "{{json .Config.Cmd}}"],
+                capture_output=True, text=True, timeout=6, env=env
+            )
+            if inspect_proc.returncode == 0 and inspect_proc.stdout.strip():
+                raw = json.loads(inspect_proc.stdout.strip())
+                # Se è una lista con un comando vero (non una shell interattiva che esce da sola)
+                if isinstance(raw, list) and raw and not any(raw == [sh] for sh in (["sh"], ["bash"], ["/bin/sh"], ["/bin/bash"], ["python3"])):
+                    has_native_cmd = True
+        except Exception as exc_insp:
+            log.debug("[DockerFS] Impossibile ispezionare CMD immagine %s: %s", img, exc_insp)
+
+        if not has_native_cmd:
+            cmd.extend(["sh", "-c", "tail -f /dev/null"])
 
     try:
         esito = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
