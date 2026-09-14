@@ -98,10 +98,67 @@ def nome_valido(nome: str) -> str:
     return pulito
 
 
-def crea_progetto(nome: str) -> Path:
-    """Crea la cartella di un progetto nuovo sotto la radice dei progetti."""
+#: L'immagine di partenza di un progetto nuovo. Porta Node e Python insieme
+#: perche' all'inizio non si sa ancora cosa sara': un frontend Vite dentro
+#: `python:3.12-slim` non ha `npm`, e la prima verifica fallisce per una
+#: ragione che non c'entra niente con il lavoro.
+IMMAGINE_PREDEFINITA = "nikolaik/python-nodejs:python3.12-nodejs22"
+
+#: Cosa scrivere in `sandbox.json` di un progetto appena nato.
+#:
+#: Contenitore, non host. Un progetto nuovo non ha ancora niente da proteggere
+#: e ha tutto da provare: dentro il contenitore l'agente puo' installare,
+#: compilare e rompere con pieni diritti, e cio' che rompe muore col
+#: contenitore. Sull'host la stessa liberta' si paga con la macchina di chi
+#: guarda.
+#:
+#: Resta una cosa che il contenitore non puo' fare, ed e' bene saperla prima:
+#: `docker compose up` da dentro un contenitore non vede il Docker dell'host.
+#: Un progetto che deve *pubblicare* uno stack — non solo costruirlo — mette
+#: `"mode": "host"` con la ragione scritta, come fa BibliotecaDigitale.
+SANDBOX_PREDEFINITA: Dict[str, Any] = {
+    "mode": "container",
+    "image": IMMAGINE_PREDEFINITA,
+    "network": True,
+    "memory": "4g",
+    "cpus": "2",
+}
+
+
+def crea_progetto(nome: str, sandbox: Optional[Dict[str, Any]] = None,
+                  con_sandbox: bool = True) -> Path:
+    """Crea la cartella di un progetto nuovo sotto la radice dei progetti.
+
+    Ci scrive anche il `sandbox.json`, e non e' un dettaglio di comodo: senza,
+    l'esecutore ricade sulla configurazione generale — che dice `host` — e un
+    progetto nato per essere isolato lavora invece sulla macchina di chi lo ha
+    creato. Nessuno lo sceglie: succede perche' il file non c'era.
+
+    `con_sandbox=False` lascia la cartella nuda, per chi quel file lo vuole
+    scrivere a modo proprio.
+    """
     cartella = radice_progetti() / nome_valido(nome)
     cartella.mkdir(parents=True, exist_ok=True)
+
+    if con_sandbox:
+        percorso = cartella / "sandbox.json"
+        if not percorso.is_file():
+            dati = dict(SANDBOX_PREDEFINITA)
+            dati.update(sandbox or {})
+            dati["_nota"] = (
+                "Gli agenti lavorano dentro un contenitore: possono installare, "
+                "compilare e rompere con pieni diritti, e cio' che rompono muore "
+                "col contenitore. Per pubblicare uno stack con `docker compose` "
+                "serve invece \"mode\": \"host\", perche' da dentro un contenitore "
+                "il Docker dell'host non si vede."
+            )
+            try:
+                percorso.write_text(
+                    json.dumps(dati, ensure_ascii=False, indent=2) + '\n',
+                    encoding="utf-8")
+            except OSError as exc:
+                log.warning("[Progetti] sandbox.json non scritto in '%s': %s",
+                            cartella, exc)
     return cartella
 
 

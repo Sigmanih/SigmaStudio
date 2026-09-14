@@ -407,7 +407,12 @@ class TestPreflight:
 
 
 class TestFunzionalitaAvanzateContenitore:
-    def test_inoltro_porte_quando_rete_accesa(self, tmp_path):
+    def test_inoltro_porte_quando_rete_accesa(self, tmp_path, monkeypatch):
+        # Le porte occupate non si inoltrano, ed e' giusto: qui pero' si sta
+        # verificando l'inoltro, non lo stato della macchina. Senza questo,
+        # il test passava o falliva a seconda di cosa fosse acceso — sulla
+        # 3000 c'era il backend della Biblioteca.
+        monkeypatch.setattr(E, "_porta_occupata", lambda p: False)
         esecutore = E.EsecutoreContenitore(
             rete=True, ports=["3000:3000", "5173:5173"]
         )

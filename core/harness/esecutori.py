@@ -304,6 +304,26 @@ def _usa_uid_gid() -> bool:
     return os.name != "nt" and hasattr(os, "getuid") and hasattr(os, "getgid")
 
 
+def _porta_occupata(porta: str) -> bool:
+    """Se qualcuno sta gia' ascoltando su quella porta dell'host.
+
+    Serve prima di inoltrarla: Docker rifiuta di avviare il contenitore se la
+    porta e' presa, e il messaggio parla della porta, non del lavoro. Meglio
+    partire senza quell'inoltro che non partire.
+    """
+    import socket
+
+    try:
+        numero = int(str(porta).strip())
+    except (TypeError, ValueError):
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.2)
+        # `connect_ex` riesce quando qualcuno risponde: e' la stessa domanda
+        # che si fa Docker, posta senza occupare la porta a nostra volta.
+        return s.connect_ex(("127.0.0.1", numero)) == 0
+
+
 @dataclass
 class EsecutoreContenitore:
     """Il comando gira dentro un contenitore, con il workspace montato.
@@ -368,8 +388,18 @@ class EsecutoreContenitore:
         # Inoltro delle porte su host se la rete e' attiva
         if self.rete and self.ports:
             for p in self.ports:
-                if p and ":" in str(p):
-                    argv += ["-p", str(p)]
+                if not p or ":" not in str(p):
+                    continue
+                occupata = _porta_occupata(str(p).split(":")[0])
+                if occupata:
+                    # Non fatale: senza questo salto il contenitore non parte
+                    # affatto, con «Bind for 0.0.0.0:3000 failed: port is
+                    # already allocated» — un errore che parla di un'altra
+                    # applicazione e ferma questa. E' successo con il backend
+                    # della Biblioteca acceso sulla 3000.
+                    log.info("[Sandbox] porta %s gia' occupata: non inoltrata", p)
+                    continue
+                argv += ["-p", str(p)]
 
         # Su sistemi POSIX (Linux / Raspberry Pi), evita che i file creati appartengano a root
         if _usa_uid_gid():
