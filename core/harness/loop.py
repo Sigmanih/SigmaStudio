@@ -1295,6 +1295,45 @@ def _esempio_di_chiamata(tool_name: str) -> str:
         righe.append(_AVVISO_CONTENUTO)
     return '\n'.join(righe)
 
+
+
+def _chiusura_per_esaurimento(ledger: Any, verify_command: str = "") -> Optional[Dict[str, Any]]:
+    """Il run ha finito i turni: aveva anche finito il lavoro?
+
+    Un run sulla Biblioteca ha soddisfatto tutti e sette i criteri di
+    accettazione, ha eseguito il proprio comando di verifica con esito zero —
+    due volte — e poi e' morto al turno trentaquattro senza chiamare
+    `complete_goal`. La coda l'ha segnato «lavoro prodotto ma non dimostrato»
+    e l'ha rifatto da capo. Era dimostrato: mancava la firma, non la prova.
+
+    Qui non si allenta niente. Si pone al cancello la stessa domanda che gli
+    porrebbe `complete_goal`, e in piu' si pretende che il comando dichiarato
+    dalla voce sia proprio uno di quelli riusciti: se il piano diceva come si
+    dimostra questo lavoro, e' quella la prova che vale. Le prove non
+    diventano meno vere perche' e' finito il contatore dei turni.
+
+    Ritorna l'esito del cancello quando si puo' chiudere, `None` altrimenti.
+    """
+    try:
+        gate = check_completion_allowed(ledger)
+    except Exception as exc:  # il cancello non deve poter rompere la chiusura
+        log.warning("[AdminAgent] cancello non interrogabile a fine turni: %s", exc)
+        return None
+    if not gate.get("allowed"):
+        return None
+
+    comando = str(verify_command or "").strip()
+    if comando:
+        try:
+            riusciti = [str(c.get("command") or "").strip()
+                        for c in ledger.successful_commands()]
+        except (AttributeError, TypeError):
+            return None
+        if not any(c == comando or comando in c or c in comando for c in riusciti):
+            # Qualcosa e' passato, ma non la prova che questa voce aveva
+            # dichiarato. Chiudere qui vorrebbe dire accontentarsi.
+            return None
+    return gate
 def execute_admin_tool(
     tool_name: str,
     params: Dict[str, Any],
@@ -3239,6 +3278,21 @@ def _stream_agent_turn_impl(
         full_messages.append({"role": "user", "content": observation_prompt})
         full_messages = trim_history(full_messages)
         last_user_prompt = observation_prompt
+
+    # I turni sono finiti. Se il lavoro era finito davvero, la firma la
+    # mettiamo qui: rifare da capo un lavoro gia' dimostrato costa quanto
+    # farlo, e non lo migliora.
+    if not goal_reached and current_turn >= max_turns:
+        chiusura = _chiusura_per_esaurimento(ledger, verify_command)
+        if chiusura is not None:
+            goal_reached = True
+            yield {
+                "type": "goal_complete",
+                "summary": ("Turni esauriti, ma i criteri di accettazione erano tutti "
+                            "soddisfatti e la verifica dichiarata era passata."),
+                "evidence": chiusura.get("evidence", {}),
+                "per_esaurimento": True,
+            }
 
     run_metrics["generated_tokens"] = total_generated_tokens
     run_metrics["elapsed_s"] = round(time.time() - run_metrics["started_at"], 2)
