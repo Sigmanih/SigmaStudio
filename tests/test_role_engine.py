@@ -6,8 +6,8 @@ from core.harness.roles import RoleEngine, DEV_ROLES, DevRole
 
 
 def test_dev_roles_definition():
-    assert len(DEV_ROLES) == 5
-    for expected in ["architect", "coder", "reviewer", "tester", "devops"]:
+    assert len(DEV_ROLES) == 6
+    for expected in ["architect", "designer", "coder", "reviewer", "tester", "devops"]:
         assert expected in DEV_ROLES
         role = DEV_ROLES[expected]
         assert isinstance(role, DevRole)
