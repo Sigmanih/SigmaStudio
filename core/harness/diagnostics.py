@@ -98,6 +98,43 @@ def _validate_brackets_and_quotes(code: str, language: str) -> Optional[str]:
     return None
 
 
+def _check_jsx_component_imports(content: str) -> Optional[str]:
+    """Detects capitalized JSX components (<Component ...>) used without import or definition."""
+    raw_tags = re.findall(r"<([A-Z][a-zA-Z0-9_]*)", content)
+    if not raw_tags:
+        return None
+
+    unique_tags = set(raw_tags)
+    builtins = {"Fragment", "React"}
+
+    # Trova identificatori importati: import Foo from ... oppure import { Bar, Baz as B } from ...
+    imported = set()
+    for m in re.finditer(r"import\s+(?:(?:\*\s+as\s+([A-Za-z0-9_]+))|([A-Za-z0-9_]+)|(?:\{([^}]+)\}))", content):
+        if m.group(1):
+            imported.add(m.group(1).strip())
+        if m.group(2):
+            imported.add(m.group(2).strip())
+        if m.group(3):
+            for part in m.group(3).split(","):
+                cleaned = part.strip().split(" as ")[-1].strip()
+                if cleaned:
+                    imported.add(cleaned)
+
+    # Trova definizioni locali: function Foo, class Foo, const Foo = ...
+    defined = set()
+    for m in re.finditer(r"(?:function|class|const|let|var)\s+([A-Z][a-zA-Z0-9_]*)", content):
+        defined.add(m.group(1).strip())
+
+    missing = unique_tags - imported - defined - builtins
+    if missing:
+        missing_list = ", ".join(f"<{t}>" for t in sorted(missing))
+        return (
+            f"Componenti JSX utilizzati ma non importati né definiti: {missing_list}. "
+            "Aggiungi l'import in testa al file o definisci il componente."
+        )
+    return None
+
+
 def validate_code_syntax(file_path: str, content: Optional[str] = None) -> Dict[str, Any]:
     """Validates syntax for Python, JSON, JavaScript/JSX/TypeScript, and CSS."""
     p = Path(file_path)
@@ -143,6 +180,13 @@ def validate_code_syntax(file_path: str, content: Optional[str] = None) -> Dict[
         err = _validate_brackets_and_quotes(content, lang)
         if err:
             return {"valid": False, "language": lang, "error": err}
+        
+        # In JSX e TSX verifica componenti usati senza import
+        if ext in (".jsx", ".tsx"):
+            jsx_err = _check_jsx_component_imports(content)
+            if jsx_err:
+                return {"valid": False, "language": lang, "error": jsx_err}
+
         return {"valid": True, "language": lang, "error": None}
 
     return {"valid": True, "language": ext.lstrip("."), "error": None}

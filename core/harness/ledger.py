@@ -878,7 +878,7 @@ class DevSessionLedger:
                 parts.append("\n**Pipeline:**")
                 for t in self._pipeline:
                     status = str(t.get("status", "pending"))
-                    tag = {"done": "[FATTO]", "in_progress": "[IN CORSO]"}.get(status, "[IN CODA]")
+                    tag = {"done": "[FATTO]", "in_progress": "[IN CORSO]"}.get(status, "[IN ATTESA]")
                     parts.append(f"- {tag} #{t.get('id', '?')} {t.get('title', '')}")
 
             read_only = [r for r in self._files.values() if r.reads and not (r.edits or r.writes)]

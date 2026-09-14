@@ -118,6 +118,8 @@ PREDEFINITI: Dict[str, Any] = {
     "image": IMMAGINE_PREDEFINITA,
     #: La rete dentro il contenitore. Spenta salvo deroga.
     "network": False,
+    #: Porte dev-server da esporre verso l'host quando la rete e' accesa.
+    "ports": ["3000:3000", "5000:5000", "5173:5173", "8080:8080"],
     #: Quanta memoria puo' prendersi. Un `npm install` impazzito non deve poter
     #: mettere in ginocchio la macchina che serve anche il modello.
     "memory": "4g",
@@ -297,6 +299,11 @@ class EsecutoreHost:
         )
 
 
+def _usa_uid_gid() -> bool:
+    """Su POSIX (Linux / Raspberry Pi), esegue come l'utente corrente per evitare file con proprietario root."""
+    return os.name != "nt" and hasattr(os, "getuid") and hasattr(os, "getgid")
+
+
 @dataclass
 class EsecutoreContenitore:
     """Il comando gira dentro un contenitore, con il workspace montato.
@@ -314,6 +321,11 @@ class EsecutoreContenitore:
     #: I volumi di cache. Vuoto per disattivarli, ma non c'e' motivo di farlo
     #: se non per misurare quanto costano.
     cache: Dict[str, str] = field(default_factory=lambda: dict(CACHE_DIPENDENZE))
+    #: Porte dev-server da pubblicare sull'host quando la rete e' accesa.
+    ports: List[str] = field(default_factory=list)
+    #: Radice del workspace globale: se impostata, la monta interamente su /lavoro
+    #: posizionando il container nella sottocartella relativa (-w).
+    workspace_root: Optional[str] = None
 
     nome = "container"
 
@@ -330,7 +342,20 @@ class EsecutoreContenitore:
         spenta. Sono le tre cose che rendono il contenitore una sandbox invece
         che un modo complicato di eseguire un comando.
         """
-        montaggio = str(Path(cwd).resolve())
+        p_cwd = Path(cwd).resolve()
+        montaggio = str(p_cwd)
+        punto_w = PUNTO_DI_MONTAGGIO
+
+        if self.workspace_root:
+            p_radice = Path(self.workspace_root).resolve()
+            try:
+                rel = p_cwd.relative_to(p_radice)
+                montaggio = str(p_radice)
+                if str(rel) != ".":
+                    punto_w = f"{PUNTO_DI_MONTAGGIO}/{rel.as_posix()}"
+            except ValueError:
+                pass
+
         argv = [
             # Non la parola "docker" ma il percorso trovato: se l'eseguibile
             # non e' nel PATH di questo processo, `subprocess` non lo troverebbe
@@ -338,8 +363,21 @@ class EsecutoreContenitore:
             # niente a che vedere con il comando dell'agente.
             trova_docker() or "docker", "run", "--rm",
             "-v", f"{montaggio}:{PUNTO_DI_MONTAGGIO}",
-            "-w", PUNTO_DI_MONTAGGIO,
+            "-w", punto_w,
         ]
+        # Inoltro delle porte su host se la rete e' attiva
+        if self.rete and self.ports:
+            for p in self.ports:
+                if p and ":" in str(p):
+                    argv += ["-p", str(p)]
+
+        # Su sistemi POSIX (Linux / Raspberry Pi), evita che i file creati appartengano a root
+        if _usa_uid_gid():
+            try:
+                argv += ["--user", f"{os.getuid()}:{os.getgid()}"]
+            except Exception:
+                pass
+
         for volume, dentro in sorted(self.cache.items()):
             argv += ["-v", f"{volume}:{dentro}"]
         if not self.rete:
@@ -449,11 +487,15 @@ def scegli_esecutore(configurazione: Optional[Dict[str, Any]] = None,
             immagine = immagine_per(radice)
         except Exception as exc:
             log.debug("[Sandbox] immagine del progetto non risolta: %s", exc)
+    rete = bool(progetto.get("network", cfg.get("network", False)))
+    ports = list(progetto.get("ports") or cfg.get("ports") or [])
     return EsecutoreContenitore(
         immagine=immagine,
-        rete=bool(cfg.get("network")),
-        memoria=str(cfg.get("memory") or ""),
-        cpu=str(cfg.get("cpus") or ""),
+        rete=rete,
+        memoria=str(progetto.get("memory") or cfg.get("memory") or ""),
+        cpu=str(progetto.get("cpus") or cfg.get("cpus") or ""),
+        ports=ports,
+        workspace_root=radice,
     )
 
 
@@ -466,6 +508,56 @@ def stato_sandbox() -> Dict[str, Any]:
         "docker_available": disponibile,
         "docker_detail": dettaglio,
         "active": cfg.get("mode") == "container" and disponibile,
+    }
+
+
+def info_docker_estese() -> Dict[str, Any]:
+    """Informazioni complete su Docker, container attivi e immagini locali."""
+    base = stato_sandbox()
+    if not base.get("docker_available"):
+        return {**base, "containers": [], "images": []}
+
+    eseguibile = trova_docker()
+    env = _ambiente_per_docker()
+    containers = []
+    images = []
+
+    # 1. Container (docker ps -a)
+    try:
+        res = subprocess.run(
+            [eseguibile, "ps", "-a", "--format", "{{json .}}"],
+            capture_output=True, text=True, timeout=8, env=env
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            for line in res.stdout.strip().splitlines():
+                if line.strip():
+                    try:
+                        containers.append(json.loads(line.strip()))
+                    except Exception:
+                        pass
+    except Exception as exc:
+        log.debug("[Docker] recupero container fallito: %s", exc)
+
+    # 2. Immagini locali (docker images)
+    try:
+        res = subprocess.run(
+            [eseguibile, "images", "--format", "{{json .}}"],
+            capture_output=True, text=True, timeout=8, env=env
+        )
+        if res.returncode == 0 and res.stdout.strip():
+            for line in res.stdout.strip().splitlines():
+                if line.strip():
+                    try:
+                        images.append(json.loads(line.strip()))
+                    except Exception:
+                        pass
+    except Exception as exc:
+        log.debug("[Docker] recupero immagini fallito: %s", exc)
+
+    return {
+        **base,
+        "containers": containers[:25],
+        "images": images[:25],
     }
 
 

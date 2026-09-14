@@ -219,6 +219,31 @@ Una richiesta breve non e una richiesta piccola: espandila al passo 1. Se
 l'utente chiede "aggiungi X", i criteri includono anche che X sia raggiungibile,
 verificato e coerente col resto del progetto.
 
+## SVILUPPO DI APPLICAZIONI WEB E QUALITÀ ESTETICA
+
+Quando crei o modifichi applicazioni web (frontend, backend, full-stack):
+
+1. **STANDARD ESTETICI DI ALTO LIVELLO (NO MVP SPOGLI)**:
+   - Vietati layout piatti, sfondi grigi basici, testo grezzo e stili minimi anni '90.
+   - Crea interfacce moderne e curate: palette scure profonde (`#07090e`, `#0e131f`), accenti HSL vivaci (indaco, ciano, ambra), glassmorphism (`backdrop-filter: blur(20px)`), bordi sottili semitrasparenti con bagliori di luce e micro-animazioni fluide.
+   - Usa tipografia moderna (Google Fonts Outfit per i titoli, Inter per UI e testi).
+
+2. **DATI DI PROVA RICCHI (MAI MOCKUP VUOTI)**:
+   - Se l'app mostra una libreria, catalogo, dashboard o lista, popola SEMPRE lo store/database con 6-12 elementi realistici e dettagliati (titoli reali, autori, descrizioni, valutazioni a stelle, tag, date). Mai mockup con 1 solo elemento finto.
+
+3. **ACCESSO DEMO IMMEDIATO (1-CLICK)**:
+   - Se è prevista un'autenticazione, pre-popola sempre un account demo e inserisci un pulsante "Accesso Rapido Demo (1-Click)" per permettere all'utente di provare l'app all'istante senza attrito.
+
+4. **CONTRATTI API E COERENZA CSS-JSX**:
+   - Allinea rigidamente la forma del JSON restituito dal backend con le chiamate `fetch` del frontend (`Array.isArray(data) ? data : data.items`).
+   - Ogni classe CSS usata in JSX (`className="..."`) deve esistere esattamente nel file CSS.
+   - Importa SEMPRE in testa al file ogni componente JSX utilizzato.
+
+5. **VERIFICA OBBLIGATORIA PRIMA DI CHIUDERE**:
+   - Per il frontend: esegui `npm run build` nel terminale (deve uscire con codice 0).
+   - Per il backend: avvia o collauda gli endpoint con curl/node per verificare che rispondano con codice 200.
+   - Per la visuale: usa `screenshot` su `http://localhost:<porta>` per confermare visivamente che l'app sia perfetta.
+
 ## QUANDO LA STESSA MODIFICA VA FATTA IN MOLTI FILE
 
 Se il lavoro e' la stessa trasformazione ripetuta su piu' di cinque file —
@@ -1019,7 +1044,8 @@ def _dentro_la_radice(candidato: str, radice: str, richiesto: str) -> str:
 
 
 def resolve_workspace_path(path: Optional[str], workspace_root: str,
-                           strict: bool = True) -> str:
+                           strict: bool = True,
+                           active_cwd: Optional[str] = None) -> str:
     """Il percorso assoluto corrispondente, **dentro** la radice di lavoro.
 
     Il nome prometteva gia' questo; l'implementazione non lo faceva. Ora un
@@ -1064,6 +1090,19 @@ def resolve_workspace_path(path: Optional[str], workspace_root: str,
     )
     if senza_progetto != clean:
         ipotesi.append(senza_progetto)
+
+    # Se l'agente ha una directory attiva diversa dalla radice (es. dopo 'cd frontend' o 'cd backend'),
+    # proviamo anzitutto l'ipotesi relativa alla directory attiva:
+    if active_cwd and os.path.isdir(active_cwd) and not os.path.isabs(clean):
+        try:
+            rel_cwd = os.path.relpath(active_cwd, workspace_root)
+            if not rel_cwd.startswith(".."):
+                candidato_cwd = os.path.normpath(os.path.join(rel_cwd, clean))
+                if candidato_cwd != clean:
+                    ipotesi.insert(0, candidato_cwd)
+        except (ValueError, OSError):
+            pass
+
     if clean.startswith(("src/", "src\\")):
         ipotesi.append("sigma_studio/" + clean)
 
@@ -1231,6 +1270,7 @@ def execute_admin_tool(
     workspace_root: str,
     should_cancel: Optional[Callable[[], bool]] = None,
     dimensioni_viste: Optional[Dict[str, int]] = None,
+    active_cwd: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Esegue un tool, con il confine del workspace fatto rispettare.
 
@@ -1242,7 +1282,7 @@ def execute_admin_tool(
     """
     try:
         return _execute_admin_tool_impl(
-            tool_name, params, workspace_root, should_cancel, dimensioni_viste)
+            tool_name, params, workspace_root, should_cancel, dimensioni_viste, active_cwd=active_cwd)
     except FuoriDalWorkspace as fuori:
         log.warning("[Tool] '%s' fuori dal workspace: %s", tool_name, fuori.percorso)
         return {
@@ -1259,6 +1299,7 @@ def _execute_admin_tool_impl(
     workspace_root: str,
     should_cancel: Optional[Callable[[], bool]] = None,
     dimensioni_viste: Optional[Dict[str, int]] = None,
+    active_cwd: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Executes a single admin developer tool with full workspace resolution and lifecycle hooks."""
     tool_name = tool_name.lower()
@@ -1316,8 +1357,33 @@ def _execute_admin_tool_impl(
                     "con append_file, un pezzo per volta."
                 ),
             }
-        raw_cwd = params.get("cwd") or "."
-        cwd = resolve_workspace_path(raw_cwd, workspace_root)
+        raw_cwd = params.get("cwd")
+        if raw_cwd:
+            cwd = resolve_workspace_path(raw_cwd, workspace_root, active_cwd=active_cwd)
+        else:
+            cwd = active_cwd or workspace_root
+
+        # Riconoscimento comando cd per mantenere attiva la directory nella sessione
+        cmd_stripped = cmd.strip()
+        cd_match = re.match(r"^cd\s+(.+)$", cmd_stripped, re.IGNORECASE)
+        if cd_match and not any(sep in cmd_stripped for sep in (";", "&&", "||", "|")):
+            target_raw = cd_match.group(1).strip().strip("'\"`")
+            target_dir = resolve_workspace_path(target_raw, workspace_root, active_cwd=active_cwd)
+            if os.path.isdir(target_dir):
+                rel_dir = os.path.relpath(target_dir, workspace_root)
+                rel_display = "/" if rel_dir == "." else rel_dir.replace("\\", "/")
+                return {
+                    "tool": "terminal",
+                    "command": cmd,
+                    "cwd": target_dir,
+                    "new_cwd": target_dir,
+                    "success": True,
+                    "stdout": f"Directory attiva di lavoro cambiata in: {rel_display}",
+                    "stderr": "",
+                    "returncode": 0,
+                    "dove": "host",
+                }
+
         is_bg = bool(params.get("background") or params.get("is_daemon") or params.get("daemon"))
 
         if is_bg:
@@ -1327,6 +1393,7 @@ def _execute_admin_tool_impl(
                 "tool": "terminal",
                 "command": cmd,
                 "cwd": cwd,
+                "new_cwd": cwd if raw_cwd else None,
                 "background": True,
                 "success": res.get("success", False),
                 "process_id": res.get("process_id"),
@@ -1351,6 +1418,7 @@ def _execute_admin_tool_impl(
             "tool": "terminal",
             "command": cmd,
             "cwd": cwd,
+            "new_cwd": cwd if (raw_cwd and esito.success) else None,
             "success": esito.success,
             "stdout": esito.stdout,
             "stderr": esito.stderr,
@@ -1364,7 +1432,7 @@ def _execute_admin_tool_impl(
 
     elif tool_name in ("read_file", "read"):
         raw_path = _path_of(params) or params.get("raw", "")
-        full_path = resolve_workspace_path(raw_path, workspace_root)
+        full_path = resolve_workspace_path(raw_path, workspace_root, active_cwd=active_cwd)
         
         # If full_path is a directory instead of a file, fall back to list_dir gracefully
         if os.path.isdir(full_path):
@@ -1392,7 +1460,8 @@ def _execute_admin_tool_impl(
                 # questa riga oscurava l'import di modulo e il ramo `glob`
                 # piu' sotto trovava il nome non assegnato. Il tool `glob`
                 # falliva sempre, per una riga che non lo riguardava.
-                glob_res = glob_workspace_files(workspace_root, pattern="**/*", limit=150)
+                search_root = active_cwd if (active_cwd and os.path.isdir(active_cwd)) else workspace_root
+                glob_res = glob_workspace_files(search_root, pattern="**/*", limit=150)
                 file_names = [f["rel"] for f in glob_res.get("files", [])]
                 close = difflib.get_close_matches(raw_path.replace("\\", "/"), file_names, n=3, cutoff=0.4)
                 if close:
@@ -1409,7 +1478,7 @@ def _execute_admin_tool_impl(
     elif tool_name in ("write_file", "write", "save_file"):
         raw_path = _path_of(params)
         content = params.get("content") or params.get("raw", "")
-        full_path = resolve_workspace_path(raw_path, workspace_root)
+        full_path = resolve_workspace_path(raw_path, workspace_root, active_cwd=active_cwd)
 
         # Una riscrittura che azzera un file esistente e' quasi sempre un
         # incidente, e la validazione di sintassi non la vede: un file vuoto
@@ -1485,7 +1554,7 @@ def _execute_admin_tool_impl(
 
     elif tool_name in ("edit_file", "edit", "replace_in_file", "str_replace"):
         raw_path = _path_of(params)
-        full_path = resolve_workspace_path(raw_path, workspace_root)
+        full_path = resolve_workspace_path(raw_path, workspace_root, active_cwd=active_cwd)
         res = edit_file_content(
             full_path,
             old_string=params.get("old_string") or params.get("old") or params.get("search") or "",
@@ -1510,7 +1579,7 @@ def _execute_admin_tool_impl(
 
     elif tool_name in ("append_file", "append", "add_to_file"):
         raw_path = _path_of(params)
-        full_path = resolve_workspace_path(raw_path, workspace_root)
+        full_path = resolve_workspace_path(raw_path, workspace_root, active_cwd=active_cwd)
         res = append_file_content(
             full_path,
             content=params.get("content") or params.get("text") or "",
@@ -1535,7 +1604,7 @@ def _execute_admin_tool_impl(
         url = params.get("url") or params.get("indirizzo") or "http://127.0.0.1:8000"
         destinazione = _path_of(params)
         full_path = (
-            resolve_workspace_path(destinazione, workspace_root)
+            resolve_workspace_path(destinazione, workspace_root, active_cwd=active_cwd)
             if destinazione else None
         )
         res = capture_screenshot(
@@ -1549,19 +1618,19 @@ def _execute_admin_tool_impl(
     elif tool_name in ("glob", "find_files", "glob_files"):
         pattern = params.get("pattern") or params.get("glob") or params.get("raw") or "**/*"
         raw_path = params.get("path") or "."
-        full_path = resolve_workspace_path(raw_path, workspace_root)
+        full_path = resolve_workspace_path(raw_path, workspace_root, active_cwd=active_cwd)
         res = glob_workspace_files(full_path, pattern, limit=params.get("limit") or 300)
         return {"tool": "glob", "pattern": pattern, "path": raw_path, **res}
 
     elif tool_name in ("delete", "delete_file", "remove_file", "rm"):
         raw_path = _path_of(params) or params.get("raw", "")
-        full_path = resolve_workspace_path(raw_path, workspace_root)
+        full_path = resolve_workspace_path(raw_path, workspace_root, active_cwd=active_cwd)
         res = delete_fs_entry(full_path, root=workspace_root)
         return {"tool": "delete", "path": raw_path, "full_path": full_path, **res}
 
     elif tool_name in ("list_dir", "list_directory", "ls"):
         raw_path = _path_of(params) or params.get("raw", "")
-        full_path = resolve_workspace_path(raw_path, workspace_root)
+        full_path = resolve_workspace_path(raw_path, workspace_root, active_cwd=active_cwd)
         
         display_rel = os.path.relpath(full_path, workspace_root) if os.path.exists(full_path) else (raw_path or ".")
         if display_rel == ".":
@@ -1594,7 +1663,7 @@ def _execute_admin_tool_impl(
     elif tool_name in ("search_code", "grep"):
         query = (params.get("query") or params.get("pattern") or params.get("raw", "") or "").strip()
         raw_path = params.get("path") or "."
-        full_path = resolve_workspace_path(raw_path, workspace_root)
+        full_path = resolve_workspace_path(raw_path, workspace_root, active_cwd=active_cwd)
         if not query:
             return {
                 "tool": "search_code", "query": "", "path": raw_path, "success": False,
@@ -2063,6 +2132,7 @@ def _stream_agent_turn_impl(
     # are not remotely the same amount of context.
     max_history_chars = int(context_tokens * CHARS_PER_TOKEN * 0.55)
     current_turn = 0
+    session_cwd = workspace_root
 
     def trim_history(msgs: List[Dict[str, str]], turn_num: Optional[int] = None) -> List[Dict[str, str]]:
         """Keeps recent turns within budget and distils evicted turns into durable session memory."""
@@ -2723,7 +2793,7 @@ def _stream_agent_turn_impl(
             if review_writes and review_gate is not None and canonical(t_name) in REVIEWABLE_TOOLS:
                 try:
                     istantanea = review.FileSnapshot.take(
-                        resolve_workspace_path(_path_of(t_params), workspace_root)
+                        resolve_workspace_path(_path_of(t_params), workspace_root, active_cwd=session_cwd)
                     )
                 except Exception as exc:
                     log.debug("[Review] istantanea non riuscita: %s", exc)
@@ -2736,11 +2806,16 @@ def _stream_agent_turn_impl(
                 else:
                     result = execute_admin_tool(t_name, t_params, workspace_root,
                                              should_cancel=should_cancel,
-                                             dimensioni_viste=dimensioni_viste)
+                                             dimensioni_viste=dimensioni_viste,
+                                             active_cwd=session_cwd)
             except ImportError:
                 result = execute_admin_tool(t_name, t_params, workspace_root,
                                              should_cancel=should_cancel,
-                                             dimensioni_viste=dimensioni_viste)
+                                             dimensioni_viste=dimensioni_viste,
+                                             active_cwd=session_cwd)
+
+            if result.get("new_cwd") and os.path.isdir(result["new_cwd"]):
+                session_cwd = result["new_cwd"]
 
             # Il gate di revisione. La modifica e' gia' sul disco — ha superato
             # backup, guardia sul troncamento e controllo di sintassi — ma resta

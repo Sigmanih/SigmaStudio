@@ -404,3 +404,57 @@ class TestPreflight:
         assert risultato["ok"] is False
         assert "fallito" in risultato["motivo"]
         assert risultato["scaricata"] is False
+
+
+class TestFunzionalitaAvanzateContenitore:
+    def test_inoltro_porte_quando_rete_accesa(self, tmp_path):
+        esecutore = E.EsecutoreContenitore(
+            rete=True, ports=["3000:3000", "5173:5173"]
+        )
+        argv = esecutore.argv("npm run dev", str(tmp_path))
+        assert "-p" in argv
+        assert "3000:3000" in argv
+        assert "5173:5173" in argv
+
+    def test_nessun_inoltro_porte_se_rete_spenta(self, tmp_path):
+        esecutore = E.EsecutoreContenitore(
+            rete=False, ports=["3000:3000"]
+        )
+        argv = esecutore.argv("npm run dev", str(tmp_path))
+        assert "-p" not in argv
+        assert "--network" in argv and "none" in argv
+
+    def test_mapping_sottocartella_con_workspace_root(self, tmp_path):
+        radice = tmp_path / "mio_progetto"
+        sub = radice / "frontend"
+        sub.mkdir(parents=True)
+
+        esecutore = E.EsecutoreContenitore(workspace_root=str(radice))
+        argv = esecutore.argv("npm test", str(sub))
+        montaggio = f"{radice.resolve()}:{E.PUNTO_DI_MONTAGGIO}"
+        assert montaggio in argv
+        assert argv[argv.index("-w") + 1] == f"{E.PUNTO_DI_MONTAGGIO}/frontend"
+
+    def test_mapping_uid_gid_su_posix(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(E, "_usa_uid_gid", lambda: True)
+        monkeypatch.setattr(E.os, "getuid", lambda: 1001, raising=False)
+        monkeypatch.setattr(E.os, "getgid", lambda: 1002, raising=False)
+
+        esecutore = E.EsecutoreContenitore()
+        argv = esecutore.argv("ls", str(tmp_path))
+        assert "--user" in argv
+        assert argv[argv.index("--user") + 1] == "1001:1002"
+
+    def test_configurazione_porte_da_progetto(self, tmp_path):
+        (tmp_path / "sandbox.json").write_text(
+            json.dumps({
+                "mode": "container",
+                "network": True,
+                "ports": ["8080:8080"]
+            }),
+            encoding="utf-8"
+        )
+        esecutore = E.scegli_esecutore(radice=str(tmp_path))
+        assert isinstance(esecutore, E.EsecutoreContenitore)
+        assert esecutore.rete is True
+        assert "8080:8080" in esecutore.ports
