@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="100%" height="100%">
+  <defs>
+    <linearGradient id="arch-bg-dark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070A12" />
+      <stop offset="100%" stop-color="#0C1220" />
+    </linearGradient>
+
+    <linearGradient id="card-blue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#1E293B" />
+    </linearGradient>
+
+    <linearGradient id="engine-glow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284C7" />
+      <stop offset="50%" stop-color="#6366F1" />
+      <stop offset="100%" stop-color="#A855F7" />
+    </linearGradient>
+
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#38BDF8" />
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#A855F7" />
+    </marker>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="1000" height="600" rx="16" fill="url(#arch-bg-dark)" stroke="#1E293B" stroke-width="1.5" />
+
+  <!-- Title & Subtitle -->
+  <text x="50" y="38" fill="#F8FAFC" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="800" letter-spacing="1">Σ-SIGMA STUDIO • SYSTEM ARCHITECTURE</text>
+  <text x="50" y="58" fill="#64748B" font-family="system-ui, -apple-system, sans-serif" font-size="12">Decoupled Microkernel, Native Heterogeneous Inference Engine &amp; Dynamic Extension Ecosystem</text>
+
+  <!-- ================= 1. UI LAYER ================= -->
+  <g transform="translate(50, 80)">
+    <rect width="900" height="52" rx="10" fill="url(#card-blue)" stroke="#38BDF8" stroke-width="1.2" />
+    <text x="30" y="32" fill="#38BDF8" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="800">1. WORKSPACE UI</text>
+    <text x="180" y="32" fill="#E2E8F0" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="600">Sigma Studio Frontend</text>
+    <text x="360" y="32" fill="#94A3B8" font-family="system-ui, -apple-system, sans-serif" font-size="12">React 19 • Vite 8 • Streaming Multi-Agent Terminal • Lucide Icons • D3.js</text>
+  </g>
+
+  <!-- Arrow down -->
+  <path d="M 500 132 L 500 152" stroke="#38BDF8" stroke-width="2" marker-end="url(#arrow)" />
+
+  <!-- ================= 2. SIGMA KERNEL LAYER ================= -->
+  <g transform="translate(50, 156)">
+    <rect width="900" height="60" rx="10" fill="url(#card-blue)" stroke="#6366F1" stroke-width="1.2" />
+    <text x="30" y="36" fill="#818CF8" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="800">2. SIGMA KERNEL</text>
+    <text x="180" y="26" fill="#F8FAFC" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700">Python 3.10+ FastAPI Microkernel Runtime</text>
+    <text x="180" y="48" fill="#94A3B8" font-family="system-ui, -apple-system, sans-serif" font-size="12">Watertight AST Sandbox • Strict Path Whitelisting • Role Ledger • Intent Dispatcher</text>
+  </g>
+
+  <!-- 3 Branching Arrows -->
+  <path d="M 210 216 L 210 240" stroke="#38BDF8" stroke-width="1.5" marker-end="url(#arrow)" />
+  <path d="M 500 216 L 500 240" stroke="#38BDF8" stroke-width="1.5" marker-end="url(#arrow)" />
+  <path d="M 790 216 L 790 240" stroke="#38BDF8" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- ================= 3. TRIPLE PILLARS ================= -->
+  <!-- Pillar A: Agents -->
+  <g transform="translate(50, 244)">
+    <rect width="280" height="74" rx="10" fill="#0F172A" stroke="#334155" stroke-width="1.2" />
+    <text x="16" y="26" fill="#38BDF8" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700">🤖 Agent Swarm Runtime</text>
+    <text x="16" y="46" fill="#E2E8F0" font-family="system-ui, -apple-system, sans-serif" font-size="11">20 Modelfiles Standard Manifesti</text>
+    <text x="16" y="62" fill="#64748B" font-family="system-ui, -apple-system, sans-serif" font-size="11">Architect, Coder, Math, Med, Jurist</text>
+  </g>
+
+  <!-- Pillar B: Providers Hub -->
+  <g transform="translate(360, 244)">
+    <rect width="280" height="74" rx="10" fill="#0F172A" stroke="#334155" stroke-width="1.2" />
+    <text x="16" y="26" fill="#818CF8" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700">⚙️ Providers Hub Abstraction</text>
+    <text x="16" y="46" fill="#E2E8F0" font-family="system-ui, -apple-system, sans-serif" font-size="11">Local Engine + Hybrid Cloud Bridge</text>
+    <text x="16" y="62" fill="#64748B" font-family="system-ui, -apple-system, sans-serif" font-size="11">OpenAI, Claude, Gemini, DeepSeek, Ollama</text>
+  </g>
+
+  <!-- Pillar C: MCP Servers -->
+  <g transform="translate(670, 244)">
+    <rect width="280" height="74" rx="10" fill="#0F172A" stroke="#334155" stroke-width="1.2" />
+    <text x="16" y="26" fill="#34D399" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700">🔌 12 MCP Servers</text>
+    <text x="16" y="46" fill="#E2E8F0" font-family="system-ui, -apple-system, sans-serif" font-size="11">Model Context Protocol Engine</text>
+    <text x="16" y="62" fill="#64748B" font-family="system-ui, -apple-system, sans-serif" font-size="11">Terminal CLI, Web, Mail, IoT, Memory</text>
+  </g>
+
+  <!-- Merge Arrows down to SigmaEngine -->
+  <path d="M 210 318 L 210 338 L 470 338 L 470 348" stroke="#38BDF8" stroke-width="1.5" />
+  <path d="M 500 318 L 500 348" stroke="#38BDF8" stroke-width="1.5" />
+  <path d="M 790 318 L 790 338 L 530 338 L 530 348" stroke="#38BDF8" stroke-width="1.5" />
+  <path d="M 500 348 L 500 354" stroke="#38BDF8" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- ================= 4. SIGMAENGINE ================= -->
+  <g transform="translate(50, 358)">
+    <rect width="900" height="64" rx="10" fill="#0A0F1D" stroke="url(#engine-glow)" stroke-width="1.8" />
+    <text x="30" y="38" fill="#38BDF8" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="900">⚡ SIGMAENGINE</text>
+    <text x="180" y="28" fill="#F8FAFC" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="700">High-Performance Local Inference Engine for Heterogeneous Hardware</text>
+    <text x="180" y="48" fill="#94A3B8" font-family="system-ui, -apple-system, sans-serif" font-size="12">C++/PyTorch Layer Sharding • FlashAttention-2 • Sub-100ms TTFT • In-Memory GGUF Quantization Forge</text>
+  </g>
+
+  <!-- Hardware Target Arrows -->
+  <path d="M 200 422 L 200 440" stroke="#38BDF8" stroke-width="1.5" marker-end="url(#arrow)" />
+  <path d="M 500 422 L 500 440" stroke="#38BDF8" stroke-width="1.5" marker-end="url(#arrow)" />
+  <path d="M 800 422 L 800 440" stroke="#38BDF8" stroke-width="1.5" marker-end="url(#arrow)" />
+
+  <!-- Hardware Layer -->
+  <g transform="translate(50, 444)">
+    <!-- GPU -->
+    <rect x="0" y="0" width="280" height="34" rx="8" fill="#14231E" stroke="#10B981" stroke-width="1" />
+    <text x="140" y="22" text-anchor="middle" fill="#6EE7B7" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700">🟢 NVIDIA CUDA Multi-GPU</text>
+
+    <!-- CPU / RAM -->
+    <rect x="310" y="0" width="280" height="34" rx="8" fill="#1B2333" stroke="#38BDF8" stroke-width="1" />
+    <text x="450" y="22" text-anchor="middle" fill="#7DD3FC" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700">🔵 System CPU &amp; RAM Offload</text>
+
+    <!-- Metal / Edge -->
+    <rect x="620" y="0" width="280" height="34" rx="8" fill="#251D38" stroke="#C084FC" stroke-width="1" />
+    <text x="760" y="22" text-anchor="middle" fill="#E9D5FF" font-family="system-ui, -apple-system, sans-serif" font-size="12" font-weight="700">🟣 Apple Metal &amp; Raspberry Pi 5</text>
+  </g>
+
+  <!-- ================= 5. MODULAR EXTENSION ECOSYSTEM ================= -->
+  <g transform="translate(50, 502)">
+    <rect width="900" height="74" rx="10" fill="#0A0817" stroke="#A855F7" stroke-width="1.3" stroke-dasharray="6 4" />
+    
+    <text x="24" y="28" fill="#C084FC" font-family="system-ui, -apple-system, sans-serif" font-size="13" font-weight="800">🧩 MODULAR EXTENSION ECOSYSTEM</text>
+    <text x="320" y="28" fill="#94A3B8" font-family="system-ui, -apple-system, sans-serif" font-size="11">(SigmaStudio-Moduli: Decoupled &amp; Hot-loaded at Runtime)</text>
+    
+    <!-- Mini Module Tags -->
+    <g transform="translate(24, 42)">
+      <rect x="0" y="0" width="130" height="22" rx="4" fill="#1E1B4B" stroke="#6366F1" stroke-width="0.8" />
+      <text x="65" y="15" text-anchor="middle" fill="#C7D2FE" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">Creative Lab 3D/2D</text>
+
+      <rect x="140" y="0" width="115" height="22" rx="4" fill="#1E1B4B" stroke="#6366F1" stroke-width="0.8" />
+      <text x="197" y="15" text-anchor="middle" fill="#C7D2FE" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">Voice Studio Kokoro</text>
+
+      <rect x="265" y="0" width="125" height="22" rx="4" fill="#1E1B4B" stroke="#6366F1" stroke-width="0.8" />
+      <text x="327" y="15" text-anchor="middle" fill="#C7D2FE" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">Training Lab (QLoRA)</text>
+
+      <rect x="400" y="0" width="115" height="22" rx="4" fill="#1E1B4B" stroke="#6366F1" stroke-width="0.8" />
+      <text x="457" y="15" text-anchor="middle" fill="#C7D2FE" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">Pipelines &amp; Swarm</text>
+
+      <rect x="525" y="0" width="115" height="22" rx="4" fill="#1E1B4B" stroke="#6366F1" stroke-width="0.8" />
+      <text x="582" y="15" text-anchor="middle" fill="#C7D2FE" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">Knowledge Graph D3</text>
+
+      <rect x="650" y="0" width="110" height="22" rx="4" fill="#1E1B4B" stroke="#6366F1" stroke-width="0.8" />
+      <text x="705" y="15" text-anchor="middle" fill="#C7D2FE" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">Hardware Telemetry</text>
+
+      <rect x="770" y="0" width="90" height="22" rx="4" fill="#1E1B4B" stroke="#6366F1" stroke-width="0.8" />
+      <text x="815" y="15" text-anchor="middle" fill="#C7D2FE" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="600">Smart Domotica</text>
+    </g>
+  </g>
+</svg>
