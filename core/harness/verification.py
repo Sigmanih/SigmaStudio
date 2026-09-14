@@ -83,6 +83,45 @@ _ESLINT_PROBLEMS_RE = re.compile(
 )
 
 
+
+# ---------------------------------------------------------------------------
+# «Non ha funzionato» e «non e' partito» non sono la stessa cosa
+# ---------------------------------------------------------------------------
+
+# Un cancello che la shell rifiuta non dice niente sul codice, ma somiglia in
+# tutto a un cancello fallito: codice diverso da zero e un messaggio. Trattarli
+# uguali costa caro — il task `frontend` della Biblioteca Digitale e' stato
+# rifatto **tre volte da capo**, ventisei turni ciascuna, perche' il suo
+# `npm install && npm run build` non era eseguibile su PowerShell 5.1. Ogni
+# tentativo riscriveva codice che era gia' giusto.
+#
+# Gli ancoraggi sono le sigle di PowerShell, che restano in inglese anche su un
+# sistema italiano: il testo del messaggio no, e su questa macchina infatti
+# arriva tradotto.
+_NON_ESEGUITO = (
+    "parsererror",                    # la shell non ha finito nemmeno di leggere
+    "invalidendofline",
+    "commandnotfoundexception",       # il programma non esiste su questa macchina
+    "is not recognized as the name of a cmdlet",
+    "non è riconosciuto come nome di cmdlet",
+    "command not found",
+    "syntax error near unexpected token",
+)
+
+
+def _non_e_stato_eseguito(text: str) -> str:
+    """La sigla che spiega perche' il comando non e' partito, o stringa vuota.
+
+    Vale solo per il rifiuto della shell. Un programma che parte e fallisce —
+    compilatore, test, linter — ha eseguito: quel fallimento parla del codice,
+    e va letto dai parser veri.
+    """
+    basso = (text or "").lower()
+    for sigla in _NON_ESEGUITO:
+        if sigla in basso:
+            return sigla
+    return ""
+
 def _parse_pytest(command: str, rc: int, text: str) -> VerificationReport:
     """Analizza l'output di pytest."""
     if not text.strip():
@@ -396,6 +435,21 @@ def parse_verification(
     """Estrae un rapporto di verifica strutturato a partire dal comando e dal suo output."""
     cmd = (command or "").strip().lower()
     full_output = (stdout or "") + "\n" + (stderr or "")
+
+    # Prima di tutto il resto: se la shell ha rifiutato il comando, non c'e'
+    # niente da interpretare. Dire «build fallita» qui manda a riscrivere del
+    # codice che non e' mai stato messo alla prova.
+    motivo = _non_e_stato_eseguito(full_output)
+    if motivo and returncode != 0:
+        return VerificationReport(
+            command=command,
+            returncode=returncode,
+            kind="non_eseguito",
+            is_valid=False,
+            summary=("il comando non e' stato eseguito: la shell l'ha rifiutato "
+                     "(%s). Non dimostra niente sul codice: e' il comando a "
+                     "essere sbagliato, non il lavoro." % motivo),
+        )
 
     if "pytest" in cmd:
         return _parse_pytest(command, returncode, full_output)

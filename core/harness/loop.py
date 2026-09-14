@@ -1264,6 +1264,37 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
     return tools
 
 
+
+
+#: L'errore di chiamata malformata mostrava sempre lo stesso esempio —
+#: `{"path": "core/api_router.py"}` — un file di Sigma Studio, non del
+#: progetto su cui si sta lavorando, e per `write_file` **ometteva
+#: `content`**: cioe' esattamente il campo dove il modello inciampa,
+#: perche' ci deve infilare un file intero dentro una stringa JSON. Un run
+#: e' finito con sei chiamate malformate, nessun comando eseguito e sei
+#: volte davanti lo stesso esempio, che non riguardava il suo problema.
+_ESEMPI_DI_CHIAMATA = {
+    'write_file': '{"path": "docker-compose.yml", "content": "services:\\n  web:\\n    build: ."}',
+    'append_file': '{"path": "README.md", "content": "\\n## Avvio\\n"}',
+    'edit_file': '{"path": "src/app.js", "old": "porta = 3000", "new": "porta = 8080"}',
+    'terminal': '{"command": "docker compose up -d --build"}',
+    'read_file': '{"path": "backend/index.js"}',
+    'search_code': '{"query": "proxy_pass"}',
+    'list_dir': '{"path": "frontend"}',
+}
+
+#: Vale per i tool che portano un file dentro un campo, ed e' li' che si rompe.
+_AVVISO_CONTENUTO = 'Il file intero sta in `content`, su **una sola riga**: ogni a capo si scrive \\n e ogni virgoletta \\". Un a capo vero dentro la stringa e\' l\'errore piu\' frequente, e rende illeggibile tutto il blocco.'
+
+
+def _esempio_di_chiamata(tool_name: str) -> str:
+    """Come si scrive questa chiamata, con un esempio che c'entra qualcosa."""
+    corpo = _ESEMPI_DI_CHIAMATA.get(tool_name, '{"path": "..."}')
+    righe = ["Riemetti il blocco cosi':", '```tool:' + tool_name, corpo, '```']
+    if tool_name in ("write_file", "append_file"):
+        righe.append(_AVVISO_CONTENUTO)
+    return '\n'.join(righe)
+
 def execute_admin_tool(
     tool_name: str,
     params: Dict[str, Any],
@@ -1318,9 +1349,8 @@ def _execute_admin_tool_impl(
             "tool": tool_name,
             "success": False,
             "error": (
-                f"Chiamata a '{tool_name}' malformata: il corpo non e un oggetto JSON valido. "
-                "Riemetti il blocco nel formato esatto, per esempio:\n"
-                '```tool:' + tool_name + '\n{"path": "core/api_router.py"}\n```'
+                f"Chiamata a '{tool_name}' malformata: il corpo non e un "
+                "oggetto JSON valido." + '\n' + _esempio_di_chiamata(tool_name)
             ),
             "received": params.get("raw", ""),
         }

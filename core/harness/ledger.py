@@ -40,6 +40,10 @@ MAX_TRACKED_MEMORIES = 20
 #: Oltre una ventina non e' piu' una specifica, e' un progetto: va spezzato.
 MAX_TRACKED_REQUIREMENTS = 20
 MAX_ERROR_CHARS = 300
+#: Quanto del corpo rifiutato si conserva. Abbastanza da riconoscere
+#: l'errore, poco abbastanza da non riempire il blocco di stato con lo
+#: stesso file scritto male cinque volte.
+MAX_RICEVUTO_CHARS = 240
 
 
 @dataclass
@@ -554,6 +558,17 @@ class DevSessionLedger:
 
             if not ok and result.get("error"):
                 note = f"{tool}: {str(result['error'])[:MAX_ERROR_CHARS]}"
+                # Cio' che il modello ha effettivamente emesso, quando
+                # l'harness l'ha rifiutato. Serve due volte: nel blocco di
+                # stato lo rimette davanti a chi l'ha scritto — ed e' il modo
+                # piu' diretto di far correggere una chiamata storta — e nel
+                # registro salvato lascia una traccia leggibile a run finito.
+                # Senza, un run che fallisce su sei chiamate malformate non e'
+                # spiegabile: restano sei volte lo stesso messaggio generico,
+                # e nessun modo di sapere cosa fosse sbagliato.
+                ricevuto = str(result.get("received") or "").strip()
+                if ricevuto:
+                    note += ('\n  hai emesso: ' + ricevuto[:MAX_RICEVUTO_CHARS])
                 self._failures.append(note)
                 del self._failures[:-10]
 

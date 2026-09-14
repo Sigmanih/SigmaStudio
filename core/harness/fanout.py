@@ -62,12 +62,15 @@ class EsitoVoce:
     #: Dove sta il lavoro, riuscito o no. Un branch di cui nessuno conosce
     #: il nome e' perso quanto uno cancellato.
     branch: str = ""
+    #: L'esito della stessa prova rifatta nell'albero vero, quando il cancello
+    #: accendeva qualcosa. `None` quando non c'era niente da riprovare.
+    riprova: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {"item_id": self.item_id, "title": self.title, "ok": self.ok,
                 "turns": self.turns, "files": self.files,
                 "error": self.error, "diagnosi": self.diagnosi,
-                "branch": self.branch}
+                "branch": self.branch, "riprova": self.riprova}
 
 
 def _prompt_voce(voce: Voce, obiettivo_generale: str, queue_id: str = "") -> str:
@@ -285,6 +288,53 @@ def _file_modificati(stato: Dict[str, Any]) -> List[str]:
     return modificati
 
 
+#: Un comando puo' lasciare dietro di se' qualcosa che vive piu' del run —
+#: contenitori accesi, un servizio in ascolto, un'immagine costruita. Se e'
+#: nato dentro il worktree isolato, e' nato ancorato a una cartella
+#: temporanea, e muore con lei.
+_LASCIA_TRACCE = ("docker compose up", "docker-compose up", "docker run",
+                  "npm start", "serve -d", "systemctl", "pm2 start")
+
+
+def _puo_lasciare_tracce(comando: str) -> bool:
+    basso = (comando or "").lower()
+    return any(s in basso for s in _LASCIA_TRACCE)
+
+
+def riprova_nell_albero(verifica: str, workspace_root: str,
+                        should_cancel: Optional[Callable[[], bool]] = None
+                        ) -> Optional[Dict[str, Any]]:
+    """Riesegue la prova dove il lavoro vive, non dove e' stato fatto.
+
+    Il run lavora in un worktree isolato, ed e' cio' che permette a N agenti di
+    scrivere insieme. Ma un worktree e' una cartella temporanea: un cancello
+    che *accende* qualcosa lo accende li' dentro. Il task `compose` della
+    Biblioteca Digitale e' passato cosi' — pagina 200, api 200, tutto vero — e
+    l'API e' andata in 500 appena il worktree e' stato rimosso, perche' il
+    volume di `dati.json` puntava a una cartella che non c'era piu'.
+
+    Il cancello non aveva mentito: aveva detto la verita' su un mondo che e'
+    durato quanto il run. Qui si ripete la stessa domanda nell'albero vero, che
+    e' l'unico posto dove la risposta continua a valere.
+
+    Ritorna `None` quando non c'e' niente da riprovare; altrimenti l'esito.
+    """
+    if not verifica or not _puo_lasciare_tracce(verifica):
+        return None
+    from core.harness.esecutori import scegli_esecutore
+
+    esecutore = scegli_esecutore(radice=workspace_root)
+    grezzo = esecutore.esegui(verifica, cwd=workspace_root, timeout_s=900,
+                              should_cancel=should_cancel)
+    from core.harness.verification import parse_verification
+
+    rapporto = parse_verification(verifica, grezzo.returncode,
+                                  grezzo.stdout, grezzo.stderr)
+    return {"ok": bool(rapporto.is_valid), "summary": rapporto.summary,
+            "returncode": grezzo.returncode,
+            "stderr": (grezzo.stderr or "")[-600:]}
+
+
 def _esegui_voce(
     voce: Voce,
     coda: WorkQueue,
@@ -390,6 +440,26 @@ def _esegui_voce(
     # patch verso l'albero falliva, e la coda le ha segnate fatte.
     esito.ok = raggiunto and not non_applicato["si"]
     esito.branch = esito.branch or ("sigma-run/" + sessione)
+    if esito.ok:
+        # Il cancello e' passato nel worktree. Se accendeva qualcosa, quel
+        # qualcosa e' nato dentro una cartella temporanea: la stessa prova
+        # rifatta qui dice se regge anche dove il lavoro vive.
+        conferma = None
+        try:
+            conferma = riprova_nell_albero(verifica, workspace_root, should_cancel)
+        except (OSError, RuntimeError, ValueError) as exc:
+            log.warning("[Fanout] riprova nell'albero non riuscita: %s", exc)
+        if conferma is not None:
+            esito.riprova = conferma
+            if not conferma["ok"]:
+                esito.ok = False
+                esito.error = (
+                    "la prova passa nel worktree ma non nell'albero vero: %s. "
+                    "Cio' che il run ha acceso era ancorato alla cartella "
+                    "temporanea del run, e non e' sopravvissuto." % conferma["summary"]
+                )
+                coda.fail(voce.id, esito.error)
+                return esito
     if esito.ok:
         coda.complete(voce.id, {"turns": esito.turns, "files": file_toccati,
                                 "session_id": sessione, "worker": worker})
