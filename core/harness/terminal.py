@@ -34,6 +34,99 @@ def get_default_shell() -> list[str]:
         return [shell, "-c"]
 
 
+
+# ------------------------------------------------------------------ catene
+# Windows PowerShell 5.1 non conosce `&&`: non e' che la catena non funzioni,
+# e' che il comando non parte affatto, con un errore di sintassi. Il cancello
+# di verifica di un task («npm install && npm run build») non era eseguibile, e
+# il task e' fallito tre volte di fila su un lavoro che era gia' buono: gli
+# agenti avevano capito e usavano `;`, ma il cancello riesegue il testo scritto
+# nella coda. Tradurre qui vale per tutti e due, e `&&` e' l'abitudine di
+# chiunque scriva un comando.
+
+_SEPARATORI = ("&&", "||")
+
+
+def spezza_la_catena(comando: str) -> List[tuple]:
+    """Divide su `&&` e `||` di primo livello: `[(operatore, pezzo), ...]`.
+
+    Il primo pezzo ha operatore vuoto. Cio' che sta fra virgolette non si tocca:
+    il comando che interroga il sito porta `a.status===200&&b.status===200`
+    dentro un `node -e "..."`, e spezzarlo li' lo distruggerebbe.
+    """
+    pezzi: List[tuple] = []
+    operatore = ""
+    inizio = 0
+    i = 0
+    apice = ""  # "'" o '"' quando siamo dentro una stringa
+    while i < len(comando):
+        c = comando[i]
+        if apice:
+            if c == "`" and apice == '"':
+                i += 2          # in PowerShell l'accento grave protegge il carattere dopo
+                continue
+            if c == apice:
+                if i + 1 < len(comando) and comando[i + 1] == apice:
+                    i += 2      # '' e "" sono la virgoletta stessa, non la fine
+                    continue
+                apice = ""
+            i += 1
+            continue
+        if c in ("'", '"'):
+            apice = c
+            i += 1
+            continue
+        if comando[i:i + 2] in _SEPARATORI:
+            pezzi.append((operatore, comando[inizio:i].strip()))
+            operatore = comando[i:i + 2]
+            i += 2
+            inizio = i
+            continue
+        i += 1
+    pezzi.append((operatore, comando[inizio:].strip()))
+    return [(op, testo) for op, testo in pezzi if testo]
+
+
+def adatta_alla_shell(comando: str) -> str:
+    """Il comando come la shell di questa macchina lo sa leggere.
+
+    Su POSIX non c'e' niente da fare. Su Windows la catena diventa esplicita:
+    un interruttore che dice se l'ultimo pezzo e' andato bene, e ogni pezzo
+    successivo sotto la sua condizione. E' la stessa semantica da sinistra a
+    destra di `&&`/`||`, scritta in modo che PowerShell 5.1 la accetti.
+
+    `$?` va letto *prima* di ogni altra cosa, perche' anche un assegnamento lo
+    riscrive; `$LASTEXITCODE` lo muovono solo i programmi veri, e si parte da
+    zero per non ereditare il codice di un comando di dieci minuti fa.
+    """
+    if sys.platform != "win32":
+        return comando
+    pezzi = spezza_la_catena(comando)
+    if len(pezzi) < 2:
+        return comando
+
+    esito = "$sigma_esito = $?; $sigma_uscita = $LASTEXITCODE; "             "$sigma_ok = ($sigma_esito -and $sigma_uscita -eq 0)"
+    righe = ["$global:LASTEXITCODE = 0", "$sigma_ok = $true", "$sigma_uscita = 0",
+             pezzi[0][1], esito]
+    for operatore, testo in pezzi[1:]:
+        condizione = "if ($sigma_ok)" if operatore == "&&" else "if (-not $sigma_ok)"
+        # Azzerare prima di ogni pezzo: `$LASTEXITCODE` lo muovono solo i
+        # programmi veri, quindi dopo una cmdlet resterebbe appeso al comando
+        # precedente e un ripiego riuscito verrebbe letto come fallito.
+        righe.append(f"{condizione} {{ $global:LASTEXITCODE = 0; {testo}; {esito} }}")
+    # Senza uscita esplicita un cancello fallito tornerebbe zero, che e' il
+    # modo piu' silenzioso di dichiarare fatto cio' che non e' fatto.
+    righe.append("if ($sigma_ok) { exit 0 }")
+    righe.append("if ($sigma_uscita -ne 0) { exit $sigma_uscita }")
+    righe.append("exit 1")
+    return "; ".join(righe)
+
+
+def comando_per_la_shell(comando: str) -> list:
+    """La riga di comando completa da dare a `subprocess`."""
+    return get_default_shell() + [adatta_alla_shell(comando)]
+
+
 def _ambiente_non_interattivo() -> Dict[str, str]:
     """L'ambiente dei comandi dell'agente, con le domande gia' disinnescate.
 
@@ -66,7 +159,7 @@ def execute_shell_command_sync(
     if not cwd or not Path(cwd).exists():
         cwd = get_default_workspace_root()
 
-    shell_cmd = get_default_shell() + [command]
+    shell_cmd = comando_per_la_shell(command)
     t_start = time.perf_counter()
 
     try:
@@ -184,7 +277,7 @@ def stream_shell_command(
     if not cwd or not Path(cwd).exists():
         cwd = get_default_workspace_root()
 
-    shell_cmd = get_default_shell() + [command]
+    shell_cmd = comando_per_la_shell(command)
     t_start = time.perf_counter()
 
     try:
@@ -242,7 +335,7 @@ def start_background_process(
         cwd = get_default_workspace_root()
 
     pid_key = process_id or f"proc_{int(time.time()*1000)}"
-    shell_cmd = get_default_shell() + [command]
+    shell_cmd = comando_per_la_shell(command)
 
     try:
         proc = subprocess.Popen(
