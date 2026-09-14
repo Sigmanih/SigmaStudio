@@ -162,3 +162,35 @@ class TestLeRotteEsistono:
         assert "projects_root" in generi
         pericolose = [r for r in dati["roots"] if r.get("unsafe")]
         assert pericolose, "la cartella utente e i dischi devono essere segnalati"
+
+    def test_l_indirizzo_di_sviluppo_viene_prima_di_sigma_studio(self):
+        """La prima voce di un elenco e' la scelta che si fa senza decidere.
+
+        Con Sigma Studio in cima, un compito che diceva «crea un programma
+        **staccato da sigma**» e' stato lanciato sulla radice di Sigma Studio:
+        l'agente ha scritto `backend/`, `frontend/` e `landing/` dentro il
+        sorgente del programma che lo stava eseguendo, e un commit se li e'
+        portati dentro insieme al resto. Lavorare su Sigma Studio stesso resta
+        possibile — e' il caso speciale, e va scelto apposta.
+        """
+        import asyncio
+        import json as _json
+
+        from core.modules.sigma_developer_lab.handlers import handle_workspace_roots
+
+        dati = _json.loads(asyncio.run(handle_workspace_roots(None)).body)
+        generi = [r.get("kind") for r in dati["roots"]]
+        assert generi[0] == "projects_root"
+        assert "studio" in generi, "la scelta deve restare disponibile"
+        assert generi.index("projects_root") < generi.index("studio")
+
+    def test_la_voce_di_sigma_studio_dice_cos_e(self):
+        """«Sigma Studio» da solo si legge come «il posto dove si lavora»."""
+        import asyncio
+        import json as _json
+
+        from core.modules.sigma_developer_lab.handlers import handle_workspace_roots
+
+        dati = _json.loads(asyncio.run(handle_workspace_roots(None)).body)
+        studio = next(r for r in dati["roots"] if r.get("kind") == "studio")
+        assert "il programma stesso" in studio["label"]
