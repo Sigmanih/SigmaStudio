@@ -1,30 +1,69 @@
 <p align="center">
-  <img src="images/sigma_logo_harmonic_flow.jpg" alt="Logo Sigma Studio" width="160" style="border-radius: 24px; box-shadow: 0 8px 30px rgba(0,210,255,0.25);" />
-</p>
-
-<h1 align="center">🧬 Σ-SIGMA Studio</h1>
-
-<p align="center">
-  <strong>Kernel Operativo Cognitivo Modulare AI-Native per Inferenza Multi-GPU, Swarm Multi-Agente Autonomi ed Ecosistema Modulare Dinamico</strong>
-</p>
-
-<p align="center">
-  <a href="https://www.python.org"><img src="https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+"></a>
-  <a href="https://react.dev"><img src="https://img.shields.io/badge/react-19-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 19"></a>
-  <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/fastapi-0.100+-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI"></a>
-  <a href="https://developer.nvidia.com/cuda-zone"><img src="https://img.shields.io/badge/cuda-multi--gpu-76B900?style=flat-square&logo=nvidia&logoColor=white" alt="NVIDIA CUDA Multi-GPU"></a>
-  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/mcp-12--servers-00f2fe?style=flat-square" alt="Model Context Protocol"></a>
-  <a href="https://github.com/Sigmanih/SigmaStudio"><img src="https://img.shields.io/badge/architettura-microkernel--modulare-success?style=flat-square" alt="Microkernel Modulare"></a>
-  <a href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC"><img src="https://img.shields.io/badge/Donazione-PayPal-00457C?style=flat-square&logo=paypal&logoColor=white" alt="Donazione con PayPal"></a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/sigma-banner-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="images/sigma-banner-light.svg">
+    <img src="images/sigma-banner-dark.svg" alt="Banner Kernel Cognitivo Sigma Studio" width="100%">
+  </picture>
 </p>
 
 <p align="center">
-  <a href="README.md">🇬🇧 English</a> • <a href="README_IT.md">🇮🇹 Italiano</a> • <a href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC">☕ Donazioni</a> • <a href="https://github.com/Sigmanih/SigmaStudio">📦 Repository GitHub</a>
+  <a href="README.md">🇬🇧 English</a> • 
+  <a href="README_IT.md">🇮🇹 Italiano</a> • 
+  <a href="#-installazione--avvio-rapido">⚡ Avvio Rapido</a> • 
+  <a href="#-catalogo-moduli-ufficiali">🧩 Catalogo Laboratori AI</a> • 
+  <a href="https://github.com/Sigmanih/SigmaStudio">📦 Repository GitHub</a> • 
+  <a href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC">☕ Supporta lo Sviluppo</a>
 </p>
+
+<p align="center">
+  <!-- Core Identity & License -->
+  <img src="https://img.shields.io/badge/100%25_Gratis_%26_Open_Source-AI_Sovrana-059669?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="100% Gratis e Open Source" />
+  <img src="https://img.shields.io/badge/Motore_di_Inferenza_Nativo-SigmaEngine-0284C7?style=for-the-badge&logo=speedtest&logoColor=white" alt="Motore di Inferenza Nativo" />
+  <img src="https://img.shields.io/badge/Sharding_Multi--GPU-PyTorch_FlashAttn2-76B900?style=for-the-badge&logo=nvidia&logoColor=white" alt="Sharding Multi-GPU" />
+  <img src="https://img.shields.io/badge/Protocollo_MCP-12_Server-00F2FE?style=for-the-badge" alt="MCP 12 Server" />
+  <img src="https://img.shields.io/badge/Doppia_Licenza-AGPL--3.0_%2F_Commerciale-7C3AED?style=for-the-badge" alt="Licenza" />
+</p>
+
+<p align="center">
+  <!-- Kernel & Backend Tech -->
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/FastAPI-0.100+-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white" alt="PyTorch" />
+  <img src="https://img.shields.io/badge/NVIDIA_CUDA-12.0+-76B900?style=for-the-badge&logo=nvidia&logoColor=white" alt="CUDA" />
+  <img src="https://img.shields.io/badge/Hugging_Face-Hub_Downloader-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" alt="Hugging Face" />
+  <img src="https://img.shields.io/badge/Forgia_GGUF-Quantizzazione_Q4_Q8-FF6B6B?style=for-the-badge" alt="Forgia GGUF" />
+</p>
+
+<p align="center">
+  <!-- Frontend & Labs -->
+  <img src="https://img.shields.io/badge/React_19-Vite_8-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React 19" />
+  <img src="https://img.shields.io/badge/Three.js-Visualizzatore_3D-000000?style=for-the-badge&logo=threedotjs&logoColor=white" alt="Three.js" />
+  <img src="https://img.shields.io/badge/D3.js-Grafo_Memoria-F9A03C?style=for-the-badge&logo=d3dotjs&logoColor=white" alt="D3.js" />
+  <img src="https://img.shields.io/badge/Kokoro_TTS-Voce_Neurale-EA4B71?style=for-the-badge" alt="Kokoro TTS" />
+  <img src="https://img.shields.io/badge/Unsloth-Training_QLoRA-6366F1?style=for-the-badge" alt="Unsloth QLoRA" />
+  <img src="https://img.shields.io/badge/Home_Assistant-Domotica_IoT-41BDF5?style=for-the-badge&logo=homeassistant&logoColor=white" alt="Home Assistant" />
+</p>
+
+<p align="center">
+  <!-- Optional External Providers Bridge -->
+  <img src="https://img.shields.io/badge/Provider_Interoperabili-OpenAI_•_Claude_•_Gemini_•_DeepSeek_•_Groq_•_Ollama-475569?style=for-the-badge" alt="Provider Interoperabili" />
+</p>
+
+> ### 💡 Il Biglietto da Visita: La Piattaforma All-in-One di Servizi AI Gratuiti e Sovrani
+> **Sigma Studio** è un **ecosistema desktop cognitivo 100% gratuito, privato e sovrano** che unifica i migliori servizi di Intelligenza Artificiale in un unico ambiente a camere stagne. Grazie al proprio **motore di inferenza nativo C++/PyTorch con sharding multi-GPU (`SigmaEngine`)**, Sigma Studio azzera i costi di abbonamento cloud ricorrenti, i limiti di quota API e i vincoli di lock-in verso terzi.
+>
+> 🚀 **Cosa rende unico Sigma Studio?**
+> - **⚡ Motore di Inferenza Nativo ad Elevate Prestazioni**: Sharding automatico dei layer su GPU/CPU/Metal, FlashAttention-2 nativo e streaming continuo con TTFT sub-100ms.
+> - **📦 Contenitore di Servizi e Laboratori AI Gratuiti**: Chat, Generazione 3D/2D (FLUX, SDXL, Hunyuan3D), sintesi vocale neurale fulminea (Kokoro TTS), clonazione vocale, training SLM con QLoRA, pipeline visuali DAG di swarm multi-agente e telemetria hardware avanzata.
+> - **🛠️ Forgia di Quantizzazione GGUF & Hugging Face Hub Integrati**: Ricerca, scarica, converti e quantizza (Q4_K_M, Q5_K_M, Q8_0) qualsiasi modello open-source direttamente dall'interfaccia grafica, senza ricorrere a complessi tool CLI.
+> - **🔌 12 Server Model Context Protocol (MCP) & 20 Manifesti Ruoli**: Controllo operativo dell'OS, dei file e della domotica tramite protocollo standard MCP con validazione AST sandbox protetta.
+> - **🌐 Architettura Ibrida 100% Interoperabile**: Esecuzione totalmente offline sui tuoi pesi locali, con la possibilità di connettere al volo i tuoi provider preferiti (OpenAI, Claude, Gemini, DeepSeek, Groq, Ollama) quando desiderato.
 
 ---
 
 ## 🎬 Video Demo & Tour della Piattaforma
+
+https://github.com/user-attachments/assets/3b03d269-f130-4d09-8919-89cb54ee7d0f
 
 <p align="center">
   <a href="https://github.com/Sigmanih/SigmaStudio/blob/main/images/screenshots/chat_record.mp4">
@@ -46,23 +85,23 @@
 I team di agenti AI cooperano tramite manifesti Modelfile vincolanti, strumenti operativi Model Context Protocol (MCP) e laboratori specializzati scaricabili e montabili a caldo senza riavviare il server.
 
 ```
-+-----------------------------------------------------------------------------------------+
-|                                KERNEL COGNITIVO Σ-SIGMA STUDIO                          |
-+-----------------------------------------------------------------------------------------+
++---------------------------------------------------------------------------------------------------+
+|                                    KERNEL COGNITIVO Σ-SIGMA STUDIO                                |
++---------------------------------------------------------------------------------------------------+
 |  ⚡ SigmaEngine (Multi-GPU CUDA) |  ⚙️ Providers Hub (100% Interoperabile) |  📜 20 Modelfiles  |
-|  (C++/PyTorch FlashAttn-2 Shard) |  (OpenAI, Claude, Gemini, DeepSeek)   |  (Manifesti Hub)  |
-+-----------------------------------------------------------------------------------------+
-|                              🔌 12 SERVER MODEL CONTEXT PROTOCOL                        |
-+-----------------------------------------------------------------------------------------+
-|  🛠️ Dev / Workspace  |  🌐 Web Search & DNS |  ✉️ Client Email |  💬 Telegram / Slack  |
-|  📅 Calendario Task  |  🧠 Memoria Vettoriale|  🏠 IoT HomeAss  |  ⚡ GPU VRAM Flush    |
-+-----------------------------------------------------------------------------------------+
-|                              🧩 15 SKILLS & LABORATORI OPEN SOURCE                      |
-+-----------------------------------------------------------------------------------------+
-| 🎨 Creative Lab 3D/2D      | 🧠 Training Lab & SLM     | 🎙️ Voice Studio (Kokoro)      |
-| 🔬 Pipelines Lab & Swarm   | ⚡ Hardware & Telemetria  | 🏠 Assistente Domotica IoT     |
-| 📅 Roadmap & Task Audit    | 📊 Grafo Memoria D3       | 📻 Hi-Fi Audio Lounge          |
-+-----------------------------------------------------------------------------------------+
+|  (C++/PyTorch FlashAttn-2 Shard) |  (OpenAI, Claude, Gemini, DeepSeek)   |  (Manifesti Hub)       |
++---------------------------------------------------------------------------------------------------+
+|                              🔌 12 SERVER MODEL CONTEXT PROTOCOL                                 |
++---------------------------------------------------------------------------------------------------+
+|  🛠️ Dev / Workspace  |  🌐 Web Search & DNS |  ✉️ Client Email |  💬 Telegram / Slack           |
+|  📅 Calendario Task  |  🧠 Memoria Vettoriale|  🏠 IoT HomeAss  |  ⚡ GPU VRAM Flush            |
++---------------------------------------------------------------------------------------------------+
+|                              🧩 15 SKILLS & LABORATORI OPEN SOURCE                               |
++---------------------------------------------------------------------------------------------------+
+| 🎨 Creative Lab 3D/2D      | 🧠 Training Lab & SLM     | 🎙️ Voice Studio (Kokoro)               |
+| 🔬 Pipelines Lab & Swarm   | ⚡ Hardware & Telemetria  | 🏠 Assistente Domotica IoT             |
+| 📅 Roadmap & Task Audit    | 📊 Grafo Memoria D3       | 📻 Hi-Fi Audio Lounge                  |
++---------------------------------------------------------------------------------------------------+
 ```
 
 ---

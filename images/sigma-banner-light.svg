@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 380" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradients -->
+    <linearGradient id="bg-grad-light" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="50%" stop-color="#F8FAFC" />
+      <stop offset="100%" stop-color="#F1F5F9" />
+    </linearGradient>
+    
+    <linearGradient id="primary-glow-light" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284C7" />
+      <stop offset="50%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#9333EA" />
+    </linearGradient>
+
+    <linearGradient id="card-grad-light" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#F8FAFC" />
+    </linearGradient>
+
+    <filter id="card-shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0F172A" flood-opacity="0.05" />
+    </filter>
+
+    <!-- Grid Pattern Light -->
+    <pattern id="light-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="1" stroke-opacity="0.6" />
+      <circle cx="40" cy="0" r="1.2" fill="#0284C7" fill-opacity="0.3" />
+    </pattern>
+  </defs>
+
+  <!-- Container Box with Rounded Corners -->
+  <rect width="1200" height="380" rx="20" fill="url(#bg-grad-light)" stroke="#CBD5E1" stroke-width="1.5" />
+  
+  <!-- Subtle Background Grid -->
+  <rect width="1200" height="380" rx="20" fill="url(#light-grid)" />
+
+  <!-- Top Accent Bar -->
+  <rect x="0" y="0" width="1200" height="5" rx="2.5" fill="url(#primary-glow-light)" />
+
+  <!-- ================= HEADER SECTION ================= -->
+  <!-- Free & Sovereign Pill -->
+  <g transform="translate(60, 36)">
+    <rect width="320" height="28" rx="14" fill="#ECFDF5" stroke="#10B981" stroke-width="1" />
+    <circle cx="16" cy="14" r="5" fill="#10B981" />
+    <text x="32" y="19" fill="#065F46" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="700" letter-spacing="1">100% FREE &amp; SOVEREIGN AI SERVICES</text>
+  </g>
+
+  <!-- Native Engine Pill -->
+  <g transform="translate(870, 36)">
+    <rect width="270" height="28" rx="14" fill="#F0F9FF" stroke="#0284C7" stroke-width="1" />
+    <circle cx="16" cy="14" r="5" fill="#0284C7" />
+    <text x="32" y="19" fill="#075985" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" letter-spacing="0.5">⚡ NATIVE INFERENCE ENGINE</text>
+  </g>
+
+  <!-- Brand Logo & Main Title -->
+  <g transform="translate(60, 95)">
+    <!-- Stylized Sigma Glyph Icon -->
+    <g transform="translate(0, -10) scale(1.7)">
+      <rect width="48" height="48" rx="12" fill="#EEF2FF" stroke="#6366F1" stroke-width="1" />
+      <path fill="url(#primary-glow-light)" d="M25.946 44.938c-.664.845-2.021.375-2.021-.698V33.937a2.26 2.26 0 0 0-2.262-2.262H10.287c-.92 0-1.456-1.04-.92-1.788l7.48-10.471c1.07-1.497 0-3.578-1.842-3.578H1.237c-.92 0-1.456-1.04-.92-1.788L10.013.474c.214-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.471c-1.07 1.498 0 3.579 1.842 3.579h11.377c.943 0 1.473 1.088.89 1.83L25.947 44.94z" transform="scale(0.8) translate(6, 6)" />
+    </g>
+
+    <!-- Main Title -->
+    <text x="105" y="44" fill="url(#primary-glow-light)" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="44" font-weight="900" letter-spacing="-0.5">Σ-SIGMA STUDIO</text>
+    
+    <!-- Subtitle / Value Proposition -->
+    <text x="108" y="78" fill="#0F172A" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700">The Sovereign All-in-One AI Operating Hub &amp; Autonomous Swarm Kernel</text>
+    <text x="108" y="104" fill="#475569" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="500">Zero Subscriptions • Proprietary Multi-GPU Inference • 15+ Built-in Modular Labs • 100% Offline &amp; Private</text>
+  </g>
+
+  <!-- ================= 3 VALUE PILLARS (CARDS) ================= -->
+  
+  <!-- Pillar 1: Native Inference Engine -->
+  <g transform="translate(60, 235)" filter="url(#card-shadow)">
+    <rect width="345" height="110" rx="14" fill="url(#card-grad-light)" stroke="#E2E8F0" stroke-width="1.2" />
+    <rect x="0" y="0" width="345" height="4" rx="2" fill="#0284C7" />
+    
+    <text x="20" y="32" fill="#0369A1" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="800">⚡ SigmaEngine Native</text>
+    <text x="20" y="58" fill="#0F172A" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700">C++/PyTorch Multi-GPU Shard</text>
+    <text x="20" y="80" fill="#334155" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">Sub-100ms TTFT • FlashAttention-2</text>
+    <text x="20" y="98" fill="#64748B" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">GGUF Forge (Q4/Q5/Q8) &amp; HuggingFace Hub</text>
+  </g>
+
+  <!-- Pillar 2: 15+ Free AI Services & Labs -->
+  <g transform="translate(427, 235)" filter="url(#card-shadow)">
+    <rect width="345" height="110" rx="14" fill="url(#card-grad-light)" stroke="#E2E8F0" stroke-width="1.2" />
+    <rect x="0" y="0" width="345" height="4" rx="2" fill="#7C3AED" />
+    
+    <text x="20" y="32" fill="#6D28D9" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="800">🧩 15+ All-In-One Labs</text>
+    <text x="20" y="58" fill="#0F172A" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700">Zero-Cost Sovereign Services</text>
+    <text x="20" y="80" fill="#334155" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">FLUX/SDXL 3D/2D • Kokoro Voice &amp; TTS</text>
+    <text x="20" y="98" fill="#64748B" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">Unsloth QLoRA Training • D3 Relational Graph</text>
+  </g>
+
+  <!-- Pillar 3: Multi-Agent & 12 MCP Servers -->
+  <g transform="translate(795, 235)" filter="url(#card-shadow)">
+    <rect width="345" height="110" rx="14" fill="url(#card-grad-light)" stroke="#E2E8F0" stroke-width="1.2" />
+    <rect x="0" y="0" width="345" height="4" rx="2" fill="#059669" />
+    
+    <text x="20" y="32" fill="#047857" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="800">🔌 Autonomous Swarm &amp; MCP</text>
+    <text x="20" y="58" fill="#0F172A" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="700">12 Model Context Protocol Servers</text>
+    <text x="20" y="80" fill="#334155" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12">20 Modelfiles Manifesti • Smart Intent Router</text>
+    <text x="20" y="98" fill="#64748B" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11">Home Assistant IoT • Watertight AST Sandbox</text>
+  </g>
+
+</svg>
