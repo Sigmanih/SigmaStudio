@@ -58,3 +58,71 @@ class TestContainerAttivi:
         assert risultati[0]["name"] == "app_backend"
         assert risultati[0]["id"] == "c1234567890a"
         assert len(risultati[0]["mounts"]) == 1
+
+
+class TestLifecycleContainer:
+    def test_avvia_container(self, monkeypatch):
+        monkeypatch.setattr(docker_fs, "docker_disponibile", lambda: (True, "29.7.2"))
+        monkeypatch.setattr(docker_fs, "trova_docker", lambda: "/usr/bin/docker")
+        monkeypatch.setattr(docker_fs, "_ambiente_per_docker", lambda: {})
+
+        chiamati = []
+        def falso_run(cmd, *args, **kwargs):
+            chiamati.append(cmd)
+            class Res:
+                returncode = 0
+                stdout = "c12345\n"
+                stderr = ""
+            return Res()
+
+        monkeypatch.setattr(docker_fs.subprocess, "run", falso_run)
+        res = docker_fs.avvia_container("c12345")
+        assert res["success"] is True
+        assert res["id"] == "c12345"
+        assert ["/usr/bin/docker", "start", "c12345"] in chiamati
+
+    def test_ferma_container(self, monkeypatch):
+        monkeypatch.setattr(docker_fs, "docker_disponibile", lambda: (True, "29.7.2"))
+        monkeypatch.setattr(docker_fs, "trova_docker", lambda: "/usr/bin/docker")
+        monkeypatch.setattr(docker_fs, "_ambiente_per_docker", lambda: {})
+
+        chiamati = []
+        def falso_run(cmd, *args, **kwargs):
+            chiamati.append(cmd)
+            class Res:
+                returncode = 0
+                stdout = "c12345\n"
+                stderr = ""
+            return Res()
+
+        monkeypatch.setattr(docker_fs.subprocess, "run", falso_run)
+        res = docker_fs.ferma_container("c12345")
+        assert res["success"] is True
+        assert res["id"] == "c12345"
+        assert ["/usr/bin/docker", "stop", "-t", "10", "c12345"] in chiamati
+
+    def test_lancia_container(self, monkeypatch):
+        monkeypatch.setattr(docker_fs, "docker_disponibile", lambda: (True, "29.7.2"))
+        monkeypatch.setattr(docker_fs, "trova_docker", lambda: "/usr/bin/docker")
+        monkeypatch.setattr(docker_fs, "_ambiente_per_docker", lambda: {})
+
+        chiamati = []
+        def falso_run(cmd, *args, **kwargs):
+            chiamati.append(cmd)
+            class Res:
+                returncode = 0
+                stdout = "abcdef1234567890\n"
+                stderr = ""
+            return Res()
+
+        monkeypatch.setattr(docker_fs.subprocess, "run", falso_run)
+        res = docker_fs.lancia_container(
+            immagine="python:3.12-slim",
+            nome="sigma_test_box",
+            porte=["8000:8000"]
+        )
+        assert res["success"] is True
+        assert res["id"] == "abcdef123456"
+        assert res["name"] == "sigma_test_box"
+        assert any("--name" in c and "sigma_test_box" in c for c in chiamati)
+

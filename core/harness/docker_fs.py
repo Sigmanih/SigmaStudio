@@ -211,3 +211,149 @@ def write_docker_file(container_id: str, file_path: str, content: str) -> Dict[s
     except Exception as exc:
         log.warning("[DockerFS] Eccezione scrittura %s in %s: %s", file_path, container_id, exc)
         return {"success": False, "error": str(exc), "path": f"docker://{container_id}{file_path}"}
+
+
+def avvia_container(container_id: str) -> Dict[str, Any]:
+    """Avvia un container Docker esistente (stato exited o arrestato)."""
+    disponibile, err = docker_disponibile()
+    if not disponibile:
+        return {"success": False, "error": err}
+
+    eseguibile = trova_docker()
+    env = _ambiente_per_docker()
+    try:
+        esito = subprocess.run(
+            [eseguibile, "start", container_id],
+            capture_output=True, text=True, timeout=20, env=env,
+        )
+        if esito.returncode != 0:
+            return {"success": False, "error": esito.stderr.strip() or "Errore durante l'avvio del container"}
+        return {"success": True, "id": container_id, "message": f"Container {container_id} avviato con successo"}
+    except Exception as exc:
+        log.warning("[DockerFS] Errore avvio container %s: %s", container_id, exc)
+        return {"success": False, "error": str(exc)}
+
+
+def ferma_container(container_id: str, timeout_sec: int = 10) -> Dict[str, Any]:
+    """Arresta un container Docker in esecuzione."""
+    disponibile, err = docker_disponibile()
+    if not disponibile:
+        return {"success": False, "error": err}
+
+    eseguibile = trova_docker()
+    env = _ambiente_per_docker()
+    try:
+        esito = subprocess.run(
+            [eseguibile, "stop", "-t", str(timeout_sec), container_id],
+            capture_output=True, text=True, timeout=timeout_sec + 15, env=env,
+        )
+        if esito.returncode != 0:
+            return {"success": False, "error": esito.stderr.strip() or "Errore durante l'arresto del container"}
+        return {"success": True, "id": container_id, "message": f"Container {container_id} arrestato con successo"}
+    except Exception as exc:
+        log.warning("[DockerFS] Errore arresto container %s: %s", container_id, exc)
+        return {"success": False, "error": str(exc)}
+
+
+def riavvia_container(container_id: str, timeout_sec: int = 10) -> Dict[str, Any]:
+    """Riavvia un container Docker."""
+    disponibile, err = docker_disponibile()
+    if not disponibile:
+        return {"success": False, "error": err}
+
+    eseguibile = trova_docker()
+    env = _ambiente_per_docker()
+    try:
+        esito = subprocess.run(
+            [eseguibile, "restart", "-t", str(timeout_sec), container_id],
+            capture_output=True, text=True, timeout=timeout_sec + 20, env=env,
+        )
+        if esito.returncode != 0:
+            return {"success": False, "error": esito.stderr.strip() or "Errore durante il riavvio del container"}
+        return {"success": True, "id": container_id, "message": f"Container {container_id} riavviato con successo"}
+    except Exception as exc:
+        log.warning("[DockerFS] Errore riavvio container %s: %s", container_id, exc)
+        return {"success": False, "error": str(exc)}
+
+
+def rimuovi_container(container_id: str, forzato: bool = False) -> Dict[str, Any]:
+    """Rimuove un container Docker."""
+    disponibile, err = docker_disponibile()
+    if not disponibile:
+        return {"success": False, "error": err}
+
+    eseguibile = trova_docker()
+    env = _ambiente_per_docker()
+    cmd = [eseguibile, "rm"]
+    if forzato:
+        cmd.append("-f")
+    cmd.append(container_id)
+    try:
+        esito = subprocess.run(cmd, capture_output=True, text=True, timeout=20, env=env)
+        if esito.returncode != 0:
+            return {"success": False, "error": esito.stderr.strip() or "Errore durante la rimozione del container"}
+        return {"success": True, "id": container_id, "message": f"Container {container_id} rimosso"}
+    except Exception as exc:
+        log.warning("[DockerFS] Errore rimozione container %s: %s", container_id, exc)
+        return {"success": False, "error": str(exc)}
+
+
+def lancia_container(
+    immagine: Optional[str] = None,
+    nome: Optional[str] = None,
+    workspace_root: Optional[str] = None,
+    porte: Optional[List[str]] = None,
+    comando: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Crea e avvia un nuovo container sandbox in background."""
+    import re
+    disponibile, err = docker_disponibile()
+    if not disponibile:
+        return {"success": False, "error": err}
+
+    eseguibile = trova_docker()
+    env = _ambiente_per_docker()
+    img = (immagine or "python:3.12-slim").strip()
+
+    cmd = [eseguibile, "run", "-d"]
+    if nome:
+        pulito = re.sub(r"[^a-zA-Z0-9_.-]", "_", nome.strip())
+        if pulito:
+            cmd.extend(["--name", pulito])
+
+    if workspace_root:
+        try:
+            p_host = str(Path(workspace_root).resolve()).replace("\\", "/")
+            cmd.extend(["-v", f"{p_host}:/workspace", "-w", "/workspace"])
+        except Exception as exc_p:
+            log.warning("[DockerFS] Percorso workspace non valido per mount: %s", exc_p)
+
+    if porte:
+        for p in porte:
+            p_str = str(p).strip()
+            if ":" in p_str:
+                cmd.extend(["-p", p_str])
+
+    cmd.append(img)
+    if comando:
+        cmd.extend(["sh", "-c", comando])
+    else:
+        # Mantiene il container vivo in background
+        cmd.extend(["sh", "-c", "tail -f /dev/null"])
+
+    try:
+        esito = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
+        if esito.returncode != 0:
+            return {"success": False, "error": esito.stderr.strip() or "Errore durante il lancio del container"}
+        new_id = esito.stdout.strip()[:12]
+        return {
+            "success": True,
+            "id": new_id,
+            "name": nome or new_id,
+            "image": img,
+            "message": f"Container {nome or new_id} lanciato ed attivo con successo.",
+        }
+    except Exception as exc:
+        log.warning("[DockerFS] Errore lancio container %s (%s): %s", nome, img, exc)
+        return {"success": False, "error": str(exc)}
+
