@@ -26,7 +26,8 @@ def test_orchestrator_initialization():
     assert status["phase"] == "init"
     assert status["mode"] == ExecutionMode.INTERACTIVE
     assert "roles" in status
-    assert len(status["roles"]["roles"]) == 5
+    assert len(status["roles"]["roles"]) == 6
+    assert "designer" in status["roles"]["roles"]
 
 
 def test_context_manager_shared_prefix_and_role_context():
