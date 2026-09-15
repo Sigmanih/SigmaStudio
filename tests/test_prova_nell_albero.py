@@ -113,13 +113,38 @@ class TestEDavveroCollegata:
         assert "riprova_nell_albero(verifica, workspace_root" in sorgente
 
     def test_una_riprova_fallita_fa_fallire_la_voce(self):
+        """Si guarda l'ordine, non una finestra di caratteri: un commento in
+        piu' non deve rompere un test che parla di come scorre il codice."""
         import inspect
 
         sorgente = inspect.getsource(fanout._esegui_voce)
-        i = sorgente.index("riprova_nell_albero")
-        dopo = sorgente[i:i + 1600]
-        assert "esito.ok = False" in dopo
-        assert "coda.fail" in dopo, "senza questo la coda la segna fatta lo stesso"
+        i = sorgente.index("riprova_nell_albero(verifica")
+        assert sorgente.index("esito.ok = False", i) > i
+        assert sorgente.index("coda.fail", i) > i, (
+            "senza questo la coda la segna fatta lo stesso")
 
     def test_l_esito_porta_con_se_com_e_andata(self):
         assert "riprova" in fanout.EsitoVoce("x", "y", True).to_dict()
+
+
+class TestIlMessaggioDiceLaVerita:
+    """«La prova passa nel worktree ma non nell'albero vero» manda a cercare
+    un worktree che, con l'isolamento spento, non e' mai esistito."""
+
+    def _errore(self, isolato=True):
+        import inspect
+
+        sorgente = inspect.getsource(fanout._esegui_voce)
+        i = sorgente.index("riprova_nell_albero(verifica")
+        return sorgente[i:sorgente.index("coda.complete(", i)]
+
+    def test_i_due_casi_sono_distinti(self):
+        blocco = self._errore(True)
+        assert "isolamento_possibile(workspace_root)" in blocco
+        assert "Qui non c'e' worktree di " in blocco
+
+    def test_senza_worktree_si_dice_l_altra_causa(self):
+        """Senza isolamento la spiegazione e' un'altra: o il comando dipendeva
+        da qualcosa di momentaneo, o non era una prova."""
+        blocco = self._errore(False)
+        assert "solo in quel momento" in blocco

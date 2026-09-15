@@ -517,11 +517,23 @@ def _esegui_voce(
                 # temporanea. Quando invece la patch non era arrivata, la
                 # causa e' quella e va lasciata dire al ramo apposta, piu' sotto.
                 esito.ok = False
-                esito.error = (
-                    "la prova passa nel worktree ma non nell'albero vero: %s. "
-                    "Cio' che il run ha acceso era ancorato alla cartella "
-                    "temporanea del run, e non e' sopravvissuto." % conferma["summary"]
-                )
+                # Il perche' cambia con l'isolamento, e dirlo sbagliato manda
+                # a cercare un worktree che non e' mai esistito.
+                if isolamento_possibile(workspace_root):
+                    esito.error = (
+                        "la prova passa nel worktree ma non nell'albero vero: "
+                        "%s. Cio' che il run ha acceso era ancorato alla "
+                        "cartella temporanea del run, e non e' sopravvissuto."
+                        % conferma["summary"]
+                    )
+                else:
+                    esito.error = (
+                        "l'agente ha chiuso, ma rieseguendo la sua stessa prova "
+                        "subito dopo non regge: %s. Qui non c'e' worktree di "
+                        "mezzo — o il comando dipende da qualcosa che era vero "
+                        "solo in quel momento, o non era una prova."
+                        % conferma["summary"]
+                    )
                 _tramanda(coda, voce, esito, ultimo_stato)
                 coda.fail(voce.id, esito.error)
                 return esito
