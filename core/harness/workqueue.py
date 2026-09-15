@@ -80,6 +80,11 @@ class Voce:
     updated_at: float = 0.0
     result: Dict[str, Any] = field(default_factory=dict)
     error: str = ""
+    #: Cosa hanno scoperto i tentativi precedenti. Senza, il secondo tentativo
+    #: riparte dalla memoria vuota e ripaga la stessa scoperta: sul task
+    #: `frontend` della Biblioteca sono stati ottanta turni per sapere tre
+    #: volte la stessa cosa.
+    lezioni: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -483,6 +488,28 @@ class WorkQueue:
                     self._ordine.append(voce.id)
             else:
                 voce.state = FALLITA
+            voce.updated_at = time.time()
+            self._salva()
+            return True
+
+    def annota_lezione(self, item_id: str, lezione: Any) -> bool:
+        """Conserva sulla voce cio' che questo tentativo ha scoperto.
+
+        Va chiamata **prima** di `fail`, finche' il registro del run e' ancora
+        a portata di mano: dopo, la voce e' gia' tornata in coda e chi la
+        riprende non ha piu' modo di sapere cosa era stato provato.
+        """
+        from core.harness.lezioni import MAX_LEZIONI, Lezione
+
+        with self._lock:
+            voce = self._voci.get(str(item_id))
+            if voce is None:
+                return False
+            dati = lezione.to_dict() if isinstance(lezione, Lezione) else dict(lezione or {})
+            if not dati:
+                return False
+            voce.lezioni.append(dati)
+            del voce.lezioni[:-MAX_LEZIONI]
             voce.updated_at = time.time()
             self._salva()
             return True

@@ -1884,6 +1884,28 @@ def _execute_admin_tool_impl(
             "message": summary
         }
 
+    elif tool_name in ("propose_verify", "contesta_verifica", "proponi_verifica"):
+        # Come `spec`: qui si normalizza, applica il loop che ha il ledger.
+        comando = str(params.get("command") or params.get("comando") or "").strip()
+        motivo = str(params.get("reason") or params.get("motivo") or "").strip()
+        if not comando:
+            return {
+                "tool": "propose_verify", "success": False,
+                "error": ('Manca "command": e\' il comando che proponi al posto '
+                          'di quello dichiarato. Forma: {"command": "cd frontend; '
+                          'npm install; npm run build", "reason": "PowerShell 5.1 '
+                          'non conosce &&"}'),
+            }
+        if not motivo:
+            return {
+                "tool": "propose_verify", "success": False,
+                "error": ('Manca "reason": senza il perche\', una prova sostituita '
+                          "e' una prova annacquata. Di' cosa impedisce a quella "
+                          "dichiarata di girare."),
+            }
+        return {"tool": "propose_verify", "success": True,
+                "command": comando, "reason": motivo}
+
     elif tool_name in ("spec", "requirements", "criteri", "specifica"):
         # La specifica non tocca il workspace: viene registrata nel ledger dal
         # loop, che e' l'unico a possederlo. Qui si normalizza soltanto, cosi'
@@ -2989,6 +3011,18 @@ def _stream_agent_turn_impl(
                     "type": "pipeline_update",
                     "tasks": result.get("tasks", [])
                 }
+            elif t_name in ("propose_verify", "contesta_verifica", "proponi_verifica"):
+                if result.get("success"):
+                    esito = ledger.proponi_verifica(
+                        result.get("command", ""), result.get("reason", ""))
+                    result["proposta"] = esito
+                    if esito.get("accettata"):
+                        # Da qui in avanti il promemoria deve indicare la prova
+                        # nuova: ripetere quella rifiutata era esattamente cio'
+                        # che rimandava l'agente a sbattere sul muro.
+                        verify_command = esito["comando"]
+                    yield {"type": "verify_proposed", **esito}
+
             elif t_name in ("spec", "requirements", "criteri", "specifica"):
                 if result.get("success"):
                     registrati = ledger.set_spec(
@@ -3132,6 +3166,17 @@ def _stream_agent_turn_impl(
                     )
                     if result.get("truncated"):
                         obs_str += "\n[Elenco troncato: restringi il pattern.]"
+            elif t_name in ("propose_verify", "contesta_verifica", "proponi_verifica"):
+                proposta = result.get("proposta") or {}
+                if proposta.get("accettata"):
+                    obs_str += (
+                        "Prova sostituita. Da ora vale `" + str(proposta.get("comando"))
+                        + "`: e' questa che il completamento verifichera'.\n"
+                    )
+                elif proposta:
+                    obs_str += "Proposta registrata, non applicata: " + str(
+                        proposta.get("perche")) + "\n"
+
             elif t_name in ("spec", "requirements", "criteri", "specifica"):
                 registrati = result.get("registered") or []
                 if registrati:

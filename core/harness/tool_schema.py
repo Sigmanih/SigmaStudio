@@ -121,6 +121,14 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
                            "depends_on": {"type": "array", "items": _STRINGA}},
             "required": ["id", "title"]}}},
        ["queue_id", "items"]),
+    _f("propose_verify",
+       "Contesta la prova dichiarata quando NON E' ESEGUIBILE — la shell la "
+       "rifiuta, un programma non c'e' — e proponi quella giusta. Prima "
+       "eseguila tu e falla passare, poi proponila: una prova che nessuno ha "
+       "visto girare non e' una prova. Non serve quando la prova gira e "
+       "fallisce: quello vuol dire che il lavoro non e' finito.",
+       {"command": _STRINGA, "reason": _STRINGA},
+       ["command", "reason"]),
     _f("complete_goal", "Dichiara finito il lavoro, con la prova di ogni criterio.",
        {"summary": _STRINGA,
         "criteria": {"type": "array", "items": {

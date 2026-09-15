@@ -106,7 +106,18 @@ class TestLaDiagnosiGuardaIFatti:
         d = AC.diagnostica(_task(error="qualcosa e' andato storto"),
                            ledger.snapshot(), AC.Bilancio())
         assert d.livello == AC.CORREGGI
-        assert "non sa dire" in d.istruzione
+        assert "non sanno dire" in d.istruzione
+
+    def test_e_ci_va_il_diagnosta_non_un_coder(self, ledger):
+        """Qui finiva il caso `&&`: la prova dichiarata non era eseguibile e il
+        sistema mandava un Coder a rimettere mano a del codice che stava bene.
+        Un Coder davanti a un fallimento corregge il codice — e' il suo
+        mestiere, ed e' la mossa sbagliata quando il guasto non e' li'."""
+        _scrive(ledger, "app.py")
+        d = AC.diagnostica(_task(error="qualcosa e' andato storto"),
+                           ledger.snapshot(), AC.Bilancio())
+        assert d.ruolo == "diagnosta"
+        assert "Non riparare" in d.istruzione
 
     def test_il_file_rotto_vince_sulla_verifica_fallita(self, ledger, tmp_path):
         """Se il file non compila, il test fallito ne e' la conseguenza: la

@@ -213,6 +213,9 @@ class DevSessionLedger:
         #: I comandi che chi ha assegnato il lavoro considera una prova.
         #: Vedi `declare_verification`.
         self._declared_verifications: set = set()
+        #: Le prove che l'agente ha contestato. Poche: se ne servono piu' di
+        #: cinque, il problema non e' il comando.
+        self._proposte_verifica: List[Dict[str, Any]] = []
         self._diffs: Dict[str, str] = {}
         self._searches: List[Dict[str, Any]] = []
         #: Cartelle e pattern gia' elencati: dicono che l'agente ha guardato
@@ -624,6 +627,11 @@ class DevSessionLedger:
             "controlla", "verifica se", "cerca", "trova", "quali sono", "come funziona",
             "audit", "review", "leggi", "mostra", "elenca", "overview", "panoramica",
             "valuta", "dimmi", "riassumi", "confronta", "differenze", "rapporto",
+            # Il Diagnosta legge, esegue e nomina la causa: non scrive un file,
+            # e senza queste parole il suo completamento verrebbe rifiutato
+            # perche' «non ha modificato niente». Non modificare e' il suo
+            # mestiere.
+            "diagnostica", "diagnosi",
         )
         modification_keywords = (
             "modifica", "crea", "aggiungi", "elimina", "rimuovi", "refactoring", "scrivi",
@@ -677,6 +685,81 @@ class DevSessionLedger:
         if any(d and d in c for d in self._declared_verifications):
             return True
         return looks_like_verification(command)
+
+    def prova_dichiarata_rifiutata(self) -> Optional[Dict[str, Any]]:
+        """La prova dichiarata che la shell si e' rifiutata di eseguire.
+
+        `None` quando non ce n'e': e' il caso normale.
+        """
+        with self._lock:
+            for voce in reversed(self._commands):
+                verifica = voce.get("verification") or {}
+                if verifica.get("kind") != "non_eseguito":
+                    continue
+                comando = str(voce.get("command") or "").strip().lower()
+                if any(d and d in comando for d in self._declared_verifications):
+                    return dict(voce)
+        return None
+
+    def proponi_verifica(self, comando: str, motivo: str = "") -> Dict[str, Any]:
+        """L'agente propone un'altra prova al posto di quella dichiarata.
+
+        Sul task `frontend` della Biblioteca il modello aveva capito tutto. Il
+        registro lo dimostra: riscrive il comando dichiarato in una forma che
+        PowerShell 5.1 accetta — la stessa che poi e' finita in
+        `adatta_alla_shell` — la esegue, ottiene zero. Poi torna a sbattere sul
+        comando dichiarato, perche' era quello il cancello, e il promemoria di
+        verifica glielo ripeteva ogni turno. Tre run, ventisei turni ciascuno.
+        Diagnosi giusta, nessun diritto di agirci sopra.
+
+        L'accettazione e' automatica **solo** quando la prova dichiarata e'
+        stata rifiutata dalla shell e quella proposta e' gia' stata eseguita
+        con successo qui dentro. Sono due condizioni verificabili a macchina, e
+        insieme coprono esattamente il caso che e' costato quegli ottanta
+        turni. In ogni altro caso la proposta si registra e si mostra a chi
+        guarda: cambiare da soli il proprio esame e' come non darlo.
+        """
+        proposto = str(comando or "").strip()
+        esito: Dict[str, Any] = {
+            "comando": proposto,
+            "motivo": str(motivo or "").strip()[:400],
+            "accettata": False,
+            "perche": "",
+            "at": time.time(),
+        }
+        if not proposto:
+            esito["perche"] = "nessun comando proposto"
+            return esito
+
+        rifiutata = self.prova_dichiarata_rifiutata()
+        if rifiutata is None:
+            esito["perche"] = (
+                "la prova dichiarata non e' stata rifiutata dalla shell: "
+                "puo' fallire perche' il lavoro non e' finito, e in quel caso "
+                "cambiarla non e' una diagnosi. Registrata per chi guarda.")
+        elif not any(str(c.get("command") or "").strip() == proposto
+                     for c in self.successful_commands()):
+            esito["perche"] = (
+                "il comando proposto non e' ancora stato eseguito con successo "
+                "qui dentro. Eseguilo, poi riproponilo: una prova che nessuno "
+                "ha visto girare non e' una prova.")
+        else:
+            esito["accettata"] = True
+            esito["sostituisce"] = str(rifiutata.get("command") or "")
+            esito["perche"] = (
+                "la prova dichiarata e' stata rifiutata dalla shell e questa e' "
+                "gia' passata: da ora vale questa.")
+            self.declare_verification(proposto)
+
+        with self._lock:
+            self._proposte_verifica.append(esito)
+            del self._proposte_verifica[:-5]
+        return esito
+
+    def proposte_di_verifica(self) -> List[Dict[str, Any]]:
+        """Le prove che l'agente ha contestato, accettate o no."""
+        with self._lock:
+            return [dict(p) for p in self._proposte_verifica]
 
     def failed_verifications(self) -> List[Dict[str, Any]]:
         """Le verifiche il cui esito piu' recente e' un fallimento.
@@ -737,6 +820,10 @@ class DevSessionLedger:
                 "intake": self._intake,
                 "requirements": [r.to_dict() for r in self._requirements.values()],
                 "session_memory": list(self._session_memory),
+                # Una prova contestata e' la scoperta piu' preziosa che un
+                # tentativo possa lasciare a quello dopo: dice che il muro non
+                # era il lavoro, era il metro.
+                "proposte_verifica": [dict(p) for p in self._proposte_verifica],
             }
 
     # -- serialization -------------------------------------------------------
@@ -975,6 +1062,20 @@ class DevSessionLedger:
                     if not c["ok"] and c.get("error"):
                         line += f"\n      -> {c['error']}"
                     parts.append(line)
+
+                # Lo stesso comando con esiti diversi. Sta qui, dentro il run,
+                # e non solo nella lezione per il tentativo dopo: accorgersene
+                # adesso vale un run intero. E' anche il ragionamento che un
+                # umano fa per primo — stesso comando, risposte diverse, allora
+                # non e' il codice — e che nessuno qui faceva, mentre i fatti
+                # per farlo erano gia' tutti scritti tre righe piu' su.
+                from core.harness.lezioni import incoerenze
+
+                note = incoerenze(self._commands)
+                if note:
+                    parts.append("\n**Attenzione — lo stesso comando ha dato "
+                                 "esiti diversi:**")
+                    parts.extend(f"- {n}" for n in note[:3])
 
             if self._decisions:
                 parts.append("\n**Decisioni prese:**")

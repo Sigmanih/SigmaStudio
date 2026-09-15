@@ -32,6 +32,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Generator, List, Optional
 
+from core.harness.lezioni import estrai, racconta
 from core.harness.workqueue import Voce, WorkQueue, get_queue
 from core.logger import get_logger
 
@@ -88,6 +89,13 @@ def _prompt_voce(voce: Voce, obiettivo_generale: str, queue_id: str = "") -> str
     lavoro costa una riga e vale tre run.
     """
     righe = [voce.title.strip()]
+    # Cio' che hanno scoperto i tentativi prima, subito dopo il compito e prima
+    # di tutto il resto: e' la prima domanda che si fa chi riprende un lavoro
+    # lasciato a meta', e finche' non c'era la risposta il tentativo dopo
+    # ripagava la stessa scoperta.
+    memoria = racconta(getattr(voce, "lezioni", []) or [])
+    if memoria:
+        righe += ["", memoria]
     dettagli = dict(voce.payload or {})
     verifica = str(dettagli.pop("verify", "") or "").strip()
     if dettagli:
@@ -126,6 +134,14 @@ def _prompt_voce(voce: Voce, obiettivo_generale: str, queue_id: str = "") -> str
             "",
             f"VERIFICA RICHIESTA: esegui `{verifica}` e chiudi solo quando "
             "esce con codice 0. E' la prova che ti verra' chiesta.",
+            "Se quel comando non e' ESEGUIBILE — la shell lo rifiuta, un "
+            "programma non esiste — non e' colpa del tuo lavoro e insistere "
+            "non serve: eseguine tu una versione che funzioni, falla passare, "
+            "poi proponila con",
+            '  tool:propose_verify {"command": "IL COMANDO CHE FUNZIONA", '
+            '"reason": "PERCHE QUELLO DICHIARATO NON PARTE"}',
+            "Vale solo per questo: un comando che parte e fallisce sta dicendo "
+            "che il lavoro non e' finito, e va ascoltato.",
         ]
     else:
         righe += [
@@ -468,6 +484,7 @@ def _esegui_voce(
             "obiettivo chiuso ma il lavoro non e' arrivato nell'albero: "
             "resta sul branch %s" % esito.branch
         )
+        _tramanda(coda, voce, esito, ultimo_stato)
         coda.fail(voce.id, esito.error)
     else:
         # Distinguere «non ha fatto niente» da «ha fatto e non l'ha
@@ -483,8 +500,24 @@ def _esegui_voce(
         else:
             esito.error = "nessuna modifica prodotta entro i turni disponibili"
         _annota_la_diagnosi(coda, voce, esito, ultimo_stato)
+        _tramanda(coda, voce, esito, ultimo_stato)
         coda.fail(voce.id, esito.error)
     return esito
+
+
+def _tramanda(coda: WorkQueue, voce: Voce, esito: EsitoVoce,
+              snapshot: Dict[str, Any]) -> None:
+    """Lascia sulla voce cio' che questo tentativo ha scoperto.
+
+    Va fatto **prima** di `fail`: dopo, la voce e' gia' tornata disponibile e
+    un altro lavoratore puo' averla presa. Accessorio per definizione — se
+    fallisce, il fallimento della voce resta valido — per questo non solleva.
+    """
+    try:
+        lezione = estrai(voce.attempts, snapshot, esito.error, esito.turns)
+        coda.annota_lezione(voce.id, lezione)
+    except Exception as exc:
+        log.warning("[Fanout] lezione non conservata per '%s': %s", voce.id, exc)
 
 
 def _e_stata_spezzata(coda: WorkQueue, voce: Voce, esito: EsitoVoce,

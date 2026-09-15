@@ -6,8 +6,11 @@ from core.harness.roles import RoleEngine, DEV_ROLES, DevRole
 
 
 def test_dev_roles_definition():
-    assert len(DEV_ROLES) == 6
-    for expected in ["architect", "designer", "coder", "reviewer", "tester", "devops"]:
+    # Il conteggio esatto si rompeva a ogni ruolo aggiunto senza che nulla
+    # fosse rotto davvero. Cio' che conta e' che i ruoli attesi ci siano e
+    # siano ben formati: l'elenco qui sotto e' il controllo, non il numero.
+    for expected in ["architect", "designer", "coder", "reviewer", "tester",
+                     "devops", "diagnosta"]:
         assert expected in DEV_ROLES
         role = DEV_ROLES[expected]
         assert isinstance(role, DevRole)

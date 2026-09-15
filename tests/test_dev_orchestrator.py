@@ -26,7 +26,11 @@ def test_orchestrator_initialization():
     assert status["phase"] == "init"
     assert status["mode"] == ExecutionMode.INTERACTIVE
     assert "roles" in status
-    assert len(status["roles"]["roles"]) == 6
+    # Non il numero — cresce a ogni ruolo nuovo — ma che l'orchestratore veda
+    # gli stessi ruoli che il registro dichiara.
+    from core.harness.roles import DEV_ROLES
+
+    assert set(status["roles"]["roles"]) == set(DEV_ROLES)
     assert "designer" in status["roles"]["roles"]
 
 

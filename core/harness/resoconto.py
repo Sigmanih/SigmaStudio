@@ -83,6 +83,17 @@ def _descrivi_verifica(cmd: Dict[str, Any]) -> str:
     return "- " + " ".join(pezzi)
 
 
+def _incoerenze(snapshot: Dict[str, Any]) -> List[str]:
+    """Gli stessi comandi con esiti diversi. Accessorio: non deve poter
+    impedire che il resoconto venga scritto."""
+    try:
+        from core.harness.lezioni import incoerenze
+
+        return incoerenze(list(snapshot.get("commands") or []))
+    except Exception:
+        return []
+
+
 def resoconto(
     snapshot: Optional[Dict[str, Any]],
     *,
@@ -145,6 +156,30 @@ def resoconto(
             "Nessun comando di verifica riconosciuto. Il lavoro non e' dimostrato.",
             "",
         ]
+
+    # Una prova contestata va detta a chi legge, accettata o no. Se accettata,
+    # perche' il metro di questo run non e' piu' quello che era stato scritto e
+    # chi giudica deve saperlo. Se respinta, perche' l'agente credeva che il
+    # metro fosse sbagliato: puo' avere torto, ed e' comunque cio' che serve
+    # sapere per capire il run.
+    proposte = snapshot.get("proposte_verifica") or []
+    if proposte:
+        righe += ["**La prova e' stata contestata**", ""]
+        for p in proposte[-3:]:
+            segno = "accettata" if p.get("accettata") else "respinta"
+            righe.append(f"- ({segno}) `{p.get('comando', '')}`")
+            motivo = str(p.get("motivo") or "").strip()
+            if motivo:
+                righe.append(f"    perche' l'agente dice: {motivo[:200]}")
+            if not p.get("accettata"):
+                righe.append(f"    respinta perche': {str(p.get('perche') or '')[:200]}")
+        righe.append("")
+
+    incoerenti = _incoerenze(snapshot)
+    if incoerenti:
+        righe += ["**Lo stesso comando ha dato esiti diversi**", ""]
+        righe += [f"- {n}" for n in incoerenti[:3]]
+        righe.append("")
 
     guasti = [c for c in snapshot.get("commands") or [] if not c.get("ok")]
     fallimenti = snapshot.get("failures") or []

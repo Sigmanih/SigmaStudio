@@ -281,18 +281,31 @@ def diagnostica(
             )
         return Diagnosi(livello=RINUNCIA, motivo=motivo + ", e non si puo' ripianificare")
 
-    # 6. Ha scritto qualcosa, e' fallito, e non si sa perche'. Si prova a
-    #    correggere una volta dicendo esattamente questo: fingere una
-    #    diagnosi sarebbe peggio che ammettere di non averla.
+    # 6. Ha scritto qualcosa, e' fallito, e le regole non sanno dire perche'.
+    #
+    #    Qui finiva il caso `&&`: la prova dichiarata non era eseguibile, il
+    #    sistema lo chiamava «fallito senza una causa riconoscibile» e mandava
+    #    un Coder a rimettere mano al codice. Il codice stava bene. Un Coder
+    #    davanti a un fallimento corregge il codice — e' il suo mestiere, ed e'
+    #    esattamente la mossa sbagliata quando il guasto non e' li'.
+    #
+    #    Il Diagnosta non ripara e non ha scritto niente: non ha investito
+    #    nell'ipotesi, e puo' guardare anche i livelli che un autore non
+    #    guarda — la prova, l'ambiente, il test. Le regole restano davanti a
+    #    lui perche' i casi netti costano zero e un modello costa un minuto:
+    #    lo si paga solo qui, dove nessuna regola ha saputo rispondere.
     if bilancio.puo_correggere():
         return Diagnosi(
             livello=CORREGGI,
             motivo="fallito senza una causa riconoscibile",
-            ruolo="coder",
+            ruolo="diagnosta",
             istruzione=(
-                f"Il task «{titolo}» e' fallito e il sistema non sa dire "
-                "perche'. Rileggi i file che hai toccato, esegui la verifica "
-                "del task e riporta cosa non torna prima di cambiare altro."
+                f"Diagnosi del task «{titolo}»: e' fallito e le regole non "
+                "sanno dire a che livello. Non riparare niente. Leggi i "
+                "comandi gia' eseguiti — se lo stesso comando ha dato esiti "
+                "diversi, parti da li' — riproduci il guasto, e di' il "
+                "livello: la prova, l'ambiente, il test, il codice, il "
+                "compito. Porta il file o il comando che lo dimostra."
             ),
             prove=[r for r in guasto.splitlines() if r.strip()][:2],
         )
