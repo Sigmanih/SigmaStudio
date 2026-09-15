@@ -304,6 +304,43 @@ def _usa_uid_gid() -> bool:
     return os.name != "nt" and hasattr(os, "getuid") and hasattr(os, "getgid")
 
 
+#: Comandi che vanno a prendere qualcosa dalla rete. Senza rete non possono
+#: riuscire, e l'unica cosa utile da dire e' proprio questa.
+_INSTALLATORI = (
+    "pip install", "pip3 install", "python -m pip install", "pip download",
+    "npm install", "npm i ", "npm ci", "yarn add", "yarn install", "pnpm add",
+    "pnpm install", "apt-get install", "apt install", "apk add", "dnf install",
+    "yum install", "cargo add", "cargo fetch", "go get", "gem install",
+    "composer install", "composer require", "poetry add", "poetry install",
+    "uv pip install", "uv add",
+)
+
+
+def _installa_qualcosa(comando: str) -> bool:
+    """Se il comando ha bisogno della rete per finire.
+
+    Si guarda l'inizio di ogni pezzo, non il testo intero: `echo pip install`
+    nomina un installatore e non installa niente, e bloccarlo sarebbe rifiutare
+    un comando che sarebbe riuscito.
+    """
+    try:
+        from core.harness.terminal import spezza_la_catena
+
+        pezzi = [p for _, p in spezza_la_catena(str(comando or ""))]
+    except Exception:
+        pezzi = [str(comando or "")]
+    minuti = []
+    for pezzo in pezzi:
+        for sotto in pezzo.replace("|", ";").split(";"):
+            sotto = " ".join(sotto.split()).lower()
+            # `cd qui && pip install x`: il `cd` non conta, quello dopo si'.
+            while sotto.startswith("cd ") and " " in sotto:
+                sotto = sotto.split(" ", 2)[2] if sotto.count(" ") > 1 else ""
+            if sotto:
+                minuti.append(sotto)
+    return any(sotto.startswith(i.strip()) for sotto in minuti for i in _INSTALLATORI)
+
+
 def _porta_occupata(porta: str) -> bool:
     """Se qualcuno sta gia' ascoltando su quella porta dell'host.
 
@@ -434,6 +471,27 @@ class EsecutoreContenitore:
                 stderr=(f"Sandbox richiesta ma non disponibile. {dettaglio}\n"
                         "Il comando NON e' stato eseguito: eseguirlo sull'host "
                         "avrebbe aggirato in silenzio la sandbox che hai chiesto."),
+            )
+
+        if not self.rete and _installa_qualcosa(comando):
+            # Senza rete l'installazione non puo' riuscire, mai. Lasciarla
+            # partire produce un errore DNS in fondo a trecento righe di
+            # ritentativi — «Temporary failure in name resolution» — che
+            # l'agente legge come un guasto del suo lavoro. E' successo dal
+            # vivo: `pip install fastapi uvicorn` in un contenitore con la rete
+            # spenta, e poi dieci turni a cercare il difetto nel codice.
+            return Esito(
+                success=False, returncode=1, dove="container",
+                stderr=(
+                    "Il comando installa dipendenze, ma questo contenitore non "
+                    "ha rete (`network: false` nella sandbox): nessuna "
+                    "installazione puo' riuscire, e non e' un difetto di cio' "
+                    "che hai scritto.\n"
+                    "Puoi: usare cio' che l'immagine ha gia'; scegliere "
+                    "un'immagine che contenga quello che ti serve; oppure "
+                    "chiedere a chi ha acceso la sandbox di accendere anche la "
+                    "rete. Ritentare identico non cambiera' niente."
+                ),
             )
 
         argv = self.argv(comando, cwd)

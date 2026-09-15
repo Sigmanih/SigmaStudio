@@ -514,6 +514,9 @@ class DevSessionLedger:
                     "at": time.time(),
                     "stdout": stdout_txt[:400],
                 }
+                dove = str(result.get("dove") or "").strip()
+                if dove:
+                    entry["dove"] = dove
                 if verif_dict:
                     entry["verification"] = verif_dict
                 if not entry["ok"]:
@@ -982,6 +985,45 @@ class DevSessionLedger:
     # -- prompt rendering ----------------------------------------------------
 
 
+    def _cambio_di_ambiente(self) -> str:
+        """Se i comandi hanno cambiato casa a meta' del lavoro, dirlo.
+
+        La sandbox si accende e si spegne mentre un run e' in corso, e
+        `carica_config()` rilegge il file a ogni comando: il cambio entra in
+        vigore subito. Dal vivo e' successo questo — un agente aveva costruito
+        un `.venv` di Windows, avviato il server con `Start-Process` e
+        interrogato con `Invoke-WebRequest`, tutto con esito zero. Poi la
+        sandbox si e' accesa, e da un comando all'altro:
+
+            .\\.venv\\Scripts\\python.exe -c ...   -> 127
+            Invoke-WebRequest -Uri ...          -> 127
+            pip install fastapi uvicorn         -> 1
+
+        Dentro un contenitore Linux quel `.venv` non esiste, PowerShell non
+        esiste, e il processo avviato prima e' rimasto sull'host. Nessuno
+        gliel'ha detto: dal suo punto di vista comandi che funzionavano cinque
+        minuti prima hanno smesso, e l'unica spiegazione disponibile era «ho
+        sbagliato qualcosa io».
+
+        Non si impedisce il cambio — chi accende la sandbox lo vuole — ma va
+        annunciato, perche' cio' che l'agente ha costruito fino a quel momento
+        e' appena diventato irraggiungibile.
+        """
+        luoghi = [str(c.get("dove") or "") for c in self._commands if c.get("dove")]
+        if len(set(luoghi)) < 2:
+            return ""
+        prima, adesso = luoghi[0], luoghi[-1]
+        if prima == adesso:
+            return ""
+        return (
+            f"\n**I comandi hanno cambiato casa:** all'inizio giravano "
+            f"«{prima}», adesso girano «{adesso}». Cio' che avevi costruito nel "
+            "posto di prima — ambienti virtuali, dipendenze installate, "
+            "processi avviati — **li' non c'e'**, e i comandi propri di quel "
+            "sistema non esistono. Non e' un tuo errore e rifare identico non "
+            "aiuta: ricostruisci qui cio' che ti serve, e se non puoi, dillo."
+        )
+
     def _avviso_sulla_radice(self) -> str:
         """Dire all'agente dove sta lavorando, quando il dove e' delicato.
 
@@ -1113,6 +1155,10 @@ class DevSessionLedger:
                     parts.append("\n**Attenzione — lo stesso comando ha dato "
                                  "esiti diversi:**")
                     parts.extend(f"- {n}" for n in note[:3])
+
+                cambio = self._cambio_di_ambiente()
+                if cambio:
+                    parts.append(cambio)
 
             if self._decisions:
                 parts.append("\n**Decisioni prese:**")
