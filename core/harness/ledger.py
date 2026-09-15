@@ -678,9 +678,19 @@ class DevSessionLedger:
             self._declared_verifications.add(pulito.lower())
 
     def counts_as_verification(self, command: str) -> bool:
-        """Se questo comando, in questo run, vale come prova."""
+        """Se questo comando, in questo run, vale come prova.
+
+        Nemmeno una prova **dichiarata** vale, se guarda un file invece di
+        eseguire il software: chi ha scritto la voce puo' sbagliarsi, e un
+        `grep -q 'demo' src/App.jsx` passa anche su una funzione che nessuno
+        chiama. Dichiarare come si dimostra una cosa non rende dimostrabile
+        cio' che non lo e'. L'agente ha una via d'uscita — `propose_verify` —
+        e qui accanto c'e' il caso che la apre.
+        """
         c = str(command or "").strip().lower()
         if not c:
+            return False
+        if prova_debole(command):
             return False
         if any(d and d in c for d in self._declared_verifications):
             return True
@@ -731,12 +741,32 @@ class DevSessionLedger:
             esito["perche"] = "nessun comando proposto"
             return esito
 
+        # Due porte, e una sola delle due va aperta a ogni proposta.
+        #
+        # La prima: la prova dichiarata non e' eseguibile — la shell l'ha
+        # rifiutata. La seconda: e' eseguibile ma non prova niente, perche'
+        # guarda un file invece di eseguire il software. Chi ha scritto la
+        # voce puo' sbagliarsi in tutt'e due i modi, e in tutt'e due l'agente
+        # aveva ragione e non poteva farci niente.
         rifiutata = self.prova_dichiarata_rifiutata()
+        debole = ""
         if rifiutata is None:
+            for dichiarata in self._declared_verifications:
+                if prova_debole(dichiarata):
+                    debole = dichiarata
+                    break
+
+        if rifiutata is None and not debole:
             esito["perche"] = (
-                "la prova dichiarata non e' stata rifiutata dalla shell: "
-                "puo' fallire perche' il lavoro non e' finito, e in quel caso "
-                "cambiarla non e' una diagnosi. Registrata per chi guarda.")
+                "la prova dichiarata non e' stata rifiutata dalla shell e "
+                "mette in moto qualcosa: puo' fallire perche' il lavoro non e' "
+                "finito, e in quel caso cambiarla non e' una diagnosi. "
+                "Registrata per chi guarda.")
+        elif prova_debole(proposto):
+            esito["perche"] = (
+                "anche quella che proponi guarda un file invece di eseguire "
+                "il software: sostituirebbe una prova che non prova con "
+                "un'altra uguale.")
         elif not any(str(c.get("command") or "").strip() == proposto
                      for c in self.successful_commands()):
             esito["perche"] = (
@@ -745,10 +775,17 @@ class DevSessionLedger:
                 "ha visto girare non e' una prova.")
         else:
             esito["accettata"] = True
-            esito["sostituisce"] = str(rifiutata.get("command") or "")
-            esito["perche"] = (
-                "la prova dichiarata e' stata rifiutata dalla shell e questa e' "
-                "gia' passata: da ora vale questa.")
+            if rifiutata is not None:
+                esito["sostituisce"] = str(rifiutata.get("command") or "")
+                esito["perche"] = (
+                    "la prova dichiarata e' stata rifiutata dalla shell e questa "
+                    "e' gia' passata: da ora vale questa.")
+            else:
+                esito["sostituisce"] = debole
+                esito["perche"] = (
+                    "la prova dichiarata guardava un file invece di eseguire il "
+                    "software; questa mette in moto qualcosa ed e' gia' passata: "
+                    "da ora vale questa.")
             self.declare_verification(proposto)
 
         with self._lock:
@@ -1122,6 +1159,65 @@ MUTATION_HINTS = (
     "set-content", "out-file", "add-content", "new-item", "copy-item",
     "shutil.", "os.remove", "os.rename", "mkdir", "touch ",
 )
+
+
+#: Comandi che guardano un file invece di eseguire il software. Cercare una
+#: parola in un sorgente dice che quella parola c'e', e nient'altro.
+#:
+#: Il caso vero: gli agenti si sono scritti da soli una voce «aggiungi
+#: l'accesso demo» con questa prova —
+#:
+#:     cd frontend && npm run build && grep -q 'demo' src/App.jsx
+#:
+#: La build e' una prova vera, quindi quella catena regge. Ma da sola
+#: `grep -q 'demo'` sarebbe passata anche su una funzione `inviaDemo` che
+#: nessun bottone chiama: codice morto, cancello verde. Questo elenco serve a
+#: riconoscere le prove che non provano.
+_SGUARDI = (
+    "grep", "findstr", "select-string", "sls ", "rg ", "ag ",
+    "test -f", "test -d", "test -e", "test-path", "ls ", "dir ",
+    "cat ", "type ", "head ", "tail ", "wc ", "echo ", "printf ",
+    "stat ", "file ", "get-content", "get-childitem", "measure-object",
+)
+
+
+def prova_debole(comando: str) -> str:
+    """Perche' questo comando non dimostra che il software funziona, o "".
+
+    Si giudica la catena intera: `npm run build && grep -q x file` va bene,
+    perche' un pezzo esegue davvero. `grep -q x file` da solo no. Il criterio
+    e' «qualcosa e' stato messo in moto», non «il comando e' complicato».
+    """
+    testo = str(comando or "").strip()
+    if not testo:
+        return "nessun comando"
+    try:
+        from core.harness.terminal import spezza_la_catena
+
+        pezzi = [p for _, p in spezza_la_catena(testo)]
+    except Exception:
+        pezzi = [testo]
+    # I pezzi vanno divisi anche sulle pipe e sui `;`: `grep x f | wc -l` resta
+    # uno sguardo, e `npm test; grep x f` invece esegue.
+    minuti: List[str] = []
+    for pezzo in pezzi:
+        for sotto in pezzo.replace("|", ";").split(";"):
+            if sotto.strip():
+                minuti.append(sotto.strip().lower())
+    if not minuti:
+        return "nessun comando"
+
+    for sotto in minuti:
+        # Un `cd` non guarda e non esegue: non conta ne' a favore ne' contro.
+        if sotto.startswith("cd ") or sotto == "cd":
+            continue
+        if not any(sotto.startswith(s.strip()) or f" {s.strip()}" in f" {sotto}"
+                   for s in _SGUARDI):
+            return ""   # almeno un pezzo mette in moto qualcosa
+    return (
+        "guarda un file invece di eseguire il software: dice che una stringa "
+        "c'e', non che funziona. Passerebbe anche su codice mai chiamato."
+    )
 
 
 def looks_like_verification(command: str) -> bool:

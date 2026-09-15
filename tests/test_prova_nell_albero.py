@@ -117,7 +117,7 @@ class TestEDavveroCollegata:
 
         sorgente = inspect.getsource(fanout._esegui_voce)
         i = sorgente.index("riprova_nell_albero")
-        dopo = sorgente[i:i + 900]
+        dopo = sorgente[i:i + 1600]
         assert "esito.ok = False" in dopo
         assert "coda.fail" in dopo, "senza questo la coda la segna fatta lo stesso"
 

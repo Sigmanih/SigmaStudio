@@ -1287,6 +1287,66 @@ _ESEMPI_DI_CHIAMATA = {
 _AVVISO_CONTENUTO = 'Il file intero sta in `content`, su **una sola riga**: ogni a capo si scrive \\n e ogni virgoletta \\". Un a capo vero dentro la stringa e\' l\'errore piu\' frequente, e rende illeggibile tutto il blocco.'
 
 
+#: Quanti vicini si nominano in un avviso. Oltre tre l'avviso smette di essere
+#: un'informazione e diventa un elenco.
+_MAX_VICINI = 3
+
+
+def _gia_fatto(voce: Any, workspace_root: str) -> List[str]:
+    """Avvisa quando una voce vuole creare qualcosa che esiste gia' in altra forma.
+
+    Il pianificatore vede i file, non la storia. Lasciati liberi di pianificare,
+    gli agenti si sono scritti una voce «scrivi backend/test.js» mentre nella
+    stessa cartella c'erano gia' `index.test.js`, `prestiti.test.js` e
+    `dati.test.js` con tredici test verdi. Ne sono nati sei file di test dove
+    ce n'erano tre, e uno — `models.test.js` — con dentro zero test.
+
+    Non si rifiuta niente: a volte un file nuovo accanto a fratelli simili e'
+    esattamente cio' che serve. Ma va detto adesso, con i nomi dei vicini,
+    perche' e' il momento in cui costa una riga cambiare idea.
+    """
+    import os
+
+    if not isinstance(voce, dict):
+        return []
+    fuori: List[str] = []
+    for grezzo in (voce.get("files") or []):
+        percorso = str(grezzo or "").strip().replace("\\", "/")
+        if not percorso:
+            continue
+        try:
+            intero = resolve_workspace_path(percorso, workspace_root)
+        except FuoriDalWorkspace:
+            continue
+        if os.path.exists(intero):
+            continue          # non lo sta creando: lo sta modificando
+        cartella, nome = os.path.split(intero)
+        if not os.path.isdir(cartella):
+            continue
+        radice, estensione = os.path.splitext(nome)
+        if not estensione:
+            continue
+        # I vicini sono i file con la stessa estensione che condividono un
+        # pezzo di nome: `test.js` accanto a `index.test.js` e `dati.test.js`.
+        chiavi = [p for p in radice.replace("-", ".").replace("_", ".").split(".") if len(p) > 2]
+        vicini = []
+        for esistente in sorted(os.listdir(cartella)):
+            if esistente == nome or not esistente.endswith(estensione):
+                continue
+            base = esistente[: -len(estensione)].lower()
+            if any(k.lower() in base for k in chiavi):
+                vicini.append(esistente)
+        if vicini:
+            elenco = ", ".join(vicini[:_MAX_VICINI])
+            resto = f" (e altri {len(vicini) - _MAX_VICINI})" if len(vicini) > _MAX_VICINI else ""
+            fuori.append(
+                f"la voce '{voce.get('id', '?')}' vuole creare `{percorso}`, ma "
+                f"li' accanto ci sono gia' {elenco}{resto}. Guardali prima: se "
+                "fanno gia' quel lavoro, questa voce e' lavoro doppio."
+            )
+    return fuori
+
+
 def _esempio_di_chiamata(tool_name: str) -> str:
     """Come si scrive questa chiamata, con un esempio che c'entra qualcosa."""
     corpo = _ESEMPI_DI_CHIAMATA.get(tool_name, '{"path": "..."}')
@@ -1828,6 +1888,28 @@ def _execute_admin_tool_impl(
                     "viene dopo, te compreso se ne resta una libera."
                 ),
             }
+
+        # Una prova che guarda un file invece di eseguire il software va detta
+        # adesso, a chi sta pianificando, non fra mezz'ora a chi sta lavorando.
+        # Gli agenti si sono scritti da soli una voce con `grep -q 'demo'
+        # src/App.jsx` come prova: sarebbe passata anche su una funzione che
+        # nessun bottone chiama. Correggerla qui costa una riga; scoprirlo a
+        # valle costa un run.
+        from core.harness.ledger import prova_debole
+
+        for voce in voci:
+            if not isinstance(voce, dict):
+                continue
+            verifica = str(voce.get("verify") or "").strip()
+            if verifica:
+                motivo = prova_debole(verifica)
+                if motivo:
+                    avvisi.append(
+                        f"la voce '{voce.get('id', '?')}' si verifica con "
+                        f"`{verifica[:80]}`, che {motivo} Dalle una prova che "
+                        "esegua: un test, una build, una chiamata al servizio."
+                    )
+            avvisi.extend(_gia_fatto(voce, workspace_root))
 
         aggiunte = coda.add_many(voci, avvisi=avvisi)
         stato = coda.progress()

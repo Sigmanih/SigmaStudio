@@ -497,10 +497,13 @@ def _esegui_voce(
     # patch verso l'albero falliva, e la coda le ha segnate fatte.
     esito.ok = raggiunto and not non_applicato["si"]
     esito.branch = esito.branch or ("sigma-run/" + sessione)
-    if esito.ok:
-        # Il cancello e' passato nel worktree. Se accendeva qualcosa, quel
-        # qualcosa e' nato dentro una cartella temporanea: la stessa prova
-        # rifatta qui dice se regge anche dove il lavoro vive.
+    # La riprova serviva anche quando l'obiettivo e' stato chiuso ma la patch
+    # non e' arrivata nell'albero: era il caso di `online`, e la riprova stava
+    # solo nel ramo del successo, quindi non e' mai scattata. Chiedere «regge
+    # anche qui?» ha senso ogni volta che l'agente dice di aver finito — se il
+    # lavoro non e' arrivato, la risposta e' no, e dirlo e' meglio che
+    # lasciarlo indovinare a chi legge.
+    if raggiunto:
         conferma = None
         try:
             conferma = riprova_nell_albero(verifica, workspace_root, should_cancel)
@@ -508,13 +511,18 @@ def _esegui_voce(
             log.warning("[Fanout] riprova nell'albero non riuscita: %s", exc)
         if conferma is not None:
             esito.riprova = conferma
-            if not conferma["ok"]:
+            if not conferma["ok"] and esito.ok:
+                # Il lavoro e' arrivato nell'albero, e li' la prova non regge:
+                # cio' che il run aveva acceso stava nella sua cartella
+                # temporanea. Quando invece la patch non era arrivata, la
+                # causa e' quella e va lasciata dire al ramo apposta, piu' sotto.
                 esito.ok = False
                 esito.error = (
                     "la prova passa nel worktree ma non nell'albero vero: %s. "
                     "Cio' che il run ha acceso era ancorato alla cartella "
                     "temporanea del run, e non e' sopravvissuto." % conferma["summary"]
                 )
+                _tramanda(coda, voce, esito, ultimo_stato)
                 coda.fail(voce.id, esito.error)
                 return esito
     if esito.ok:

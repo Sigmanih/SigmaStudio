@@ -92,12 +92,24 @@ class TestQuandoNonSiAccetta:
         assert "rifiutata dalla shell" in esito["perche"]
 
     def test_se_la_proposta_non_e_mai_stata_eseguita(self, tmp_path):
-        """Altrimenti basterebbe proporre `echo ok`."""
+        """Una prova che nessuno ha visto girare non e' una prova."""
         L = _ledger(tmp_path)
         _la_shell_rifiuta(L)
-        esito = L.proponi_verifica("echo ok", "cosi' passa")
+        esito = L.proponi_verifica("cd frontend && npm run build", "questa funziona")
         assert esito["accettata"] is False
         assert "non e' ancora stato eseguito" in esito["perche"]
+
+    def test_ne_si_baratta_una_prova_debole_con_un_altra(self, tmp_path):
+        """Altrimenti basterebbe proporre `echo ok`: eseguirlo e' facile, e
+        dimostra esattamente quanto dimostrava quella rifiutata."""
+        L = _ledger(tmp_path)
+        _la_shell_rifiuta(L)
+        L.record_tool("terminal", {"command": "echo ok"},
+                      {"tool": "terminal", "success": True, "returncode": 0,
+                       "command": "echo ok"})
+        esito = L.proponi_verifica("echo ok", "cosi' passa")
+        assert esito["accettata"] is False
+        assert "guarda un file invece di eseguire" in esito["perche"]
 
     def test_se_la_proposta_e_stata_eseguita_e_fallita(self, tmp_path):
         L = _ledger(tmp_path)
