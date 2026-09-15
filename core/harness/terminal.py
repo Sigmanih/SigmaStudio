@@ -7,6 +7,7 @@ lifecycle management using native shells (PowerShell on Windows, Bash on POSIX).
 """
 
 import os
+import shutil
 import sys
 import time
 import queue
@@ -87,13 +88,51 @@ def spezza_la_catena(comando: str) -> List[tuple]:
     return [(op, testo) for op, testo in pezzi if testo]
 
 
+# ------------------------------------------------- alias che non sono quelli
+# In PowerShell `curl` non e' curl: e' un alias di `Invoke-WebRequest`, che non
+# conosce `-s`, `-o`, `-w`. Il guaio non e' che fallisca — e' *come* fallisce.
+#
+#     curl -s http://localhost:8080/api/opere
+#     -> Invoke-WebRequest : parametri obbligatori mancanti: Uri
+#
+# Codice 1, nessuna richiesta partita, e un agente che legge «la prova e'
+# fallita» conclude che il sito non risponde. Poi va a cercare il guasto nel
+# sito, che sta benissimo. E' successo con la voce `07_docker_online`, scritta
+# dall'agente stesso con `curl -s` dentro.
+#
+# Su Windows 10 e successivi il vero `curl.exe` c'e', in System32: basta
+# chiamarlo per nome intero e l'alias non entra in mezzo. Si riscrive solo
+# quando l'invocazione e' in stile POSIX — un trattino singolo — perche' chi
+# scrive `curl -Uri ...` sta chiamando la cmdlet apposta.
+_ALIAS_INGANNEVOLI = ("curl", "wget")
+
+
+def _scavalca_alias(pezzo: str) -> str:
+    """`curl -s ...` diventa `curl.exe -s ...`, se il programma vero esiste."""
+    testa = pezzo.lstrip()
+    for alias in _ALIAS_INGANNEVOLI:
+        if not testa.startswith(alias + " "):
+            continue
+        resto = testa[len(alias):]
+        if " -" not in resto[:resto.find(" ", 1) + 40] and not resto.lstrip().startswith("-"):
+            return pezzo          # nessun flag: non si sta imitando POSIX
+        vero = shutil.which(alias + ".exe")
+        if not vero:
+            return pezzo          # niente da scavalcare: meglio lasciarlo com'e'
+        spazio = pezzo[:len(pezzo) - len(testa)]
+        return spazio + alias + ".exe" + resto
+    return pezzo
+
+
 def adatta_alla_shell(comando: str) -> str:
     """Il comando come la shell di questa macchina lo sa leggere.
 
-    Su POSIX non c'e' niente da fare. Su Windows la catena diventa esplicita:
-    un interruttore che dice se l'ultimo pezzo e' andato bene, e ogni pezzo
-    successivo sotto la sua condizione. E' la stessa semantica da sinistra a
-    destra di `&&`/`||`, scritta in modo che PowerShell 5.1 la accetti.
+    Su POSIX non c'e' niente da fare. Su Windows due cose: gli alias che
+    sembrano programmi e non lo sono (`curl`) vengono scavalcati, e la catena
+    `&&`/`||` diventa esplicita — un interruttore che dice se l'ultimo pezzo e'
+    andato bene, e ogni pezzo successivo sotto la sua condizione. E' la stessa
+    semantica da sinistra a destra, scritta in modo che PowerShell 5.1 la
+    accetti.
 
     `$?` va letto *prima* di ogni altra cosa, perche' anche un assegnamento lo
     riscrive; `$LASTEXITCODE` lo muovono solo i programmi veri, e si parte da
@@ -101,9 +140,9 @@ def adatta_alla_shell(comando: str) -> str:
     """
     if sys.platform != "win32":
         return comando
-    pezzi = spezza_la_catena(comando)
+    pezzi = [(op, _scavalca_alias(testo)) for op, testo in spezza_la_catena(comando)]
     if len(pezzi) < 2:
-        return comando
+        return pezzi[0][1] if pezzi else comando
 
     esito = "$sigma_esito = $?; $sigma_uscita = $LASTEXITCODE; "             "$sigma_ok = ($sigma_esito -and $sigma_uscita -eq 0)"
     righe = ["$global:LASTEXITCODE = 0", "$sigma_ok = $true", "$sigma_uscita = 0",

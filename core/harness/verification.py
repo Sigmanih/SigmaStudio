@@ -106,6 +106,16 @@ _NON_ESEGUITO = (
     "non è riconosciuto come nome di cmdlet",
     "command not found",
     "syntax error near unexpected token",
+    # Una cmdlet che rifiuta gli argomenti: chi ha scritto il comando credeva
+    # di chiamare un programma. `curl -s http://...` in PowerShell finisce su
+    # `Invoke-WebRequest`, che non conosce `-s`, e muore senza fare la
+    # richiesta. Codice 1 e nessun contatto col mondo: leggerlo come «il sito
+    # non risponde» manda a cercare un guasto in un sito che sta benissimo.
+    "parameterbindingexception",
+    "parameterbindingvalidationexception",
+    "missingmandatoryparameter",
+    "namedparameternotfound",
+    "positionalparameternotfound",
 )
 
 

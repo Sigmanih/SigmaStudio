@@ -74,6 +74,36 @@ class EsitoVoce:
                 "branch": self.branch, "riprova": self.riprova}
 
 
+def isolamento_possibile(radice: str) -> bool:
+    """Se questo progetto puo' essere lavorato in un worktree isolato.
+
+    Quasi sempre si', ed e' cio' che permette a piu' agenti di scrivere nello
+    stesso momento. Ma un worktree e' una **cartella diversa**, e per certi
+    lavori quella differenza e' fatale.
+
+    Il caso vero: la voce `online` della Biblioteca doveva tirare su lo stack
+    con `docker compose`, ed e' fallita tre volte di fila. Compose si ancora
+    alla cartella da cui parte — ci monta i volumi, da li' deriva il nome del
+    progetto — quindi lo stack nasceva dentro `var/dev_worktrees/...`, e appena
+    quella cartella spariva l'API rispondeva 500 con il volume di `dati.json`
+    puntato nel vuoto. In piu' i `container_name` fissi collidevano fra un
+    tentativo e l'altro: «Conflict. The container name /biblioteca-backend is
+    already in use».
+
+    Non e' un difetto di Docker ne' dell'agente: l'isolamento e' una scelta con
+    un prezzo, e per un progetto il cui prodotto **e'** uno stack acceso quel
+    prezzo e' che il prodotto non puo' esistere.
+
+    Si spegne per progetto, in `sandbox.json`, con la ragione scritta accanto —
+    come si fa gia' per `mode: host`. Chi lo spegne sa cosa perde: gli agenti
+    scrivono nell'albero vero, quindi uno alla volta.
+    """
+    from core.harness.esecutori import _config_del_progetto
+
+    config = _config_del_progetto(radice) or {}
+    return bool(config.get("isola", True))
+
+
 def _prompt_voce(voce: Voce, obiettivo_generale: str, queue_id: str = "") -> str:
     """Il compito di un singolo lavoratore.
 
@@ -190,6 +220,16 @@ def run_queue(
     coda = get_queue(queue_id, goal=goal)
     obiettivo = coda.goal or goal
     numero = max(1, min(int(workers or LAVORATORI_PREDEFINITI), LAVORATORI_MASSIMI))
+    if numero > 1 and not isolamento_possibile(workspace_root):
+        # Senza worktree si scrive tutti nello stesso albero: due agenti in
+        # parallelo li' dentro non e' parallelismo, e' corruzione. Chi ha
+        # spento l'isolamento ha accettato di andare piano, non di rompere.
+        log.info("[Fanout] isolamento spento per questo progetto: da %d "
+                 "lavoratori a 1", numero)
+        yield {"type": "status",
+               "text": (f"Isolamento spento in sandbox.json: si lavora "
+                        f"nell'albero vero, un agente alla volta (erano {numero}).")}
+        numero = 1
 
     eventi: "list[Dict[str, Any]]" = []
     lucchetto_eventi = threading.Lock()
@@ -389,8 +429,9 @@ def _esegui_voce(
             session_id=sessione,
             should_cancel=should_cancel,
             # Ogni lavoratore nel proprio worktree: e' cio' che rende sicuro
-            # farli scrivere nello stesso momento.
-            isolate_worktree=True,
+            # farli scrivere nello stesso momento. Tranne dove il progetto dice
+            # di no, e la ragione e' seria — vedi `isolamento_possibile`.
+            isolate_worktree=isolamento_possibile(workspace_root),
             # Nessuna revisione per run: N approvazioni in parallelo non le da'
             # nessuno. La revisione e' la richiesta che raccoglie tutto.
             review_run=False,
