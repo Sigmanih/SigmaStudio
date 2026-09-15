@@ -3011,6 +3011,21 @@ def _stream_agent_turn_impl(
                     "type": "pipeline_update",
                     "tasks": result.get("tasks", [])
                 }
+            elif t_name in ("queue_add", "add_to_queue", "enqueue", "coda"):
+                # Il piano che l'agente si e' scritto, e gli avvisi che la coda
+                # gli ha dato. Finivano solo nella sua osservazione: chi guarda
+                # da fuori vedeva il lavoro partire senza sapere in cosa fosse
+                # stato diviso ne' che due voci dichiaravano lo stesso file.
+                # Quando il piano lo scrivono loro, il piano e' la cosa piu'
+                # importante da mostrare.
+                if result.get("success"):
+                    yield {
+                        "type": "queue_updated",
+                        "queue_id": result.get("queue_id", ""),
+                        "added": result.get("added", 0),
+                        "warnings": result.get("warnings") or [],
+                        "progress": result.get("progress") or {},
+                    }
             elif t_name in ("propose_verify", "contesta_verifica", "proponi_verifica"):
                 if result.get("success"):
                     esito = ledger.proponi_verifica(
