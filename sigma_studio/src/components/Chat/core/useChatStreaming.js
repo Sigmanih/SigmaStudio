@@ -93,6 +93,8 @@ export function useChatStreaming({
   fetchOllamaModels,
   refreshConfig,
   activeManifesto,
+  devModeEnabled = false,
+  workspaceRoot = '',
 }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -392,6 +394,52 @@ export function useChatStreaming({
 
           try {
             const p = JSON.parse(raw);
+
+            // Normalizzazione eventi provenienti dall'Harness Developer Lab (/api/developer/agent/chat)
+            if (p.type === 'token' && p.token) {
+              p.token = p.token;
+            }
+            if (p.type === 'thinking' && p.thought) {
+              p.thinking = p.thought;
+            }
+            if (p.type === 'status' && p.text) {
+              p.model_status = p.text;
+            }
+            if (p.type === 'tool_start') {
+              const startAct = {
+                type: 'mcp_tool_call',
+                tool: p.tool,
+                params: p.params,
+                status: 'running',
+                message: `⚙️ ${p.tool}...`
+              };
+              streamToolCalls = [...streamToolCalls, startAct];
+              streamActionsLog = [...streamActionsLog, startAct];
+            }
+            if (p.type === 'tool_result') {
+              const resAct = {
+                type: 'mcp_tool_call',
+                tool: p.tool,
+                result: p.result,
+                status: p.result?.success !== false ? 'success' : 'error',
+                message: p.result?.message || `Eseguito ${p.tool}`
+              };
+              streamToolCalls = [...streamToolCalls, resAct];
+              streamActionsLog = [...streamActionsLog, resAct];
+            }
+            if (p.type === 'file_created' || p.type === 'file_modified') {
+              const fileAct = {
+                path: p.path,
+                type: p.type === 'file_created' ? 'create_file' : 'edit_file',
+                diff: p.diff
+              };
+              streamCreatedFiles = [...streamCreatedFiles, fileAct];
+              streamActionsLog = [...streamActionsLog, fileAct];
+            }
+            if (p.type === 'done' || p.type === 'run_completed') {
+              streamDone = true;
+            }
+
             if (p.truncated || p.done_reason === 'length') {
               wasTruncated = true;
             }
@@ -903,21 +951,48 @@ export function useChatStreaming({
       })();
 
       const useStream = !isPlan;
-      const body = {
-        message: messageText.trim(), bot_name: effectiveModel, model: effectiveModel,
-        model_provider: routing.provider, model_endpoint: routing.endpoint, model_api_url: routing.api_url,
-        allow_actions: true, planning_mode: isPlan, stream: useStream,
-        timeout: quickConfig.timeout || 300, web_search: webSearch,
-        user_name: userProfile.name || 'Utente',
-        user_title: userProfile.title || '',
-        user_profile: userProfile,
-        context: { open_files: contextFiles, history: updatedMessages.slice(-10).map(m => ({ role: m.role, content: m.content })) },
-        uploaded_files: pcFiles.length > 0 ? pcFiles : undefined
-      };
-      if (selectedManifestoPath) body.manifesto_path = selectedManifestoPath;
-      const res = await fetch('/api/chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal
-      });
+      let res;
+      if (devModeEnabled) {
+        const devBody = {
+          messages: updatedMessages.map(m => ({
+            role: m.role,
+            content: m.content,
+            attachments: m.attachments
+          })),
+          pipeline: [],
+          workspace_root: workspaceRoot || undefined,
+          model: effectiveModel,
+          auto_execute_tools: true,
+          context_tokens: quickConfig.context_tokens || 32768,
+          session_id: currentSessionId,
+          review_writes: false,
+          isolate_worktree: false,
+          review_run: false
+        };
+        res = await fetch('/api/developer/agent/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(devBody),
+          signal: controller.signal
+        });
+      } else {
+        const body = {
+          message: messageText.trim(), bot_name: effectiveModel, model: effectiveModel,
+          model_provider: routing.provider, model_endpoint: routing.endpoint, model_api_url: routing.api_url,
+          allow_actions: true, planning_mode: isPlan, stream: useStream,
+          timeout: quickConfig.timeout || 300, web_search: webSearch,
+          user_name: userProfile.name || 'Utente',
+          user_title: userProfile.title || '',
+          user_profile: userProfile,
+          context: { open_files: contextFiles, history: updatedMessages.slice(-10).map(m => ({ role: m.role, content: m.content })) },
+          uploaded_files: pcFiles.length > 0 ? pcFiles : undefined
+        };
+        if (selectedManifestoPath) body.manifesto_path = selectedManifestoPath;
+        res = await fetch('/api/chat', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal
+        });
+      }
+
       const contentType = res.headers.get("content-type") || "";
       if (res.ok && contentType.includes("text/event-stream")) {
         await handleStreamResponse(res, currentSessionId, 0, messageText);

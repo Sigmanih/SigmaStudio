@@ -320,6 +320,18 @@ export default function AgentMessage({
     }
   };
 
+  const handleOpenInDevStudio = (rawPath) => {
+    const clean = getCleanPathStr(rawPath);
+    if (!clean) return;
+    try {
+      localStorage.setItem('sigma_dev_pending_open_file', clean);
+    } catch (e) {}
+    window.dispatchEvent(new CustomEvent('sigma_dev_open_file', { detail: { path: clean } }));
+    if (openTab) {
+      openTab({ name: 'Developer Studio' }, 'developer');
+    }
+  };
+
   const handleImagePreviewClick = (imgUrl) => {
     setLightboxSrc(imgUrl);
   };
@@ -990,6 +1002,13 @@ export default function AgentMessage({
                                   color: isImg ? '#7c5bf0' : isViz ? '#3fb950' : 'var(--primary)', fontSize: '0.7rem', padding: '3px 10px',
                                   borderRadius: '4px', cursor: 'pointer', fontWeight: '600'
                                 }}>{isImg ? 'Visualizza 🖼️' : isViz ? 'Anteprima 👁️' : 'Visualizza 📄'}</button>
+                                {!isImg && (
+                                  <button onClick={() => handleOpenInDevStudio(pStr)} title="Apri nell'IDE Developer Studio" style={{
+                                    background: 'rgba(0,210,255,0.08)', border: '1px solid rgba(0,210,255,0.25)',
+                                    color: '#00d2ff', fontSize: '0.7rem', padding: '3px 8px',
+                                    borderRadius: '4px', cursor: 'pointer', fontWeight: '600'
+                                  }}>Dev Studio 🛠️</button>
+                                )}
                               </div>
                             </div>
                           </div>);
@@ -1023,6 +1042,11 @@ export default function AgentMessage({
                                     color: isActViz ? '#3fb950' : 'var(--primary)', fontSize: '0.65rem', padding: '2px 8px',
                                     borderRadius: '4px', cursor: 'pointer'
                                   }}>{isActViz ? 'Anteprima 👁️' : 'Visualizza 📄'}</button>)}
+                                  {actPathStr && !isActViz && (<button onClick={() => handleOpenInDevStudio(actPathStr)} title="Apri nell'IDE Developer Studio" style={{
+                                    background: 'rgba(0,210,255,0.08)', border: '1px solid rgba(0,210,255,0.25)',
+                                    color: '#00d2ff', fontSize: '0.65rem', padding: '2px 8px',
+                                    borderRadius: '4px', cursor: 'pointer', fontWeight: '600'
+                                  }}>Dev Studio 🛠️</button>)}
                                   {hasDiff && (<button onClick={() => toggleDiff(diffKey)} style={{
                                     background: 'rgba(0,210,255,0.1)', border: '1px solid rgba(0,210,255,0.25)',
                                     color: 'var(--primary)', fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer'

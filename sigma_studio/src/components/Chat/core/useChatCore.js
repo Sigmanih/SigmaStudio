@@ -14,9 +14,13 @@ import { useChatSessions } from './useChatSessions';
 import { useChatConfig } from './useChatConfig';
 import { useChatStreaming } from './useChatStreaming';
 import { useMcpAutoApprove } from './useMcpAutoApprove';
+import { useChatDevMode } from './useChatDevMode';
 
 export default function useChatCore(extraProps = {}) {
   const { openFiles: externalOpenFiles, onTasksUpdated, addToast } = extraProps;
+  
+  // Dev Mode State (Developer Lab Harness integration)
+  const devModeHook = useChatDevMode();
   
   // Speaker Agente State (TTS)
   const [speakerEnabled, setSpeakerEnabledState] = useState(() => {
@@ -93,7 +97,9 @@ export default function useChatCore(extraProps = {}) {
     selectedManifestoPath: configHook.selectedManifestoPath,
     fetchOllamaModels: configHook.fetchOllamaModels,
     refreshConfig: configHook.refreshConfig,
-    activeManifesto: configHook.activeManifesto
+    activeManifesto: configHook.activeManifesto,
+    devModeEnabled: devModeHook.devModeEnabled,
+    workspaceRoot: devModeHook.workspaceRoot
   });
 
   // Interruttore Auto Approve: stato condiviso con la tab MCP Tools.
@@ -457,6 +463,10 @@ export default function useChatCore(extraProps = {}) {
     providerColors,
     contextStats,
     maxTaskIterations: 10,
+    devModeAvailable: devModeHook.devModeAvailable,
+    devModeEnabled: devModeHook.devModeEnabled,
+    setDevModeEnabled: devModeHook.setDevModeEnabled,
+    devModeWorkspaceRoot: devModeHook.workspaceRoot,
 
     // --- Actions ---
     sendMessage: handleSendMessage,

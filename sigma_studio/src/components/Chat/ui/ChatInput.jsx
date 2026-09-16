@@ -7,6 +7,7 @@ export default function ChatInput({
   input, setInput, loading, refs, providerColors, currentRouting,
   autoScroll, setAutoScroll,
   mcpAutoApprove, setMcpAutoApprove,
+  devModeAvailable, devModeEnabled, setDevModeEnabled,
   speakerEnabled, setSpeakerEnabled,
   isRecording, onToggleRecording,
   smartMicState = 'off', onToggleSmartMic,
@@ -149,6 +150,27 @@ export default function ChatInput({
             />
             <span>{mcpAutoApprove ? '⚡' : '🛡️'} Auto Approve</span>
           </label>
+          {devModeAvailable && (
+            <label
+              className="chat-scroll-toggle"
+              title={devModeEnabled
+                ? 'Modalità Sviluppo ATTIVA: l\'agente ha accesso all\'harness con lettura/scrittura file, esecuzione test e terminale'
+                : 'Modalità Sviluppo SPENTA: clicca per abilitare l\'Harness di Sviluppo con loop autonomo e tool MCP'}
+              style={{
+                color: devModeEnabled ? '#00d2ff' : undefined,
+                borderColor: devModeEnabled ? 'rgba(0, 210, 255, 0.4)' : undefined,
+                background: devModeEnabled ? 'rgba(0, 210, 255, 0.12)' : undefined,
+                fontWeight: devModeEnabled ? 700 : 500
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={!!devModeEnabled}
+                onChange={e => setDevModeEnabled?.(e.target.checked)}
+              />
+              <span>{devModeEnabled ? '🛠️' : '🔧'} Dev Mode</span>
+            </label>
+          )}
           {setSpeakerEnabled !== undefined && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
               <label 
