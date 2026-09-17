@@ -746,6 +746,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sigma-core",
+ "tokio",
  "tracing",
 ]
 

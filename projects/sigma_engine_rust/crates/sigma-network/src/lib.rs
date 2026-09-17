@@ -31,6 +31,9 @@ pub struct NetworkState {
     pub agent_pipeline: Arc<AgentPipeline>,
     pub start_time: Instant,
     pub hardware: Arc<RwLock<HardwareState>>,
+    pub storage_fabric: Arc<sigma_memory::NvmeStorageFabric>,
+    pub hierarchical_cache: Arc<sigma_memory::HierarchicalCache>,
+    pub nvme_prefetch: Arc<sigma_memory::NvmePrefetchEngine>,
 }
 
 // Strutture OpenAI
@@ -65,6 +68,8 @@ pub fn create_router(state: NetworkState) -> Router {
         .route("/api/engine/tools/list", get(tools_list_handler))
         .route("/api/engine/tools/execute", post(tools_execute_handler))
         .route("/api/engine/tools/execute_batch", post(tools_batch_execute_handler))
+        .route("/api/engine/storage/volumes", get(storage_volumes_handler))
+        .route("/api/engine/fabric/status", get(fabric_status_handler))
         .route("/api/bench/run", post(bench_run_handler))
         .route("/api/bench/compare", post(bench_compare_handler).get(bench_compare_handler))
         .route("/api/agent/run", post(agent_run_handler))
@@ -475,4 +480,32 @@ pub async fn bench_compare_handler(
         })),
     )
 }
+
+pub async fn storage_volumes_handler(
+    State(state): State<NetworkState>,
+) -> impl IntoResponse {
+    let volumes = state.storage_fabric.list_volumes();
+    let total_nvme_gb = state.storage_fabric.total_fast_nvme_capacity_gb();
+
+    Json(json!({
+        "success": true,
+        "total_fast_nvme_available_gb": total_nvme_gb,
+        "volumes": volumes
+    }))
+}
+
+pub async fn fabric_status_handler(
+    State(state): State<NetworkState>,
+) -> impl IntoResponse {
+    let cache_stats = state.hierarchical_cache.stats();
+    let prefetch_telem = state.nvme_prefetch.telemetry();
+
+    Json(json!({
+        "success": true,
+        "architecture": "AiloFlow-DwarfStar-Tiered-Storage",
+        "hierarchical_cache": cache_stats,
+        "nvme_prefetch_engine": prefetch_telem
+    }))
+}
+
 

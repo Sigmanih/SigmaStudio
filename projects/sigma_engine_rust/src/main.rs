@@ -51,12 +51,32 @@ async fn main() {
     let agent_pipeline = Arc::new(AgentPipeline::new(tools.clone()));
     let hardware = Arc::new(RwLock::new(hw));
 
+    // AiloFlow Hierarchical Memory Fabric (VRAM 24GB + RAM 96GB + NVMe Multi-TB)
+    let storage_fabric = Arc::new(sigma_memory::NvmeStorageFabric::new());
+    let hierarchical_cache = Arc::new(sigma_memory::HierarchicalCache::new(
+        22 * 1024 * 1024 * 1024,  // 22 GB VRAM riservata a L0 Hot Tensors
+        80 * 1024 * 1024 * 1024,  // 80 GB RAM riservata a L1 Warm Pinned Tensors
+    ));
+    let nvme_prefetch = Arc::new(sigma_memory::NvmePrefetchEngine::new(
+        hierarchical_cache.clone(),
+        storage_fabric.clone(),
+        2, // Lookahead depth predefinito = 2 layer
+    ));
+
+    tracing::info!(
+        "AiloFlow Storage Fabric attivo: Capacita' NVMe ultra-veloce aggregata = {:.1} GB",
+        storage_fabric.total_fast_nvme_capacity_gb()
+    );
+
     let state = NetworkState {
         kv_cache,
         tools,
         agent_pipeline,
         start_time: Instant::now(),
         hardware,
+        storage_fabric,
+        hierarchical_cache,
+        nvme_prefetch,
     };
 
     let app = create_router(state);

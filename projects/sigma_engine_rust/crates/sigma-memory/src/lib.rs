@@ -3,6 +3,15 @@
 // - Zero-Copy Memory Mapping dei file GGUF
 // - Paged KV-Cache con indicizzazione dei prefissi
 // - BufferPool riciclabile per minimizzare allocazioni
+// - Hierarchical Memory Fabric (VRAM -> RAM -> NVMe SSD) ispirato ad AiloFlow
+
+pub mod storage_fabric;
+pub mod hierarchical_cache;
+pub mod nvme_prefetch;
+
+pub use storage_fabric::{NvmeStorageFabric, StorageVolume, ShardDescriptor};
+pub use hierarchical_cache::{HierarchicalCache, CacheTier, TensorTemperature, HierarchicalCacheStats};
+pub use nvme_prefetch::{NvmePrefetchEngine, NvmePrefetchTelemetry};
 
 use memmap2::Mmap;
 use parking_lot::RwLock;
@@ -406,6 +415,33 @@ mod tests {
         pool.release(b1);
         let b2 = pool.acquire();
         assert_eq!(b2.len(), 4096);
+    }
+
+    #[test]
+    fn test_hierarchical_cache_tiers() {
+        let cache = HierarchicalCache::new(1024 * 1024, 4 * 1024 * 1024); // 1MB VRAM, 4MB RAM
+        let dummy_tensor = Arc::new(vec![1u8; 512 * 1024]); // 512 KB
+
+        // Inserimento in VRAM (Tier 0)
+        cache.put_vram("blk.0.attn_q", 0, dummy_tensor.clone());
+        let stats = cache.stats();
+        assert_eq!(stats.hot_tensors, 1);
+
+        let res = cache.get("blk.0.attn_q");
+        assert!(res.is_some());
+        let (_, tier, temp) = res.unwrap();
+        assert_eq!(tier, CacheTier::Tier0Vram);
+        assert_eq!(temp, TensorTemperature::Hot);
+    }
+
+    #[test]
+    fn test_storage_fabric_volumes() {
+        let fabric = NvmeStorageFabric::new();
+        let vols = fabric.list_volumes();
+        assert!(!vols.is_empty(), "Devono essere rilevati volumi storage");
+
+        let nvme_cap = fabric.total_fast_nvme_capacity_gb();
+        assert!(nvme_cap > 1000.0, "Capacità NVMe ultra-veloce deve superare 1TB");
     }
 }
 
