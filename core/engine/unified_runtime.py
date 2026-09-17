@@ -506,6 +506,15 @@ class UniversalSigmaEngine:
                 )
             return None
 
+        # Se il micro-kernel Rust nativo con AiloFlow NVMe Storage Fabric è attivo,
+        # la memoria raggiungibile include il fabric NVMe multi-TB per active weight streaming.
+        try:
+            from core.engine.backends.sigmarust_backend import _is_rust_kernel_online
+            if _is_rust_kernel_online():
+                return None
+        except Exception:
+            pass
+
         total_vram = sum(a.get("free_vram_gb", 0.0) for a in accelerators)
         reachable = total_vram + max(ram_gb - 2.0, 0.0)
         if smallest_gb > reachable:
@@ -648,10 +657,11 @@ class UniversalSigmaEngine:
             log.error("[SigmaEngine] %s", error)
             return {"success": False, "error": error, "stage": "inspection"}
 
-        # Formats other than safetensors are served by a dedicated backend
-        # chosen for this machine, so GGUF runs on llama.cpp CUDA kernels here
-        # and on NEON on an ARM board without the caller knowing the difference.
-        if facts.weight_format != "safetensors":
+        # Se un backend dedicato del registry supporta il formato (es. SigmaRustBackend con zero-copy
+        # memory tiering su GGUF e SafeTensors, oppure LlamaServer per GGUF), delega al backend.
+        from core.engine.backends import select_backend
+        backend_cls = select_backend(facts, self.refresh_vram())
+        if backend_cls is not None and (facts.weight_format != "safetensors" or backend_cls.name == "sigma_engine_rust"):
             return self._load_via_backend(facts, display_name, context_tokens)
 
         # Check completeness before attempting PyTorch / Transformers loading
