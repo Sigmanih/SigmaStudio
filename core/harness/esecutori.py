@@ -462,17 +462,6 @@ class EsecutoreContenitore:
                should_cancel: Optional[Callable[[], bool]] = None) -> Esito:
         import time
 
-        disponibile, dettaglio = docker_disponibile()
-        if not disponibile:
-            # Mai ripiegare sull'host: chi ha acceso la sandbox crederebbe di
-            # essere protetto senza esserlo, ed e' peggio di non averla.
-            return Esito(
-                success=False, returncode=127, dove="container",
-                stderr=(f"Sandbox richiesta ma non disponibile. {dettaglio}\n"
-                        "Il comando NON e' stato eseguito: eseguirlo sull'host "
-                        "avrebbe aggirato in silenzio la sandbox che hai chiesto."),
-            )
-
         if not self.rete and _installa_qualcosa(comando):
             # Senza rete l'installazione non puo' riuscire, mai. Lasciarla
             # partire produce un errore DNS in fondo a trecento righe di
@@ -492,6 +481,17 @@ class EsecutoreContenitore:
                     "chiedere a chi ha acceso la sandbox di accendere anche la "
                     "rete. Ritentare identico non cambiera' niente."
                 ),
+            )
+
+        disponibile, dettaglio = docker_disponibile()
+        if not disponibile:
+            # Mai ripiegare sull'host: chi ha acceso la sandbox crederebbe di
+            # essere protetto senza esserlo, ed e' peggio di non averla.
+            return Esito(
+                success=False, returncode=127, dove="container",
+                stderr=(f"Sandbox richiesta ma non disponibile. {dettaglio}\n"
+                        "Il comando NON e' stato eseguito: eseguirlo sull'host "
+                        "avrebbe aggirato in silenzio la sandbox che hai chiesto."),
             )
 
         argv = self.argv(comando, cwd)
@@ -564,7 +564,18 @@ def scegli_esecutore(configurazione: Optional[Dict[str, Any]] = None,
     # un repository versionato con revisione e worktree, e metterlo in un
     # contenitore che non ha i suoi strumenti lo peggiora soltanto.
     progetto = _config_del_progetto(radice) if radice else {}
-    modalita = str(progetto.get("mode") or cfg.get("mode") or "host").lower()
+
+    if progetto and progetto.get("mode"):
+        modalita = str(progetto["mode"]).lower()
+    elif configurazione is not None:
+        # Una configurazione esplicita passata al metodo vince sull'assenza di sandbox del progetto
+        modalita = str(cfg.get("mode") or "host").lower()
+    elif radice and not (Path(radice) / "sandbox.json").is_file():
+        # Cartella di lavoro non isolata (progetto nudo, Sigma Studio, cartella di test): resta sull'host
+        modalita = "host"
+    else:
+        modalita = str(cfg.get("mode") or "host").lower()
+
     if modalita != "container":
         return EsecutoreHost()
 

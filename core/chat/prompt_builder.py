@@ -376,8 +376,13 @@ def _collect_context_files(handler, open_files: list[str]) -> str:
             continue
         if handler._is_path_allowed(file_path) and os.path.exists(file_path):
             try:
-                with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
-                    content = fh.read()
+                ext_open = os.path.splitext(file_path)[1].lower()
+                if ext_open == ".pdf":
+                    from core.pdf_extractor import estrai_testo_pdf
+                    content = estrai_testo_pdf(file_path)
+                else:
+                    with open(file_path, "r", encoding="utf-8", errors="replace") as fh:
+                        content = fh.read()
                 context_str += f"\n--- FILE CONTESTO APERTO: {file_path} ---\n{content[:25000]}\n"
                 loaded_paths.add(file_path)
 

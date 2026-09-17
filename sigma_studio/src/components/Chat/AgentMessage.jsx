@@ -7,6 +7,7 @@ import ModelWelcomeCard from './ModelWelcomeCard';
 import { useApp } from '../../contexts/AppContext';
 import { useMusic } from '../../contexts/MusicContext';
 import { getModelSpecs, isErrorMessage } from './core/modelSpecsHelper';
+import ChatToolActionItem from './ui/ChatToolActionItem';
 import 'katex/dist/katex.min.css';
 
 
@@ -848,83 +849,23 @@ export default function AgentMessage({
                   <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {m.actions_log && m.actions_log.length > 0 ? (
                       m.actions_log.map((action, actionIdx) => {
-                        if (action.type === 'mcp_tool_call') {
-                          return (
-                            <div key={actionIdx} style={{
-                              display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px',
-                              borderRadius: '8px', background: 'rgba(0, 210, 255, 0.08)',
-                              border: '1px solid rgba(0, 210, 255, 0.2)', color: '#00d2ff',
-                              fontSize: '0.75rem', fontWeight: 600
-                            }}>
-                              <Zap size={14} style={{ color: '#00d2ff' }} />
-                              <span>{action.message}</span>
-                              {action.success && <span style={{ marginLeft: 'auto', color: '#3fb950', fontSize: '0.7rem' }}>✓ Eseguito MCP</span>}
-                            </div>
-                          );
-                        }
                         const isRollbackable = action.success && action.backup_id;
                         const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
                         const diffKey = `${mid}-${actionIdx}`;
                         const isDiffExpanded = expandedDiffs[diffKey];
-                        const hasDiff = !!action.diff;
                         return (
-                          <div key={actionIdx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <div className="action-log-item" style={{
-                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                              padding: '6px 8px', background: 'rgba(255,255,255,0.02)',
-                              border: '1px solid rgba(255,255,255,0.04)', borderRadius: '6px', fontSize: '0.75rem'
-                            }}>
-                              <div className="action-log-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                                <span>{action.success ? '✅' : '❌'}</span>
-                                <span style={{ fontWeight: '600', color: action.success ? 'var(--primary)' : 'var(--error)', flexShrink: 0 }}>{action.type}</span>
-                                <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', cursor: action.path ? 'pointer' : 'default' }}
-                                  title={action.path || ''} onClick={() => action.path && handleFileClick(action.path)}>
-                                  {action.message || action.error || ''}
-                                </span>
-                              </div>
-                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                                {action.path && (() => {
-                                  const aPStr = getCleanPathStr(action.path);
-                                  const isAViz = aPStr.toLowerCase().includes('/viz/') || aPStr.toLowerCase().endsWith('.html');
-                                  return (
-                                    <button onClick={() => handleFileClick(aPStr)} style={{
-                                      background: isAViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.1)',
-                                      border: isAViz ? '1px solid rgba(57,185,80,0.3)' : '1px solid rgba(0,210,255,0.25)',
-                                      color: isAViz ? '#3fb950' : 'var(--primary)', fontSize: '0.65rem', padding: '2px 8px',
-                                      borderRadius: '4px', cursor: 'pointer', transition: 'all 0.15s ease'
-                                    }}>{isAViz ? 'Anteprima 👁️' : 'Visualizza 📄'}</button>
-                                  );
-                                })()}
-                                {hasDiff && (<button onClick={() => toggleDiff(diffKey)} style={{
-                                  background: 'rgba(0,210,255,0.1)', border: '1px solid rgba(0,210,255,0.25)',
-                                  color: 'var(--primary)', fontSize: '0.65rem', padding: '2px 8px',
-                                  borderRadius: '4px', cursor: 'pointer'
-                                }}>{isDiffExpanded ? 'Nascondi Modifiche' : 'Visualizza Modifiche'}</button>)}
-                                {isRollbackable && (<button onClick={() => handleRollback(action.backup_id)} disabled={hasBeenRolledBack} style={{
-                                  background: hasBeenRolledBack ? 'transparent' : 'rgba(255,85,85,0.15)',
-                                  border: hasBeenRolledBack ? 'none' : '1px solid rgba(255,85,85,0.3)',
-                                  color: hasBeenRolledBack ? '#3fb950' : '#ff5555', fontSize: '0.65rem', padding: '2px 8px',
-                                  borderRadius: '4px', cursor: hasBeenRolledBack ? 'default' : 'pointer'
-                                }}>{hasBeenRolledBack ? 'Annullato ✓' : 'Annulla Modifica'}</button>)}
-                              </div>
-                            </div>
-                            {hasDiff && isDiffExpanded && (
-                              <div className="action-diff-container" style={{
-                                background: '#090b10', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px',
-                                padding: '8px 10px', fontFamily: 'Consolas, Monaco, monospace', fontSize: '0.7rem',
-                                lineHeight: '1.25rem', overflowX: 'auto', whiteSpace: 'pre', color: '#adbac7',
-                                marginTop: '2px', maxHeight: '350px', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)'
-                              }}>
-                                {action.diff.split('\n').map((line, lineIdx) => {
-                                  let lineStyle = { padding: '2px 4px', borderRadius: '2px', display: 'block' };
-                                  if (line.startsWith('+') && !line.startsWith('+++')) { lineStyle.background = 'rgba(46, 160, 67, 0.15)'; lineStyle.color = '#3fb950'; }
-                                  else if (line.startsWith('-') && !line.startsWith('---')) { lineStyle.background = 'rgba(248, 81, 73, 0.15)'; lineStyle.color = '#f85149'; }
-                                  else if (line.startsWith('@@')) { lineStyle.color = '#79c0ff'; lineStyle.background = 'rgba(121, 192, 255, 0.05)'; lineStyle.fontWeight = 'bold'; }
-                                  return <span key={lineIdx} style={lineStyle}>{line}</span>;
-                                })}
-                              </div>
-                            )}
-                          </div>
+                          <ChatToolActionItem
+                            key={actionIdx}
+                            action={action}
+                            onFileClick={handleFileClick}
+                            onOpenInDevStudio={handleOpenInDevStudio}
+                            diffKey={diffKey}
+                            isDiffExpanded={isDiffExpanded}
+                            onToggleDiff={toggleDiff}
+                            onRollback={handleRollback}
+                            isRollbackable={isRollbackable}
+                            hasBeenRolledBack={hasBeenRolledBack}
+                          />
                         );
                       })
                     ) : (
@@ -1018,48 +959,19 @@ export default function AgentMessage({
                           const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
                           const diffKey = `${mid}-${actionIdx}`;
                           const isDiffExpanded = expandedDiffs[diffKey];
-                          const hasDiff = !!action.diff;
-                          const actPathStr = getCleanPathStr(action.path);
-                          const isActViz = actPathStr.toLowerCase().includes('/viz/') || actPathStr.toLowerCase().endsWith('.html');
                           return (
-                            <div key={actionIdx} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                              <div className="action-log-item" style={{
-                                display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px',
-                                background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', borderRadius: '6px', fontSize: '0.75rem'
-                              }}>
-                                <div className="action-log-item-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                                  <span>{action.success ? '✅' : '❌'}</span>
-                                  <span style={{ fontWeight: '600', color: action.success ? 'var(--primary)' : 'var(--error)', flexShrink: 0 }}>{action.type}</span>
-                                  <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', cursor: actPathStr ? 'pointer' : 'default' }}
-                                    title={actPathStr} onClick={() => actPathStr && handleFileClick(actPathStr)}>
-                                    {action.message || action.error || ''}
-                                  </span>
-                                </div>
-                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexShrink: 0 }}>
-                                  {actPathStr && (<button onClick={() => handleFileClick(actPathStr)} style={{
-                                    background: isActViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.1)',
-                                    border: isActViz ? '1px solid rgba(57,185,80,0.3)' : '1px solid rgba(0,210,255,0.25)',
-                                    color: isActViz ? '#3fb950' : 'var(--primary)', fontSize: '0.65rem', padding: '2px 8px',
-                                    borderRadius: '4px', cursor: 'pointer'
-                                  }}>{isActViz ? 'Anteprima 👁️' : 'Visualizza 📄'}</button>)}
-                                  {actPathStr && !isActViz && (<button onClick={() => handleOpenInDevStudio(actPathStr)} title="Apri nell'IDE Developer Studio" style={{
-                                    background: 'rgba(0,210,255,0.08)', border: '1px solid rgba(0,210,255,0.25)',
-                                    color: '#00d2ff', fontSize: '0.65rem', padding: '2px 8px',
-                                    borderRadius: '4px', cursor: 'pointer', fontWeight: '600'
-                                  }}>Dev Studio 🛠️</button>)}
-                                  {hasDiff && (<button onClick={() => toggleDiff(diffKey)} style={{
-                                    background: 'rgba(0,210,255,0.1)', border: '1px solid rgba(0,210,255,0.25)',
-                                    color: 'var(--primary)', fontSize: '0.65rem', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer'
-                                  }}>{isDiffExpanded ? 'Nascondi Modifiche' : 'Visualizza Modifiche'}</button>)}
-                                  {isRollbackable && (<button onClick={() => handleRollback(action.backup_id)} disabled={hasBeenRolledBack} style={{
-                                    background: hasBeenRolledBack ? 'transparent' : 'rgba(255,85,85,0.15)',
-                                    border: hasBeenRolledBack ? 'none' : '1px solid rgba(255,85,85,0.3)',
-                                    color: hasBeenRolledBack ? '#3fb950' : '#ff5555', fontSize: '0.65rem', padding: '2px 8px',
-                                    borderRadius: '4px', cursor: hasBeenRolledBack ? 'default' : 'pointer'
-                                  }}>{hasBeenRolledBack ? 'Annullato ✓' : 'Annulla Modifica'}</button>)}
-                                </div>
-                              </div>
-                            </div>
+                            <ChatToolActionItem
+                              key={actionIdx}
+                              action={action}
+                              onFileClick={handleFileClick}
+                              onOpenInDevStudio={handleOpenInDevStudio}
+                              diffKey={diffKey}
+                              isDiffExpanded={isDiffExpanded}
+                              onToggleDiff={toggleDiff}
+                              onRollback={handleRollback}
+                              isRollbackable={isRollbackable}
+                              hasBeenRolledBack={hasBeenRolledBack}
+                            />
                           );
                         })}
                       </div>

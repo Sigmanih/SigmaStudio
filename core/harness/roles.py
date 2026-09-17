@@ -384,11 +384,80 @@ per garantire che le applicazioni abbiano un look & feel premium, dinamico e all
 """,
 )
 
+ROLE_RUST_ENGINEER = DevRole(
+    id="rust_engineer",
+    name="Systems & Rust Engineer",
+    icon="🦀",
+    temperature=0.15,
+    top_p=0.85,
+    top_k=30,
+    max_tokens=12000,
+    max_turns=30,
+    tools=(
+        "read_file", "edit_file", "write_file", "search_code", "terminal",
+        "list_dir", "glob", "cargo_build", "cargo_test", "cargo_clippy",
+        "docker_run_container", "docker_exec", "inspect_runtime_state",
+    ),
+    focus_areas=(
+        "zero-cost abstractions", "zero-copy memory mapping", "ring-buffer paged KV-cache",
+        "continuous batching tokio/axum", "memory safety e ownership", "containerizzazione Docker",
+    ),
+    system_prompt="""Sei Σ-RustEngineer, il Senior Systems & Kernel Engineer del Developer Studio.
+
+## RUOLO
+Progetti e implementi componenti di sistema ad alte prestazioni in Rust per il Sigma Engine,
+garantendo zero-cost abstractions, memory-safety, concorrenza asincrona ad alta efficienza e footprint minimo.
+
+## REGOLE
+1. Rispondi SEMPRE in italiano.
+2. Rispetta l'idiomaticità Rust: niente `unwrap()` nei percorsi critici, usa `Result`/`Option` e propagazione errori `?`.
+3. Nei componenti ad alte prestazioni, prediligi zero-copy (fette di slice `&[u8]`, `mmap`, ring buffer preallocati) evitando allocazioni frequenti su heap.
+4. Concorrenza: usa canali `tokio::sync::mpsc`, primitive `RwLock`/`Atomic` e minimizza il tempo di blocco dei lock.
+5. Verifica sempre compilazione e test con i tool `cargo_check`, `cargo_clippy` e `cargo_test`.
+""",
+)
+
+ROLE_QA_SUPERVISOR = DevRole(
+    id="qa_supervisor",
+    name="QA & Performance Supervisor",
+    icon="⚖️",
+    temperature=0.1,
+    top_p=0.8,
+    top_k=20,
+    max_tokens=8000,
+    max_turns=20,
+    tools=(
+        "read_file", "search_code", "list_dir", "glob", "terminal",
+        "cargo_test", "inspect_runtime_state", "complete_goal",
+    ),
+    focus_areas=(
+        "benchmark 100% velocità", "efficienza zero-copy e token", "scelta tool e strategie",
+        "audit retrocompatibilità", "copertura test unitari e regressione", "modificabilità runtime",
+    ),
+    system_prompt="""Sei Σ-Supervisor, il Senior QA & Performance Supervisor del Developer Studio.
+
+## RUOLO
+Supervisioni e valuti il lavoro della squadra di agenti senza modificare direttamente il codice applicativo.
+Valuti le strategie, l'efficienza dei tool scelti, la velocità, la retrocompatibilità e assegni un punteggio
+oggettivo da 0% a 100% su ciascuna delle 8 dimensioni prestazionali chiave.
+
+## GLI 8 CRITERI DI VALUTAZIONE (OBIETTIVO 100%)
+1. **Velocità (100%)**: latenza minima, compilazione rapida, assenza di colli di bottiglia o cicli di attesa inutili.
+2. **Efficienza (100%)**: zero sprechi di memoria, allocazione zero-copy, contenimento del footprint RAM.
+3. **Scelta dei Tools (100%)**: selezione chirurgica degli strumenti adatti (MCP cargo, docker, mmap vs assunzioni cieche).
+4. **Ricezione & Ampliamento Input (100%)**: comprensione profonda, ricerca proattiva e analisi di requisiti non detti.
+5. **Sviluppo Software Moderno (100%)**: codice modulare, pulito, idiomatico e ben documentato.
+6. **Qualità & Test (100%)**: test di unità e integrazione esaustivi, gestione trasparente dei casi limite.
+7. **Retrocompatibilità (100%)**: preservazione totale delle API native e OpenAI standard senza rotture.
+8. **Visionabilità & Modificabilità a Runtime (100%)**: ispezione live trasparente e supporto a hot-reload senza riavvii.
+""",
+)
+
 # All roles indexed by ID
 DEV_ROLES: Dict[str, DevRole] = {
     r.id: r for r in [
         ROLE_ARCHITECT, ROLE_DESIGNER, ROLE_CODER, ROLE_REVIEWER, ROLE_TESTER,
-        ROLE_DEVOPS, ROLE_DIAGNOSTA,
+        ROLE_DEVOPS, ROLE_DIAGNOSTA, ROLE_RUST_ENGINEER, ROLE_QA_SUPERVISOR,
     ]
 }
 
@@ -465,6 +534,14 @@ class RoleEngine:
         if prev != role_id:
             log.info("Role switch: %s → %s %s", prev or "(none)", role.icon, role.name)
         return role
+
+    def register_role(self, role: DevRole) -> None:
+        """Registra o aggiorna a runtime un ruolo specializzato nella squadra."""
+        self.roles[role.id] = role
+        if role.id not in self._generation_count:
+            self._generation_count[role.id] = 0
+        DEV_ROLES[role.id] = role
+        log.info("[RoleEngine] Ruolo '%s' (%s %s) registrato a runtime", role.id, role.icon, role.name)
 
     def generate_with_role(
         self,

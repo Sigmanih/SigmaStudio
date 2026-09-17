@@ -159,20 +159,27 @@ def read_file_content(file_path: str, max_bytes: int = 5 * 1024 * 1024) -> Dict[
                     content_text = p.read_text(encoding="utf-8", errors="replace")
                 except Exception:
                     pass
+            elif ext == "pdf":
+                try:
+                    from core.pdf_extractor import estrai_testo_pdf
+                    content_text = estrai_testo_pdf(p)
+                except Exception as exc:
+                    content_text = f"[Errore durante l'estrazione del testo PDF: {exc}]"
 
             return {
                 "success": True,
                 "path": str(p).replace("\\", "/"),
                 "filename": p.name,
                 "extension": ext,
-                "is_binary": True,
+                "is_binary": ext != "pdf" and ext != "svg",
                 "is_image": ext in img_exts,
                 "is_pdf": ext in doc_exts,
                 "is_media": ext in media_exts,
                 "is_model": ext in model_exts,
                 "size": size,
                 "size_label": size_label,
-                "content": content_text
+                "content": content_text,
+                "total_lines": len(content_text.splitlines()) if content_text else None,
             }
 
         # 2. Large generic files (> 5 MB)

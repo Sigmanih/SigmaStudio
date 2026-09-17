@@ -41,7 +41,12 @@ export default function FilePicker({ onSelect, onClose, attachedFiles, pcFiles: 
       const reader = new FileReader();
       reader.onload = (ev) => resolve({ filename: f.name, content: ev.target.result });
       reader.onerror = () => resolve(null);
-      reader.readAsText(f);
+      const isPdf = (f.name || '').toLowerCase().endsWith('.pdf') || f.type === 'application/pdf';
+      if (isPdf) {
+        reader.readAsDataURL(f);
+      } else {
+        reader.readAsText(f);
+      }
     }));
     Promise.all(readers).then(results => {
       const valid = results.filter(Boolean);
@@ -60,7 +65,12 @@ export default function FilePicker({ onSelect, onClose, attachedFiles, pcFiles: 
       const reader = new FileReader();
       reader.onload = (ev) => resolve({ filename: f.name, content: ev.target.result });
       reader.onerror = () => resolve(null);
-      reader.readAsText(f);
+      const isPdf = (f.name || '').toLowerCase().endsWith('.pdf') || f.type === 'application/pdf';
+      if (isPdf) {
+        reader.readAsDataURL(f);
+      } else {
+        reader.readAsText(f);
+      }
     }));
     Promise.all(readers).then(results => {
       const valid = results.filter(Boolean);

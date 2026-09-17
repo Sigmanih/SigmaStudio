@@ -129,7 +129,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
        "fallisce: quello vuol dire che il lavoro non e' finito.",
        {"command": _STRINGA, "reason": _STRINGA},
        ["command", "reason"]),
-    _f("complete_goal", "Dichiara finito il lavoro, con la prova di ogni criterio.",
+    _f("complete_goal", "Dichiara finito il lavoro. Per richieste esplicative, panoramiche o domande dell'utente, il campo summary DEVE contenere la risposta e spiegazione ricca, dettagliata ed esaustiva da presentare all'utente in chat. Per compiti di programmazione, contiene il riassunto delle modifiche e verifiche.",
        {"summary": _STRINGA,
         "criteria": {"type": "array", "items": {
             "type": "object",

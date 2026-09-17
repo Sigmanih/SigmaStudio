@@ -406,26 +406,132 @@ export function useChatStreaming({
               p.model_status = p.text;
             }
             if (p.type === 'tool_start') {
+              const toolName = p.tool || 'tool';
+              const params = p.params || {};
+              const targetPath = params.path || params.file_path || params.target_file || params.file || (toolName === 'read_file' ? params.raw : '') || '';
+              const cmd = params.command || params.cmd || (toolName === 'terminal' ? params.raw : '') || '';
+              const query = params.query || params.pattern || '';
+
+              let desc = `Esecuzione ${toolName}...`;
+              if (toolName === 'read_file' || toolName === 'read') {
+                desc = `Lettura: ${targetPath || 'file'}`;
+              } else if (toolName === 'terminal' || toolName === 'shell' || toolName === 'exec') {
+                desc = cmd ? `$ ${cmd}` : 'Comando terminale...';
+              } else if (toolName === 'list_dir' || toolName === 'glob') {
+                desc = `Elenco: ${targetPath || '.'}`;
+              } else if (toolName === 'search_code') {
+                desc = `Ricerca: "${query}"`;
+              } else if (toolName === 'git_status') {
+                desc = 'Verifica stato Git...';
+              } else if (toolName.startsWith('cargo_')) {
+                desc = `Cargo ${toolName.replace('cargo_', '')}...`;
+              } else if (toolName.startsWith('docker_')) {
+                desc = `Docker ${toolName.replace('docker_', '')}...`;
+              }
+
               const startAct = {
                 type: 'mcp_tool_call',
-                tool: p.tool,
-                params: p.params,
+                tool: toolName,
+                params: params,
+                path: targetPath,
+                command: cmd,
+                query: query,
                 status: 'running',
-                message: `⚙️ ${p.tool}...`
+                message: desc,
+                timestamp: Date.now()
               };
               streamToolCalls = [...streamToolCalls, startAct];
               streamActionsLog = [...streamActionsLog, startAct];
             }
             if (p.type === 'tool_result') {
-              const resAct = {
-                type: 'mcp_tool_call',
-                tool: p.tool,
-                result: p.result,
-                status: p.result?.success !== false ? 'success' : 'error',
-                message: p.result?.message || `Eseguito ${p.tool}`
-              };
-              streamToolCalls = [...streamToolCalls, resAct];
-              streamActionsLog = [...streamActionsLog, resAct];
+              const toolName = p.tool || 'tool';
+              const res = p.result || {};
+              const isSuccess = res.success !== false;
+              const targetPath = res.path || res.full_path || '';
+              const cmd = res.command || '';
+              const stdout = res.stdout || '';
+              const stderr = res.stderr || '';
+              const content = res.content || '';
+              const returncode = res.returncode !== undefined ? res.returncode : (isSuccess ? 0 : 1);
+
+              let summaryMsg = res.message || '';
+              if (!summaryMsg) {
+                if (toolName === 'read_file' || toolName === 'read') {
+                  const lineCount = content ? content.split('\n').length : 0;
+                  summaryMsg = `Letto ${targetPath || 'file'} (${lineCount} righe)`;
+                } else if (toolName === 'terminal' || toolName === 'shell' || toolName === 'exec') {
+                  summaryMsg = `$ ${cmd} (exit ${returncode})`;
+                } else if (toolName === 'list_dir') {
+                  summaryMsg = `Trovati elementi in ${targetPath || '.'}`;
+                } else {
+                  summaryMsg = `Eseguito ${toolName}`;
+                }
+              }
+
+              // Aggiorna l'azione in corso in-place per evitare la riga duplicata
+              let foundInLog = false;
+              const updatedActionsLog = streamActionsLog.map(act => {
+                if (!foundInLog && act.type === 'mcp_tool_call' && act.tool === toolName && act.status === 'running') {
+                  foundInLog = true;
+                  return {
+                    ...act,
+                    status: isSuccess ? 'success' : 'error',
+                    result: res,
+                    path: targetPath || act.path,
+                    command: cmd || act.command,
+                    stdout: stdout,
+                    stderr: stderr,
+                    returncode: returncode,
+                    content: content,
+                    message: summaryMsg,
+                    error: res.error,
+                    completed_at: Date.now()
+                  };
+                }
+                return act;
+              });
+
+              if (foundInLog) {
+                streamActionsLog = updatedActionsLog;
+              } else {
+                const resAct = {
+                  type: 'mcp_tool_call',
+                  tool: toolName,
+                  result: res,
+                  path: targetPath,
+                  command: cmd,
+                  stdout: stdout,
+                  stderr: stderr,
+                  returncode: returncode,
+                  content: content,
+                  status: isSuccess ? 'success' : 'error',
+                  message: summaryMsg,
+                  error: res.error,
+                  completed_at: Date.now()
+                };
+                streamActionsLog = [...streamActionsLog, resAct];
+              }
+
+              // Aggiorna anche streamToolCalls
+              let foundInCalls = false;
+              const updatedToolCalls = streamToolCalls.map(c => {
+                if (!foundInCalls && c.tool === toolName && c.status === 'running') {
+                  foundInCalls = true;
+                  return {
+                    ...c,
+                    status: isSuccess ? 'success' : 'error',
+                    result: res,
+                    path: targetPath || c.path,
+                    command: cmd || c.command,
+                    stdout: stdout,
+                    stderr: stderr,
+                    content: content,
+                    message: summaryMsg
+                  };
+                }
+                return c;
+              });
+              streamToolCalls = foundInCalls ? updatedToolCalls : [...streamToolCalls, { tool: toolName, result: res, status: isSuccess ? 'success' : 'error', message: summaryMsg }];
             }
             if (p.type === 'file_created' || p.type === 'file_modified') {
               const fileAct = {
@@ -435,6 +541,12 @@ export function useChatStreaming({
               };
               streamCreatedFiles = [...streamCreatedFiles, fileAct];
               streamActionsLog = [...streamActionsLog, fileAct];
+            }
+            if (p.type === 'goal_complete') {
+              if (p.summary && (!fullText || !fullText.includes(p.summary))) {
+                fullText = fullText ? `${fullText}\n\n${p.summary}` : p.summary;
+              }
+              streamDone = true;
             }
             if (p.type === 'done' || p.type === 'run_completed') {
               streamDone = true;
@@ -507,6 +619,10 @@ export function useChatStreaming({
               }
               if (p.meta.load_duration_ms !== undefined && p.meta.load_duration_ms !== null) {
                 streamLoadDurationMs = p.meta.load_duration_ms;
+              }
+              if (p.meta.tokens_per_second !== undefined && p.meta.tokens_per_second !== null) {
+                streamTps = p.meta.tokens_per_second;
+                tpsFromRuntime = true;
               }
               if (p.meta.hardware_note) {
                 streamHardwareNote = p.meta.hardware_note;

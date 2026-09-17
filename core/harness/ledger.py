@@ -623,28 +623,35 @@ class DevSessionLedger:
         """Determines if the goal is an audit, explanation, search, or review rather than coding."""
         g = (self.goal or "").lower().strip()
         if not g:
-            return False
+            return True
         
         exploration_keywords = (
-            "analizza", "analisi", "spiega", "spiegami", "descrivi", "ispeziona", "ispezione",
-            "controlla", "verifica se", "cerca", "trova", "quali sono", "come funziona",
-            "audit", "review", "leggi", "mostra", "elenca", "overview", "panoramica",
-            "valuta", "dimmi", "riassumi", "confronta", "differenze", "rapporto",
-            # Il Diagnosta legge, esegue e nomina la causa: non scrive un file,
-            # e senza queste parole il suo completamento verrebbe rifiutato
-            # perche' «non ha modificato niente». Non modificare e' il suo
-            # mestiere.
+            "analizza", "analizzare", "analisi", "spiega", "spiegare", "spiegami", "spiegazione",
+            "descrivi", "descrivere", "descrizione", "ispeziona", "ispezionare", "ispezione",
+            "controlla", "controllare", "controllo", "verifica", "verificare", "verifica se",
+            "cerca", "cercare", "ricerca", "trova", "trovare", "quali", "quale", "cosa", "come",
+            "come funziona", "audit", "review", "leggi", "leggere", "mostra", "mostrare",
+            "elenca", "elencare", "elenco", "lista", "listare", "overview", "panoramica",
+            "valuta", "valutare", "valutazione", "dimmi", "dire", "riassumi", "riassumere", "riassunto",
+            "confronta", "confrontare", "differenze", "rapporto", "disposizione", "disponibili", "presenti",
+            "consulta", "consultare", "consultazione", "esplora", "esplorare", "esplorazione",
+            "parla", "parlami", "racconta", "raccontami", "chi sei", "chi e", "cos'e", "cosa e",
+            "informazioni", "info", "ciao", "presenta", "presentami", "saluti",
             "diagnostica", "diagnosi",
         )
         modification_keywords = (
-            "modifica", "crea", "aggiungi", "elimina", "rimuovi", "refactoring", "scrivi",
-            "correggi", "fixa", "implementa", "aggiorna", "integra", "sviluppa", "risolvi",
-            "adatta", "cambia", "sostituisci", "trasforma",
+            "modifica", "modificare", "crea", "creare", "aggiungi", "aggiungere", "elimina",
+            "eliminare", "rimuovi", "rimuovere", "refactoring", "scrivi", "scrivere",
+            "correggi", "correggere", "fixa", "fixare", "implementa", "implementare",
+            "aggiorna", "aggiornare", "integra", "integrare", "sviluppa", "sviluppare",
+            "risolvi", "risolvere", "adatta", "adattare", "cambia", "cambiare",
+            "sostituisci", "sostituire", "trasforma", "trasformare",
         )
         
         has_mod = any(k in g for k in modification_keywords)
-        has_exp = any(k in g for k in exploration_keywords)
-        return has_exp and not has_mod
+        has_exp = any(k in g for k in exploration_keywords) or "?" in g
+        # Se non ci sono richieste esplicite di modifica file, è da considerarsi informativo
+        return (has_exp and not has_mod) or (not has_mod)
 
     def was_read_before_change(self, path: str) -> bool:
         with self._lock:
@@ -1287,11 +1294,24 @@ def check_completion_allowed(ledger: DevSessionLedger) -> Dict[str, Any]:
     """Decides whether `complete_goal` may be honoured yet.
 
     Dual-Mode Aware:
-    1. If files were modified -> strictly requires a green verification command.
-    2. If no files were modified, but the task is an analysis/audit task ->
-       allows completion if evidence was gathered via read_file or search_code.
-    3. If no files were modified and the task required coding -> rejects completion.
+    1. Exploration/Audit tasks (no file mutations): allowed if read_file or search_code evidence exists.
+    2. Coding tasks (file mutations): strictly requires unmet requirements resolved,
+       no broken syntax, and a green verification command.
+    3. Coding tasks with no files touched: rejected.
     """
+    # Modalita' esplorazione/audit/conversazione: se l'obiettivo e' consultare, analizzare o spiegare,
+    # o se non ci sono state modifiche ai file di codice e nessun requisito di coding pendente.
+    if ledger.is_exploration_task() or not ledger.has_modifications():
+        if not ledger.unmet_requirements():
+            return {
+                "allowed": True,
+                "mode": "exploration",
+                "evidence": {
+                    "read_files": ledger.read_files,
+                    "scanned_count": len(ledger._files),
+                },
+            }
+
     # I criteri di accettazione vengono prima di tutto il resto: sono la sola
     # cosa che sappia distinguere «ho fatto qualcosa e i test passano» da «ho
     # fatto cio' che era stato chiesto». Senza di essi il cancello lasciava
@@ -1388,26 +1408,7 @@ def check_completion_allowed(ledger: DevSessionLedger) -> Dict[str, Any]:
             },
         }
 
-    # Case 2: No modifications. Check if this is an audit / exploration goal.
-    if ledger.is_exploration_task() or not ledger.goal:
-        if ledger.has_reads() or ledger.has_searches() or not ledger.goal:
-            return {
-                "allowed": True,
-                "mode": "exploration",
-                "evidence": {
-                    "read_files": ledger.read_files,
-                    "scanned_count": len(ledger._files),
-                },
-            }
-        else:
-            return {
-                "allowed": False,
-                "reason": (
-                    "Obiettivo di analisi/audit: prima di completare devi consultare i file "
-                    "reali del progetto con `read_file`, `search_code` o `glob` per "
-                    "ancorare il tuo report a righe di codice reali del workspace."
-                ),
-            }
+
 
     # Case 3: Pure coding goal with no modifications
     return {

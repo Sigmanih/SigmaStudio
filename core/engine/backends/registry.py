@@ -13,17 +13,15 @@ from core.engine.model_inspector import ModelFacts
 from core.engine.backends.base import InferenceBackend
 from core.engine.backends.llamacpp_backend import LlamaCppBackend
 from core.engine.backends.llamaserver_backend import LlamaServerBackend
+from core.engine.backends.sigmarust_backend import SigmaRustBackend
 
 log = get_logger(__name__)
 
 # Registration order is irrelevant to selection, which is score-driven.
-# Entrambi eseguono GGUF con llama.cpp. Il primo lo procura come binario
-# ufficiale in un processo separato, il secondo come ruota Python in
-# processo. La selezione e' per punteggio e la fa select_backend: quello a
-# processo separato vince quando il binario c'e', perche' un crash del
-# modello non si porta via il server e perche' serve piu' conversazioni
-# sullo stesso modello caricato una volta.
-_BACKENDS: List[Type[InferenceBackend]] = [LlamaServerBackend, LlamaCppBackend]
+# SigmaRustBackend ha score 120 e viene scelto con priorità quando il
+# kernel Rust è online. Altrimenti fallback ordinato su LlamaServer (110)
+# o LlamaCpp (100).
+_BACKENDS: List[Type[InferenceBackend]] = [SigmaRustBackend, LlamaServerBackend, LlamaCppBackend]
 
 
 def register_backend(backend: Type[InferenceBackend]) -> None:

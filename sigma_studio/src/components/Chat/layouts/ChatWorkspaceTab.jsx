@@ -203,9 +203,15 @@ export default function ChatWorkspaceTab() {
       {/* File Picker Modal */}
       {core.showFilePicker && (
         <FilePicker
-          onSelect={(selected) => { core.setAttachedFiles(selected); core.setShowFilePicker(false); }}
+          onSelect={(selected, pcFilesResult) => {
+            core.setAttachedFiles(selected);
+            if (pcFilesResult) core.setPcFiles(pcFilesResult);
+            core.setShowFilePicker(false);
+          }}
           onClose={() => core.setShowFilePicker(false)}
           attachedFiles={core.attachedFiles}
+          pcFiles={core.pcFiles}
+          onPcFilesChange={core.setPcFiles}
         />
       )}
     </div>

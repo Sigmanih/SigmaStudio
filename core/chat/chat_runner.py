@@ -1221,7 +1221,20 @@ Contenuto completo...
                     fname = uf.get("filename", "allegato")
                     fcontent = uf.get("content", "")
                     if fcontent:
-                        volatile_parts.append(f"## 📎 FILE ALLEGATO DALL'UTENTE: {fname}\n```\n{fcontent[:35000]}\n```")
+                        # Se il file e' un PDF o codificato in Base64/Data URL, estraiamo il testo pulito
+                        if (
+                            str(fname).lower().endswith(".pdf")
+                            or "application/pdf" in str(fcontent)[:100]
+                            or str(fcontent).startswith("JVBERi")
+                        ):
+                            try:
+                                from core.pdf_extractor import estrai_testo_pdf
+                                parsed = estrai_testo_pdf(fcontent)
+                                if parsed and not parsed.startswith("[Errore"):
+                                    fcontent = parsed
+                            except Exception as pdf_err:
+                                log.warning("[ChatRunner] Errore parsing PDF allegato '%s': %s", fname, pdf_err)
+                        volatile_parts.append(f"## 📎 FILE ALLEGATO DALL'UTENTE: {fname}\n```markdown\n{fcontent[:40000]}\n```")
 
         volatile_context = "\n\n".join(volatile_parts)
         final_user_turn = (

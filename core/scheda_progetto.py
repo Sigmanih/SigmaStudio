@@ -42,6 +42,9 @@ log = get_logger("scheda_progetto")
 #: I documenti che rispondono alle domande vere su questo progetto. L'ordine e'
 #: quello in cui conviene leggerli.
 DOCUMENTI: Tuple[Tuple[str, str], ...] = (
+    ("architettura.md",
+     "L'architettura completa di Sigma Studio: il kernel Python, i moduli installabili, "
+     "il runtime dell'harness, la direzione tassativa delle dipendenze, storage e runtime."),
     ("STATO_HARNESS.md",
      "Lo stato dell'harness: cosa regge, i difetti trovati e le loro misure, "
      "il voto del flusso di squadra, la sandbox Docker."),
