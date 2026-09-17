@@ -2563,8 +2563,9 @@ def _stream_agent_turn_impl(
                 if not in_tool_block:
                     if "```tool:" in token or "```tool:" in current_text[-25:]:
                         in_tool_block = True
-                        # Whatever part of the opening fence is still sitting in
-                        # the hold-back buffer is dropped rather than emitted.
+                        pending_out = ""
+                    elif "sigma-tool" in token or "sigma-tool" in current_text[-30:] or re.search(r"`{2,}(?:sigma-tool|tool:?|mcp)", current_text[-35:], re.IGNORECASE):
+                        in_tool_block = True
                         pending_out = ""
                     elif re.search(r"<(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code|tool)>", current_text[-35:]):
                         in_tool_block = True

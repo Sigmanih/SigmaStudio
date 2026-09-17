@@ -282,6 +282,84 @@ def _repair_tool_calls(handler, messages, ai_cfg, model, provider, endpoint,
     return None
 
 
+class _LiveToolStreamFilter:
+    """
+    Filtra i token di chiamata strumento (sigma-tool, tool:, <tool_call>) durante lo streaming SSE.
+
+    Accumula il testo per verificare se appartiene a un blocco di chiamata tool.
+    I token appartenenti al blocco tool NON vengono inviati al client chat (evitando
+    il leak di blocchi JSON/sigma-tool grezzi visibili all'utente durante l'inferenza),
+    mentre il testo ordinario viene emesso normalmente.
+    """
+    TOOL_OPEN_RE = re.compile(r"(`{2,}(?:sigma-tool|tool:?|mcp)|<(?:tool_call|tool)>)", re.IGNORECASE)
+    TOOL_CLOSE_RE = re.compile(r"(`{2,}|<\/(?:tool_call|tool)>)", re.IGNORECASE)
+
+    def __init__(self, on_emit_token, on_tool_detected=None):
+        self._on_emit_token = on_emit_token
+        self._on_tool_detected = on_tool_detected
+        self._in_tool = False
+        self._buffer = ""
+        self._tool_notified = False
+
+    def feed(self, text: str) -> None:
+        if not text:
+            return
+        self._buffer += text
+
+        while self._buffer:
+            if not self._in_tool:
+                m = self.TOOL_OPEN_RE.search(self._buffer)
+                if m:
+                    pre = self._buffer[:m.start()]
+                    if pre:
+                        self._on_emit_token(pre)
+                    self._in_tool = True
+                    self._buffer = self._buffer[m.end():]
+                    if not self._tool_notified:
+                        self._tool_notified = True
+                        if self._on_tool_detected:
+                            self._on_tool_detected()
+                    continue
+                else:
+                    tail_len = 0
+                    for i in range(min(16, len(self._buffer)), 0, -1):
+                        sub = self._buffer[-i:]
+                        if sub.startswith("`") or sub.startswith("<"):
+                            tail_len = i
+                            break
+                    if tail_len > 0:
+                        safe = self._buffer[:-tail_len]
+                        self._buffer = self._buffer[-tail_len:]
+                        if safe:
+                            self._on_emit_token(safe)
+                        break
+                    else:
+                        safe = self._buffer
+                        self._buffer = ""
+                        self._on_emit_token(safe)
+                        break
+            else:
+                m_close = self.TOOL_CLOSE_RE.search(self._buffer)
+                if m_close:
+                    self._in_tool = False
+                    self._buffer = self._buffer[m_close.end():]
+                    continue
+                else:
+                    if len(self._buffer) > 30:
+                        self._buffer = self._buffer[-15:]
+                    break
+
+    def flush(self) -> None:
+        if not self._in_tool and self._buffer:
+            self._on_emit_token(self._buffer)
+        self._buffer = ""
+
+    def reset(self) -> None:
+        self._in_tool = False
+        self._buffer = ""
+        self._tool_notified = False
+
+
 class _TokenCoalescer:
     """
     Batches consecutive tokens on one channel into fewer SSE events.
@@ -482,6 +560,11 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
             return
         _push({"token": text, "channel": "answer", "status": True})
 
+    tool_filter = _LiveToolStreamFilter(
+        on_emit_token=lambda t: _push({"token": t}),
+        on_tool_detected=lambda: _push({"model_status": f"⚙️ {bot_name} sta preparando l'invocazione degli strumenti..."}),
+    )
+
     def _emit(channel: str, text: str) -> None:
         nonlocal full_text, full_thinking, has_sent_thinking_status, has_sent_generating_status, t_first_token, generated_token_count
         if not text:
@@ -501,7 +584,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 has_sent_generating_status = True
                 _push({"model_status": f"✨ {bot_name} sta componendo la risposta..."})
             full_text += text
-            _push({"token": text})
+            tool_filter.feed(text)
 
     # Everything the model produces goes through the coalescer; status lines
     # and metrics bypass it, because they are single events that must land the
@@ -552,6 +635,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                     for channel, text in router.flush():
                         coalescer.feed(channel, text)
                     coalescer.flush()
+                    tool_filter.flush()
 
                     # Prefer whatever the runtime measured. SigmaEngine reports
                     # speed_tok_s from real decoded tokens; Ollama reports
@@ -652,12 +736,34 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                     if repaired:
                         calls = repaired
 
+                for call in calls:
+                    t_name = call.get("tool", "")
+                    if t_name:
+                        _sse_send(handler, {
+                            "type": "tool_start",
+                            "tool": t_name,
+                            "params": call.get("arguments", {}),
+                        })
+
                 _sse_send(handler, {"model_status": f"⚙️ Eseguo {len(calls)} strumento/i MCP..."})
                 outcomes, approvals = execute_calls(calls)
 
                 for outcome in outcomes:
                     tool_transcript.append(outcome)
-                    _sse_send(handler, {"tool_result": outcome})
+                    t_name = outcome.get("tool", "")
+                    t_ok = outcome.get("ok", True)
+                    t_out = outcome.get("output", "")
+                    _sse_send(handler, {
+                        "type": "tool_result",
+                        "tool": t_name,
+                        "result": {
+                            "success": t_ok,
+                            "output": t_out,
+                            "message": f"Eseguito {t_name}" if t_ok else f"Errore {t_name}",
+                            "error": None if t_ok else t_out,
+                        },
+                        "tool_result": outcome,
+                    })
 
                 if approvals:
                     # Nothing more runs this turn: the client shows the request,
@@ -679,6 +785,8 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 # Nothing may straddle the reset: buffered text belongs to the
                 # answer that just ended, not to the continuation.
                 coalescer.flush()
+                tool_filter.flush()
+                tool_filter.reset()
                 full_text = ""
                 router = _ThinkTagRouter()
                 if _prefill_injected:
@@ -704,6 +812,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         for channel, text in router.flush():
             coalescer.feed(channel, text)
         coalescer.flush()
+        tool_filter.flush()
 
         # The call blocks were the agent's instructions to the hub, not prose:
         # the user sees what the tools did, not the JSON that asked for it.

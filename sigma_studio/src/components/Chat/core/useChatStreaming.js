@@ -19,9 +19,26 @@ function appendAndSave(sid, msg, setFn) {
   });
 }
 
+export function stripLiveToolBlocks(text) {
+  if (!text) return '';
+  let cleaned = text;
+  // 1. Rimuove blocchi recintati completi (sigma-tool, tool, mcp)
+  cleaned = cleaned.replace(/`{2,}(?:sigma-tool|tool:?|mcp)?\s*\n?\{[\s\S]*?`{2,}/gi, '');
+  cleaned = cleaned.replace(/`{2,}(?:sigma-tool|tool:?|mcp)[\s\S]*?`{2,}/gi, '');
+  // 2. Rimuove tag XML completi o aperti di chiamata tool
+  cleaned = cleaned.replace(/<(?:tool_call|tool|action)>[\s\S]*?<\/(?:tool_call|tool|action)>/gi, '');
+  cleaned = cleaned.replace(/<(?:tool_call|tool|action)>[\s\S]*$/gi, '');
+  // 3. Rimuove blocchi recintati aperti durante lo streaming (unclosed)
+  cleaned = cleaned.replace(/`{2,}(?:sigma-tool|tool:?|mcp)[\s\S]*$/gi, '');
+  // Tolleranza per backtick con sigma-tool parziale o JSON tool nudo aperto
+  cleaned = cleaned.replace(/`{1,4}sigma-tool[\s\S]*$/gi, '');
+  cleaned = cleaned.replace(/\{\s*"tool"\s*:\s*"[^"]*"[\s\S]*$/gi, '');
+  return cleaned;
+}
+
 function cleanModelTags(text) {
   if (!text) return text;
-  let cleaned = text;
+  let cleaned = stripLiveToolBlocks(text);
 
   // 1. Remove XML and channel thinking tags
   cleaned = cleaned.replace(/<(think|thinking|Thought|thought|reasoning|Rationale|scratchpad)>[\s\S]*?<\/\1>/gi, '');
@@ -226,7 +243,7 @@ export function useChatStreaming({
           if (n.length > 0 && n[n.length - 1].role === 'assistant') {
             n[n.length - 1] = {
               ...n[n.length - 1],
-              content: fullText,
+              content: stripLiveToolBlocks(fullText),
               agent_id: streamAgentId,
               agentName: `${resolvedRole} (${selectedModel})`,
               agentRole: resolvedRole,
@@ -261,7 +278,7 @@ export function useChatStreaming({
               role: 'assistant',
 
 
-              content: fullText,
+              content: stripLiveToolBlocks(fullText),
               agent_id: streamAgentId,
               agentName: `${resolvedRole} (${selectedModel})`,
               agentRole: resolvedRole,
@@ -296,7 +313,7 @@ export function useChatStreaming({
             const updatedContent = continuationCount > 0 ? existingContent + fullText : fullText;
             n[n.length - 1] = {
               ...n[n.length - 1],
-              content: updatedContent,
+              content: stripLiveToolBlocks(updatedContent),
               thinking: hasThinking ? fullThinking : n[n.length - 1].thinking,
               streamingThinking: isCurrentlyThinking,
               created_files: streamCreatedFiles.length > 0 ? streamCreatedFiles : n[n.length - 1].created_files,
@@ -584,7 +601,26 @@ export function useChatStreaming({
             }
 
             if (p.tool_result) {
-              streamToolCalls = [...streamToolCalls, p.tool_result];
+              const resTool = p.tool_result;
+              const tName = resTool.tool;
+              const tOk = resTool.ok !== false;
+              let foundTc = false;
+              streamToolCalls = streamToolCalls.map(c => {
+                if (!foundTc && c.tool === tName && (c.status === 'running' || c.ok === undefined)) {
+                  foundTc = true;
+                  return {
+                    ...c,
+                    ...resTool,
+                    ok: tOk,
+                    status: tOk ? 'success' : 'error',
+                    output: resTool.output || c.output
+                  };
+                }
+                return c;
+              });
+              if (!foundTc) {
+                streamToolCalls = [...streamToolCalls, resTool];
+              }
             }
             if (Array.isArray(p.tool_calls)) {
               streamToolCalls = [...streamToolCalls, ...p.tool_calls];

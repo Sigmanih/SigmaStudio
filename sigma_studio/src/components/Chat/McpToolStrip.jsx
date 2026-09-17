@@ -62,22 +62,27 @@ export default function McpToolStrip({ calls = [], approvals = [] }) {
             if (urlMatch) imageUrl = urlMatch[1];
           }
         }
+        const isRunning = call.status === 'running';
         return (
         <div key={`tc-${idx}`} style={{
           // Una chiamata rimandata non è un errore: aspetta il suo turno.
           border: `1px solid ${call.deferred ? 'rgba(255,255,255,0.12)'
+            : isRunning ? 'rgba(0,210,255,0.3)'
             : call.ok ? 'rgba(63,185,80,0.22)' : 'rgba(248,81,73,0.22)'}`,
           background: call.deferred ? 'rgba(255,255,255,0.03)'
+            : isRunning ? 'rgba(0,210,255,0.06)'
             : call.ok ? 'rgba(63,185,80,0.06)' : 'rgba(248,81,73,0.06)',
           borderRadius: '8px', padding: '7px 10px', fontSize: '0.78rem',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
                onClick={() => setOpenCall(openCall === idx ? null : idx)}>
             {call.deferred ? <Clock size={13} color="#8b8fa3" />
+              : isRunning ? <RefreshCw size={13} color="#00d2ff" style={{ animation: 'spin 1.5s linear infinite' }} />
               : call.ok ? <Check size={13} color="#3fb950" /> : <XCircle size={13} color="#f85149" />}
             <Wrench size={12} style={{ opacity: 0.6 }} />
             <span style={{ fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 }}>{call.tool}</span>
             {call.server && <span style={{ opacity: 0.5, fontSize: '0.72rem' }}>· {call.server}</span>}
+            {isRunning && <span style={{ opacity: 0.8, fontSize: '0.72rem', color: '#00d2ff', fontStyle: 'italic' }}>(in esecuzione...)</span>}
             <span style={{ marginLeft: 'auto', opacity: 0.6 }}>
               {openCall === idx ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             </span>

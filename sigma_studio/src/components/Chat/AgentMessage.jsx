@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Bot, User, Terminal, FileText, Zap, Play, Pause, RotateCcw, RotateCw, Square } from 'lucide-react';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import McpToolStrip from './McpToolStrip';
+import { stripLiveToolBlocks } from './core/useChatStreaming';
 import ImageLightbox from './ImageLightbox';
 import ModelWelcomeCard from './ModelWelcomeCard';
 import { useApp } from '../../contexts/AppContext';
@@ -755,7 +756,7 @@ export default function AgentMessage({
             const mid = msgId || `msg-${idx}`;
             const isLast = idx === messages.length - 1;
 
-            let displayContent = m.content || '';
+            let displayContent = stripLiveToolBlocks(m.content || '');
             let displayThinking = m.thinking || '';
 
             if (!isUser && !isSystem && !displayThinking && displayContent) {
@@ -874,6 +875,37 @@ export default function AgentMessage({
                   </div>
                 ) : (
                   <>
+                    {(m.tool_calls?.length > 0 || m.tool_approvals?.length > 0) && (
+                      <div style={{ marginBottom: '8px' }}>
+                        <McpToolStrip calls={m.tool_calls} approvals={m.tool_approvals} />
+                      </div>
+                    )}
+
+                    {!m.isAction && m.actions_log && m.actions_log.length > 0 && (
+                      <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                        {m.actions_log.map((action, actionIdx) => {
+                          const isRollbackable = action.success && action.backup_id;
+                          const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
+                          const diffKey = `${mid}-${actionIdx}`;
+                          const isDiffExpanded = expandedDiffs[diffKey];
+                          return (
+                            <ChatToolActionItem
+                              key={actionIdx}
+                              action={action}
+                              onFileClick={handleFileClick}
+                              onOpenInDevStudio={handleOpenInDevStudio}
+                              diffKey={diffKey}
+                              isDiffExpanded={isDiffExpanded}
+                              onToggleDiff={toggleDiff}
+                              onRollback={handleRollback}
+                              isRollbackable={isRollbackable}
+                              hasBeenRolledBack={hasBeenRolledBack}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {displayContent && (
                       <MemoizedContent
                         displayContent={displayContent}
@@ -907,10 +939,7 @@ export default function AgentMessage({
                       </div>
                     )}
 
-                    {(m.tool_calls?.length > 0 || m.tool_approvals?.length > 0) && (
-                      <McpToolStrip calls={m.tool_calls} approvals={m.tool_approvals} />
-                    )}
-                    {((!m.isAction && m.actions_log && m.actions_log.length > 0) || m.created_files?.length > 0) && (
+                    {m.created_files?.length > 0 && (
                       <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
                         {m.created_files?.map((filePath, fIdx) => {
                           const pStr = getCleanPathStr(filePath);
@@ -953,26 +982,6 @@ export default function AgentMessage({
                               </div>
                             </div>
                           </div>);
-                        })}
-                        {m.actions_log && m.actions_log.length > 0 && m.actions_log.map((action, actionIdx) => {
-                          const isRollbackable = action.success && action.backup_id;
-                          const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
-                          const diffKey = `${mid}-${actionIdx}`;
-                          const isDiffExpanded = expandedDiffs[diffKey];
-                          return (
-                            <ChatToolActionItem
-                              key={actionIdx}
-                              action={action}
-                              onFileClick={handleFileClick}
-                              onOpenInDevStudio={handleOpenInDevStudio}
-                              diffKey={diffKey}
-                              isDiffExpanded={isDiffExpanded}
-                              onToggleDiff={toggleDiff}
-                              onRollback={handleRollback}
-                              isRollbackable={isRollbackable}
-                              hasBeenRolledBack={hasBeenRolledBack}
-                            />
-                          );
                         })}
                       </div>
                     )}
