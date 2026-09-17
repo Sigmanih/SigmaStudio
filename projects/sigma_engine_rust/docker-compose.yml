@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  sigma_engine_rust:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sigma_engine_rust
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=info
+      - PORT=8080
+      - SIGMA_TIER_DISK_DIR=/app/weights
+    volumes:
+      - D:/ModelliAI:/app/weights:ro
+      - ../../var/engine_cache:/app/cache
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G

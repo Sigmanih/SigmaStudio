@@ -119,7 +119,9 @@ collatz_pipeline.json
 
 # Virtual Environment
 .venv/
-projects/
+projects/*
+!projects/sigma_engine_rust/
+projects/sigma_engine_rust/target/
 sandboxes.json
 
 # OS files
