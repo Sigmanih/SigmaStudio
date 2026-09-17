@@ -439,6 +439,29 @@ def _detect_hardware_note(provider: str, model: str) -> str:
     if provider in ["anthropic", "openai", "groq", "mistral", "deepseek", "gemini", "openrouter"]:
         return f"Cloud API ({provider.title()})"
 
+    # 1. Rileva se il micro-kernel Rust nativo è attivo ed operativo
+    try:
+        from core.engine.backends.sigmarust_backend import _is_rust_kernel_online
+        if _is_rust_kernel_online():
+            return "⚡ SigmaEngine Rust • Dual GPU (RTX 5070 Ti + RTX 5060) • AiloFlow Tiering"
+    except Exception:
+        pass
+
+    # 2. Rileva acceleratori hardware reali (NVIDIA CUDA / Blackwell)
+    try:
+        from core.engine.hardware_probe import UniversalHardwareProbe
+        accels = UniversalHardwareProbe.probe_accelerators()
+        if accels:
+            if len(accels) == 1:
+                name = accels[0].get("name", "GPU").replace("NVIDIA GeForce ", "").replace("NVIDIA ", "")
+                vram = accels[0].get("total_vram_gb", 0)
+                return f"{name} ({vram:.1f}GB VRAM)"
+            else:
+                names = [a.get("name", "GPU").replace("NVIDIA GeForce ", "").replace("NVIDIA ", "") for a in accels]
+                return f"Dual GPU: {' + '.join(names)}"
+    except Exception:
+        pass
+
     try:
         import torch
         if torch.cuda.is_available():

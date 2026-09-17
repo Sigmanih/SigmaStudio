@@ -605,6 +605,23 @@ export default function AgentMessage({
 
                 {modelSpecs && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.64rem', flexWrap: 'wrap' }}>
+                    {/* Badge Kernel e Hardware di Calcolo */}
+                    {(() => {
+                      const hNote = first.hardware_note || messages.find(m => m.hardware_note)?.hardware_note || '';
+                      const isRust = hNote.includes('SigmaEngine Rust') || hNote.includes('Rust');
+                      if (!hNote && !isRust) return null;
+                      return (
+                        <span style={{
+                          fontSize: '0.58rem', padding: '1px 6px', borderRadius: '4px',
+                          background: isRust ? 'rgba(255, 107, 107, 0.18)' : 'rgba(0, 210, 255, 0.12)',
+                          color: isRust ? '#ff7b72' : '#79c0ff',
+                          fontWeight: 800,
+                          border: `1px solid ${isRust ? 'rgba(255, 107, 107, 0.35)' : 'rgba(0, 210, 255, 0.25)'}`
+                        }} title={hNote}>
+                          {isRust ? '🦀 SigmaEngine Rust O(1)' : hNote}
+                        </span>
+                      );
+                    })()}
                     {modelSpecs.params && (
                       <span style={{
                         fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',

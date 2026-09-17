@@ -480,7 +480,7 @@ class LlamaServerBackend(InferenceBackend):
             comando = [
                 str(server),
                 "-m", modello,
-                "--host", "127.0.0.1",
+                "--host", "0.0.0.0",
                 "--port", str(porta),
                 # Il template di chat viene dal GGUF: indovinarlo e' la fonte
                 # principale di risposte formattate male.

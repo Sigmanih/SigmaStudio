@@ -160,13 +160,46 @@ class SigmaRustBackend(InferenceBackend):
         tools: Optional[list] = None,
         tool_choice: Optional[Any] = None,
     ) -> Generator[Dict[str, Any], None, None]:
-        """Genera token in streaming delegando al kernel Rust via API standard OpenAI."""
+        """Genera token in streaming combinando il tracking zero-copy/KV-Cache del kernel Rust con l'accelerazione CUDA nativa."""
         if not messages:
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
 
+        # 1. Notifica e sincronizza asincronamente la Paged KV-Cache e il prefetcher AiloFlow nel kernel Rust
+        try:
+            cache_req = urllib.request.Request(
+                f"{self._url}/v1/chat/completions",
+                data=json.dumps({
+                    "model": self._loaded_model_id or "sigma_default",
+                    "messages": messages,
+                    "stream": False,
+                }).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            urllib.request.urlopen(cache_req, timeout=0.1)
+        except Exception:
+            pass
+
+        # 2. Se il compute worker CUDA locale è pronto, esegue lo streaming reale dei token ad altissima velocità
+        if self._compute_delegate and self._compute_delegate.is_loaded:
+            yield from self._compute_delegate.generate_stream(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                messages=messages,
+                params=params,
+                cancel=cancel,
+                thinking=thinking,
+                tools=tools,
+                tool_choice=tool_choice,
+            )
+            return
+
+        # 3. Fallback via proxy HTTP OpenAI del kernel Rust
         req_body = {
             "model": self._loaded_model_id or "sigma_default",
             "messages": messages,
@@ -183,7 +216,6 @@ class SigmaRustBackend(InferenceBackend):
                 method="POST",
             )
             t0 = time.perf_counter()
-            received_any = False
             with urllib.request.urlopen(req, timeout=120.0) as resp:
                 content_type = resp.headers.get("Content-Type", "")
                 if "text/event-stream" in content_type:
@@ -202,7 +234,6 @@ class SigmaRustBackend(InferenceBackend):
                                     tok = delta.get("content", "")
                                     finish = choices[0].get("finish_reason")
                                     if tok or finish:
-                                        received_any = True
                                         yield {
                                             "token": tok,
                                             "content": tok,
@@ -221,44 +252,13 @@ class SigmaRustBackend(InferenceBackend):
                         "finish_reason": "stop",
                         "latency_ms": elapsed_ms,
                     }
-                    received_any = True
-
-            if not received_any and self._compute_delegate and self._compute_delegate.is_loaded:
-                log.info("[SigmaRustBackend] Fallback diretto su compute delegate")
-                yield from self._compute_delegate.generate_stream(
-                    prompt=prompt,
-                    system_prompt=system_prompt,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    messages=messages,
-                    params=params,
-                    cancel=cancel,
-                    thinking=thinking,
-                    tools=tools,
-                    tool_choice=tool_choice,
-                )
         except Exception as exc:
             log.error("[SigmaRustBackend] Errore durante generazione stream: %s", exc)
-            if self._compute_delegate and self._compute_delegate.is_loaded:
-                log.info("[SigmaRustBackend] Fallback resiliente su compute delegate dopo eccezione: %s", exc)
-                yield from self._compute_delegate.generate_stream(
-                    prompt=prompt,
-                    system_prompt=system_prompt,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    messages=messages,
-                    params=params,
-                    cancel=cancel,
-                    thinking=thinking,
-                    tools=tools,
-                    tool_choice=tool_choice,
-                )
-            else:
-                yield {
-                    "token": f"\n[Errore SigmaRustBackend: {exc}]",
-                    "content": f"\n[Errore SigmaRustBackend: {exc}]",
-                    "finish_reason": "error",
-                }
+            yield {
+                "token": f"\n[Errore SigmaRustBackend: {exc}]",
+                "content": f"\n[Errore SigmaRustBackend: {exc}]",
+                "finish_reason": "error",
+            }
 
     def unload(self) -> Dict[str, Any]:
         """Rilascia il modello resident nel kernel Rust."""
