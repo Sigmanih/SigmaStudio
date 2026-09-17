@@ -144,7 +144,7 @@ class SigmaRustBackend(InferenceBackend):
             "messages": messages,
             "temperature": params.temperature if params else temperature,
             "max_tokens": params.max_tokens if params else max_tokens,
-            "stream": False,
+            "stream": True,
         }
 
         try:
@@ -156,17 +156,41 @@ class SigmaRustBackend(InferenceBackend):
             )
             t0 = time.perf_counter()
             with urllib.request.urlopen(req, timeout=60.0) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                content = data["choices"][0]["message"]["content"]
-                elapsed_ms = (time.perf_counter() - t0) * 1000.0
-
-                # Yield del testo secondo il contratto di streaming di SigmaEngine
-                yield {
-                    "token": content,
-                    "content": content,
-                    "finish_reason": "stop",
-                    "latency_ms": elapsed_ms,
-                }
+                content_type = resp.headers.get("Content-Type", "")
+                if "text/event-stream" in content_type:
+                    for raw_line in resp:
+                        line_str = raw_line.decode("utf-8", errors="replace").strip()
+                        if not line_str or line_str.startswith(":"):
+                            continue
+                        if line_str == "data: [DONE]":
+                            break
+                        if line_str.startswith("data: "):
+                            try:
+                                chunk = json.loads(line_str[6:])
+                                choices = chunk.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    tok = delta.get("content", "")
+                                    finish = choices[0].get("finish_reason")
+                                    if tok or finish:
+                                        yield {
+                                            "token": tok,
+                                            "content": tok,
+                                            "finish_reason": finish,
+                                            "latency_ms": (time.perf_counter() - t0) * 1000.0,
+                                        }
+                            except Exception:
+                                continue
+                else:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    content = data["choices"][0]["message"]["content"]
+                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                    yield {
+                        "token": content,
+                        "content": content,
+                        "finish_reason": "stop",
+                        "latency_ms": elapsed_ms,
+                    }
         except Exception as exc:
             log.error("[SigmaRustBackend] Errore durante generazione stream: %s", exc)
             yield {
