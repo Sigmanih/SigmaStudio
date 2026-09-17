@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile per Sigma Engine Rust
-# Stage 1: Build & Quality Gates (rust:1.85-slim supporta edition2024)
-FROM rust:1.85-slim AS builder
+# Stage 1: Build & Quality Gates (rust:slim supporta tutte le ultime feature e dipendenze)
+FROM rust:slim AS builder
 
 WORKDIR /usr/src/sigma_engine_rust
 

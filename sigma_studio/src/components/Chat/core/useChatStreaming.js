@@ -22,17 +22,19 @@ function appendAndSave(sid, msg, setFn) {
 export function stripLiveToolBlocks(text) {
   if (!text) return '';
   let cleaned = text;
-  // 1. Rimuove blocchi recintati completi (sigma-tool, tool, mcp)
-  cleaned = cleaned.replace(/`{2,}(?:sigma-tool|tool:?|mcp)?\s*\n?\{[\s\S]*?`{2,}/gi, '');
-  cleaned = cleaned.replace(/`{2,}(?:sigma-tool|tool:?|mcp)[\s\S]*?`{2,}/gi, '');
-  // 2. Rimuove tag XML completi o aperti di chiamata tool
+  // 1. Rimuove blocchi recintati completi o aperti (1-6 backtick) con sigma-tool, tool o mcp
+  cleaned = cleaned.replace(/`{1,6}\s*(?:sigma-tool|tool:?|mcp)?\s*\n*\{[\s\S]*?`{1,6}/gi, '');
+  cleaned = cleaned.replace(/`{1,6}\s*(?:sigma-tool|tool:?|mcp)[\s\S]*?`{1,6}/gi, '');
+  cleaned = cleaned.replace(/`{1,6}\s*sigma-tool[\s\S]*?(?:`{1,6}|$)/gi, '');
+  // 2. Rimuove payload JSON tool nudi: {"tool": "...", "arguments": ...}
+  cleaned = cleaned.replace(/\{\s*"tool"\s*:\s*"[^"]*"[\s\S]*?\}/gi, '');
+  // 3. Rimuove tag XML completi o aperti di chiamata tool
   cleaned = cleaned.replace(/<(?:tool_call|tool|action)>[\s\S]*?<\/(?:tool_call|tool|action)>/gi, '');
   cleaned = cleaned.replace(/<(?:tool_call|tool|action)>[\s\S]*$/gi, '');
-  // 3. Rimuove blocchi recintati aperti durante lo streaming (unclosed)
-  cleaned = cleaned.replace(/`{2,}(?:sigma-tool|tool:?|mcp)[\s\S]*$/gi, '');
-  // Tolleranza per backtick con sigma-tool parziale o JSON tool nudo aperto
-  cleaned = cleaned.replace(/`{1,4}sigma-tool[\s\S]*$/gi, '');
+  // 4. Rimuove frammenti residui di sigma-tool o JSON aperti a fine stream in-flight
+  cleaned = cleaned.replace(/`{1,6}\s*(?:sigma-tool|tool:?|mcp)[\s\S]*$/gi, '');
   cleaned = cleaned.replace(/\{\s*"tool"\s*:\s*"[^"]*"[\s\S]*$/gi, '');
+  cleaned = cleaned.replace(/`{1,6}$/g, '');
   return cleaned;
 }
 

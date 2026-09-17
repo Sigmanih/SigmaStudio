@@ -24,12 +24,13 @@ class TestSigmaRustBackend(unittest.TestCase):
 
     def test_score_priority(self):
         facts = ModelFacts(path="/tmp/fake.gguf", name="test_model", weight_format="gguf")
-        # Default: 95 per non scavalcare l'inferenza CUDA reale di llama-server
-        self.assertEqual(SigmaRustBackend.score(facts, {}), 95)
+        # Quando il kernel Rust è online: punteggio prioritario 125 che supera llama-server (110)
+        with patch("core.engine.backends.sigmarust_backend._is_rust_kernel_online", return_value=True):
+            self.assertEqual(SigmaRustBackend.score(facts, {}), 125)
 
-        # Con SIGMA_RUST_INFERENCE=1: priorità massima (120)
-        with patch.dict("os.environ", {"SIGMA_RUST_INFERENCE": "1"}):
-            self.assertEqual(SigmaRustBackend.score(facts, {}), 120)
+        # Quando il kernel Rust è offline: punteggio 0
+        with patch("core.engine.backends.sigmarust_backend._is_rust_kernel_online", return_value=False):
+            self.assertEqual(SigmaRustBackend.score(facts, {}), 0)
 
     @patch("core.engine.backends.sigmarust_backend._is_rust_kernel_online")
     def test_availability(self, mock_online):
@@ -46,8 +47,8 @@ class TestSigmaRustBackend(unittest.TestCase):
         facts = ModelFacts(path="/tmp/fake.gguf", name="qwen", weight_format="gguf")
         hardware = {"accelerators": []}
 
-        # Con SIGMA_RUST_INFERENCE=1 vince per punteggio (120 vs 110/100)
-        with patch.dict("os.environ", {"SIGMA_RUST_INFERENCE": "1"}):
+        # Quando è online vince per punteggio (125 vs 110/100)
+        with patch("core.engine.backends.sigmarust_backend._is_rust_kernel_online", return_value=True):
             with patch.object(SigmaRustBackend, "availability", return_value=(True, "Online")):
                 chosen = select_backend(facts, hardware)
                 self.assertIsNotNone(chosen)

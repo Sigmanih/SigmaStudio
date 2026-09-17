@@ -67,6 +67,11 @@ impl NvmePrefetchEngine {
         Ok(())
     }
 
+    /// Alias rapido per notifica esecuzione layer con default di 32 layers
+    pub async fn on_layer_executed(&self, layer: usize) {
+        let _ = self.on_layer_execution_start(layer, 32).await;
+    }
+
     /// Avvia la lettura asincrona dei tensori di un layer dal disco NVMe
     async fn trigger_layer_prefetch(&self, layer_idx: usize) -> Result<()> {
         let tensor_key = format!("blk.{}.weight", layer_idx);

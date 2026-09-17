@@ -68,6 +68,10 @@ async fn main() {
         storage_fabric.total_fast_nvme_capacity_gb()
     );
 
+    let default_upstream = std::env::var("SIGMA_UPSTREAM_COMPUTE_URL")
+        .ok()
+        .or_else(|| Some("http://host.docker.internal:57540".to_string()));
+
     let state = NetworkState {
         kv_cache,
         tools,
@@ -77,6 +81,7 @@ async fn main() {
         storage_fabric,
         hierarchical_cache,
         nvme_prefetch,
+        upstream_compute_url: Arc::new(RwLock::new(default_upstream)),
     };
 
     let app = create_router(state);

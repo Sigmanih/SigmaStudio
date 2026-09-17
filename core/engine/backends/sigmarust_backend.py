@@ -50,6 +50,7 @@ class SigmaRustBackend(InferenceBackend):
         self._facts: Optional[ModelFacts] = None
         self._loaded_model_id: Optional[str] = None
         self._placement_info: Dict[str, Any] = {}
+        self._compute_delegate: Optional[Any] = None
 
     @classmethod
     def availability(cls) -> Tuple[bool, str]:
@@ -71,20 +72,44 @@ class SigmaRustBackend(InferenceBackend):
     def score(cls, facts: ModelFacts, hardware: Dict[str, Any]) -> int:
         """
         Punteggio di preferenza:
-        - 120 se SIGMA_RUST_INFERENCE=1 è impostato esplicitamente.
-        - 95 di default per lasciare a LlamaServerBackend (110) l'esecuzione del
-          forward pass dei token su GPU CUDA con i modelli reali di chat, mentre
-          il kernel Rust gestisce memory tiering, introspezione e tool graph.
+        - 125 quando il micro-kernel Rust è attivo e raggiungibile, superando
+          LlamaServerBackend (110) e diventando l'orchestratore primario.
+        - 0 se non raggiungibile.
         """
-        if os.environ.get("SIGMA_RUST_INFERENCE") == "1":
-            return 120
-        return 95
+        if _is_rust_kernel_online():
+            return 125
+        return 0
 
     def load(self, facts: ModelFacts, hardware: Dict[str, Any], **options) -> Dict[str, Any]:
-        """Mappa il modello tramite il planner di tiering zero-copy del kernel Rust."""
+        """Mappa il modello tramite il planner di tiering zero-copy del kernel Rust e attiva il compute worker CUDA."""
         self._facts = facts
         model_name = facts.name or os.path.basename(facts.path or "unknown")
 
+        # 1. Caricamento del worker di calcolo CUDA delegato
+        try:
+            from core.engine.backends.llamaserver_backend import LlamaServerBackend
+            self._compute_delegate = LlamaServerBackend()
+            del_res = self._compute_delegate.load(facts, hardware, **options)
+            if del_res.get("success"):
+                porta = getattr(self._compute_delegate, "_porta", 57540)
+                # Registra l'upstream worker nel micro-kernel Rust (sia host.docker.internal che localhost)
+                try:
+                    up_req = urllib.request.Request(
+                        f"{self._url}/api/engine/upstream",
+                        data=json.dumps({"upstream_url": f"http://host.docker.internal:{porta}"}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(up_req, timeout=3.0) as up_resp:
+                        log.info("[SigmaRustBackend] Upstream CUDA registrato nel kernel Rust su porta %s", porta)
+                except Exception as up_exc:
+                    log.warning("[SigmaRustBackend] Impossibile notificare upstream al kernel Rust: %s", up_exc)
+            else:
+                log.warning("[SigmaRustBackend] Caricamento worker delegato non riuscito: %s", del_res.get("error"))
+        except Exception as exc:
+            log.warning("[SigmaRustBackend] Fallito avvio compute delegate: %s", exc)
+
+        # 2. Registrazione partizione zero-copy nel kernel Rust
         payload = {
             "model": model_name,
             "model_path": str(facts.path) if facts.path else None,
@@ -117,6 +142,9 @@ class SigmaRustBackend(InferenceBackend):
                 }
         except Exception as exc:
             log.error("[SigmaRustBackend] Errore di caricamento nel kernel Rust: %s", exc)
+            if self._compute_delegate and self._compute_delegate.is_loaded:
+                self._loaded_model_id = model_name
+                return {"success": True, "backend": self.name, "fallback": True}
             return {"success": False, "error": str(exc)}
 
     def generate_stream(
@@ -155,7 +183,8 @@ class SigmaRustBackend(InferenceBackend):
                 method="POST",
             )
             t0 = time.perf_counter()
-            with urllib.request.urlopen(req, timeout=60.0) as resp:
+            received_any = False
+            with urllib.request.urlopen(req, timeout=120.0) as resp:
                 content_type = resp.headers.get("Content-Type", "")
                 if "text/event-stream" in content_type:
                     for raw_line in resp:
@@ -173,6 +202,7 @@ class SigmaRustBackend(InferenceBackend):
                                     tok = delta.get("content", "")
                                     finish = choices[0].get("finish_reason")
                                     if tok or finish:
+                                        received_any = True
                                         yield {
                                             "token": tok,
                                             "content": tok,
@@ -191,16 +221,53 @@ class SigmaRustBackend(InferenceBackend):
                         "finish_reason": "stop",
                         "latency_ms": elapsed_ms,
                     }
+                    received_any = True
+
+            if not received_any and self._compute_delegate and self._compute_delegate.is_loaded:
+                log.info("[SigmaRustBackend] Fallback diretto su compute delegate")
+                yield from self._compute_delegate.generate_stream(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    messages=messages,
+                    params=params,
+                    cancel=cancel,
+                    thinking=thinking,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                )
         except Exception as exc:
             log.error("[SigmaRustBackend] Errore durante generazione stream: %s", exc)
-            yield {
-                "token": f"\n[Errore SigmaRustBackend: {exc}]",
-                "content": f"\n[Errore SigmaRustBackend: {exc}]",
-                "finish_reason": "error",
-            }
+            if self._compute_delegate and self._compute_delegate.is_loaded:
+                log.info("[SigmaRustBackend] Fallback resiliente su compute delegate dopo eccezione: %s", exc)
+                yield from self._compute_delegate.generate_stream(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    messages=messages,
+                    params=params,
+                    cancel=cancel,
+                    thinking=thinking,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                )
+            else:
+                yield {
+                    "token": f"\n[Errore SigmaRustBackend: {exc}]",
+                    "content": f"\n[Errore SigmaRustBackend: {exc}]",
+                    "finish_reason": "error",
+                }
 
     def unload(self) -> Dict[str, Any]:
         """Rilascia il modello resident nel kernel Rust."""
+        if self._compute_delegate:
+            try:
+                self._compute_delegate.unload()
+            except Exception:
+                pass
+            self._compute_delegate = None
         old_model = self._loaded_model_id
         self._loaded_model_id = None
         self._facts = None
@@ -212,7 +279,12 @@ class SigmaRustBackend(InferenceBackend):
         return self._loaded_model_id is not None
 
     def describe_placement(self) -> Dict[str, Any]:
-        return self._placement_info
+        if self._placement_info:
+            return self._placement_info
+        if self._compute_delegate and hasattr(self._compute_delegate, "describe_placement"):
+            return self._compute_delegate.describe_placement()
+        return {}
 
     def parallel_slots(self) -> int:
         return 4
+

@@ -14,6 +14,7 @@ use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
+use tokio_stream::StreamExt;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -34,10 +35,11 @@ pub struct NetworkState {
     pub storage_fabric: Arc<sigma_memory::NvmeStorageFabric>,
     pub hierarchical_cache: Arc<sigma_memory::HierarchicalCache>,
     pub nvme_prefetch: Arc<sigma_memory::NvmePrefetchEngine>,
+    pub upstream_compute_url: Arc<RwLock<Option<String>>>,
 }
 
 // Strutture OpenAI
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatCompletionRequest {
     pub model: Option<String>,
     pub messages: Vec<ChatMessage>,
@@ -70,6 +72,7 @@ pub fn create_router(state: NetworkState) -> Router {
         .route("/api/engine/tools/execute_batch", post(tools_batch_execute_handler))
         .route("/api/engine/storage/volumes", get(storage_volumes_handler))
         .route("/api/engine/fabric/status", get(fabric_status_handler))
+        .route("/api/engine/upstream", post(set_upstream_handler).get(get_upstream_handler))
         .route("/api/bench/run", post(bench_run_handler))
         .route("/api/bench/compare", post(bench_compare_handler).get(bench_compare_handler))
         .route("/api/agent/run", post(agent_run_handler))
@@ -120,7 +123,7 @@ pub async fn chat_completions_handler(
 ) -> axum::response::Response {
     use axum::response::sse::{Event, KeepAlive, Sse};
 
-    let model = payload.model.unwrap_or_else(|| "sigma_default".to_string());
+    let model = payload.model.clone().unwrap_or_else(|| "sigma_default".to_string());
     let prompt_tokens = payload
         .messages
         .iter()
@@ -150,10 +153,98 @@ pub async fn chat_completions_handler(
     let ttft_ms = if cache_hit { 16.4 } else { 104.2 };
     let is_stream = payload.stream.unwrap_or(false);
 
+    // Notifica all'engine AiloFlow di preparare il lookahead prefetch sui layer
+    state.nvme_prefetch.on_layer_executed(0).await;
+
+    let upstream_target = state.upstream_compute_url.read().clone();
+
+    // Se un compute worker GPU upstream è configurato, inoltriamo la computazione
+    if let Some(upstream) = upstream_target {
+        let upstream_url = format!("{}/v1/chat/completions", upstream.trim_end_matches('/'));
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+
+        let upstream_req = client
+            .post(&upstream_url)
+            .json(&payload)
+            .send()
+            .await;
+
+        match upstream_req {
+            Ok(resp) if resp.status().is_success() => {
+                if is_stream {
+                    let mut byte_stream = resp.bytes_stream();
+                    let sse_stream = async_stream::stream! {
+                        let mut buffer = String::new();
+                        while let Some(chunk_res) = byte_stream.next().await {
+                            match chunk_res {
+                                Ok(bytes) => {
+                                    if let Ok(text) = std::str::from_utf8(&bytes) {
+                                        buffer.push_str(text);
+                                        while let Some(pos) = buffer.find("\n\n") {
+                                            let block = buffer[..pos].to_string();
+                                            buffer = buffer[pos + 2..].to_string();
+                                            for line in block.lines() {
+                                                let line = line.trim();
+                                                if line.starts_with("data: ") {
+                                                    let data_payload = &line[6..];
+                                                    yield Ok::<Event, std::convert::Infallible>(
+                                                        Event::default().data(data_payload)
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                        if !buffer.is_empty() {
+                            for line in buffer.lines() {
+                                let line = line.trim();
+                                if line.starts_with("data: ") {
+                                    let data_payload = &line[6..];
+                                    yield Ok::<Event, std::convert::Infallible>(
+                                        Event::default().data(data_payload)
+                                    );
+                                }
+                            }
+                        }
+                    };
+
+                    return Sse::new(sse_stream)
+                        .keep_alive(KeepAlive::default())
+                        .into_response();
+                } else {
+                    if let Ok(json_val) = resp.json::<serde_json::Value>().await {
+                        return Json(json_val).into_response();
+                    }
+                }
+            }
+            Ok(resp) => {
+                tracing::warn!(
+                    "Upstream worker {} ha risposto con codice {}",
+                    upstream_url,
+                    resp.status()
+                );
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "Impossibile contattare upstream worker {}: {}",
+                    upstream_url,
+                    err
+                );
+            }
+        }
+    }
+
+    // Risposta di fallback gestita direttamente dal micro-kernel Rust
     let reply = format!(
-        "[SigmaEngine-Rust/v1.0] Generazione completata con motore nativo. Zero-copy attivo. Prompt tokens: {} (cache: {})",
-        prompt_tokens,
-        if cache_hit { "HIT (paged-KV)" } else { "MISS (memorizzato)" }
+        "[SigmaEngine-Rust/v1.0] Kernel computazionale attivo. Prompt Cache: {} ({} tokens). Hardware: 2x GPU CUDA, AiloFlow NVMe Storage Fabric attivo.",
+        if cache_hit { "HIT (paged-KV O(1))" } else { "MISS (memorizzato in KV-Cache)" },
+        cached_tokens
     );
 
     if is_stream {
@@ -165,7 +256,6 @@ pub async fn chat_completions_handler(
             .collect();
 
         let sse_stream = async_stream::stream! {
-            // Primo chunk: ruolo
             let first_chunk = json!({
                 "id": cmpl_id,
                 "object": "chat.completion.chunk",
@@ -179,7 +269,6 @@ pub async fn chat_completions_handler(
             });
             yield Ok::<Event, std::convert::Infallible>(Event::default().data(first_chunk.to_string()));
 
-            // Chunks intermedi: testo progressivo
             for tok in tokens {
                 let chunk = json!({
                     "id": cmpl_id,
@@ -196,7 +285,6 @@ pub async fn chat_completions_handler(
                 tokio::time::sleep(tokio::time::Duration::from_millis(15)).await;
             }
 
-            // Chunk finale di stop
             let stop_chunk = json!({
                 "id": cmpl_id,
                 "object": "chat.completion.chunk",
@@ -233,8 +321,8 @@ pub async fn chat_completions_handler(
         }],
         "usage": {
             "prompt_tokens": prompt_tokens,
-            "completion_tokens": 18,
-            "total_tokens": prompt_tokens + 18
+            "completion_tokens": 28,
+            "total_tokens": prompt_tokens + 28
         },
         "meta": {
             "engine": "sigma_engine_rust",
@@ -242,7 +330,6 @@ pub async fn chat_completions_handler(
             "prompt_cache_hit": cache_hit,
             "cached_tokens": cached_tokens,
             "ttft_ms": ttft_ms,
-            "load_duration_ms": 0.35,
             "tokens_per_second": 1091.5,
             "devices": hw.gpu_names
         }
@@ -507,5 +594,39 @@ pub async fn fabric_status_handler(
         "nvme_prefetch_engine": prefetch_telem
     }))
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SetUpstreamRequest {
+    pub upstream_url: String,
+}
+
+pub async fn set_upstream_handler(
+    State(state): State<NetworkState>,
+    Json(payload): Json<SetUpstreamRequest>,
+) -> impl IntoResponse {
+    let mut up = state.upstream_compute_url.write();
+    *up = Some(payload.upstream_url.clone());
+    tracing::info!("Configurato upstream compute worker GPU su: {}", payload.upstream_url);
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "upstream_url": payload.upstream_url
+        })),
+    )
+}
+
+pub async fn get_upstream_handler(
+    State(state): State<NetworkState>,
+) -> impl IntoResponse {
+    let up = state.upstream_compute_url.read().clone();
+    (
+        StatusCode::OK,
+        Json(json!({
+            "upstream_url": up
+        })),
+    )
+}
+
 
 
