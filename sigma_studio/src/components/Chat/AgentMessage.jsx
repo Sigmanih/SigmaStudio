@@ -1050,7 +1050,10 @@ export default function AgentMessage({
                     ? `${Math.round(rawTtft)}ms`
                     : null;
 
-                  if (!routingDisplay && !loadDisplay && !tokensDisplay && !genDurationDisplay && !tpsDisplay && !engineDisplay && !ttftDisplay) return null;
+                  const rawRadixHit = m.prompt_cache_hit ?? m.metrics?.prompt_cache_hit ?? first.prompt_cache_hit ?? first.metrics?.prompt_cache_hit;
+                  const rawRadixTokens = m.cached_tokens ?? m.metrics?.cached_tokens ?? first.cached_tokens ?? first.metrics?.cached_tokens;
+
+                  if (!routingDisplay && !loadDisplay && !tokensDisplay && !genDurationDisplay && !tpsDisplay && !engineDisplay && !ttftDisplay && !rawRadixHit) return null;
 
                   return (
                     <div className="chat-msg-footer-metrics" style={{
@@ -1066,6 +1069,12 @@ export default function AgentMessage({
                       borderTop: '1px solid rgba(255, 255, 255, 0.04)',
                       userSelect: 'none'
                     }}>
+                      {rawRadixHit && (
+                        <span title={`Prefisso KV condiviso con lookup zero-copy O(1) (${rawRadixTokens || 0} token riutilizzati senza ricalcolo)`} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span>⚡</span>
+                          <span>Radix: <strong style={{ color: '#c084fc', fontWeight: 700 }}>HIT (+{rawRadixTokens || 0} tok)</strong></span>
+                        </span>
+                      )}
                       {loadDisplay && (
                         <span title="Tempo impiegato per caricare il modello in memoria / VRAM" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                           <span>⏳</span>

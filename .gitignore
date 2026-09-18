@@ -120,8 +120,7 @@ collatz_pipeline.json
 # Virtual Environment
 .venv/
 projects/*
-!projects/sigma_engine_rust/
-projects/sigma_engine_rust/target/
+projects/
 sandboxes.json
 
 # OS files
@@ -181,8 +180,7 @@ training/*/__pycache__/
 unsloth_compiled_cache/
 
 # Benchmark: dataset ufficiali scaricati da HuggingFace e dettaglio dei run.
-# Sono artefatti rigenerabili (decine di MB per suite, uno JSONL per run);
-# l'indice dei job resta versionato perche' e' piccolo e tiene lo storico.
+benchmarks/
 training_lab/benchmark_cache/
 training_lab/benchmark_runs/
 # PID e porte dei servitori Ollama avviati da Sigma: stato di questa macchina.

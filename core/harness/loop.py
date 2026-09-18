@@ -2162,7 +2162,7 @@ def _stream_agent_turn_impl(
     # the transcript, so trimming old turns can no longer make the agent forget
     # what it has already read, written or verified.
     goal_text = ""
-    for m in messages:
+    for m in reversed(messages):
         if m.get("role") == "user":
             goal_text = str(m.get("content", ""))[:1500]
             break
@@ -2241,7 +2241,14 @@ def _stream_agent_turn_impl(
         # turni bruciati su un file scritto al secondo.
         ledger.declare_verification(verify_command)
     if current_pipeline:
-        ledger.set_pipeline(current_pipeline)
+        # Se tutti i task della pipeline sono già completati, l'utente ha inviato un nuovo obiettivo
+        # o istruzione successiva: non re-iniettiamo i task passati per evitare che il turno
+        # creda il nuovo obiettivo già raggiunto.
+        tutti_finiti = all(t.get("status") in ("done", "completed") for t in current_pipeline)
+        if not tutti_finiti:
+            ledger.set_pipeline(current_pipeline)
+        else:
+            log.info("[AdminAgent] Pipeline precedente già conclusa: pronta per nuova pianificazione.")
     # I tool ammessi in questo run. Dichiararli nel prompt e verificarli prima
     # dell'esecuzione sono due meta' della stessa regola: la prima evita il
     # tentativo, la seconda lo impedisce quando avviene lo stesso.
@@ -2599,8 +2606,17 @@ def _stream_agent_turn_impl(
             pending_out = ""
 
         except Exception as e:
+            import traceback
+            err_type = type(e).__name__
+            tb = traceback.format_exc()
+            log.exception("[AdminAgent] Eccezione inferenza: %s: %s", err_type, e)
             _persist_session(session_id, ledger, model_name, run_metrics, status="error")
-            yield {"type": "error", "error": f"Errore inferenza: {str(e)}"}
+            yield {
+                "type": "error",
+                "error_type": err_type,
+                "error": f"Errore inferenza ({err_type}): {str(e)}",
+                "traceback": tb,
+            }
             return
 
         # Calculate metrics for this generation pass
@@ -2628,6 +2644,12 @@ def _stream_agent_turn_impl(
             tools_found = tool_calls_to_invocations(native_calls)
         else:
             tools_found = extract_tool_invocations(full_text)
+
+        # Se nessun tool è stato estratto ma il modello ha generato del testo (che era stato
+        # parzialmente trattenuto dal parser dei fence), emetti il testo affinché l'utente
+        # possa vedere cosa l'agente ha risposto invece di una bolla vuota.
+        if not tools_found and full_text.strip():
+            yield {"type": "token", "token": full_text}
 
         # An output cut off by the token budget is indistinguishable, to the
         # extractor, from an output that contained no tool at all — and the two
@@ -3901,6 +3923,18 @@ def stream_admin_agent_turn(*args: Any, **kwargs: Any) -> Generator[Dict[str, An
             if riga:
                 yield {"type": "diario", "text": riga, "at": time.time()}
         completato = True
+    except Exception as exc:
+        import traceback
+        err_type = type(exc).__name__
+        err_msg = str(exc)
+        tb_str = traceback.format_exc()
+        log.exception("[AdminAgent] Eccezione fatale nel loop agente: %s: %s", err_type, err_msg)
+        yield {
+            "type": "error",
+            "error_type": err_type,
+            "error": f"Errore interno ({err_type}): {err_msg}",
+            "traceback": tb_str,
+        }
     finally:
         attivita.chiudi(
             voce_attivita,

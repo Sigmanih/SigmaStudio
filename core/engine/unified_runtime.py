@@ -661,7 +661,7 @@ class UniversalSigmaEngine:
         # memory tiering su GGUF e SafeTensors, oppure LlamaServer per GGUF), delega al backend.
         from core.engine.backends import select_backend
         backend_cls = select_backend(facts, self.refresh_vram())
-        if backend_cls is not None and (facts.weight_format != "safetensors" or backend_cls.name == "sigma_engine_rust"):
+        if backend_cls is not None and facts.weight_format != "safetensors":
             return self._load_via_backend(facts, display_name, context_tokens)
 
         # Check completeness before attempting PyTorch / Transformers loading

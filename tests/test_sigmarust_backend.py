@@ -19,7 +19,7 @@ class TestSigmaRustBackend(unittest.TestCase):
         facts_other = ModelFacts(path="/tmp/fake.bin", name="test_other", weight_format="pytorch_bin")
 
         self.assertTrue(SigmaRustBackend.supports(facts_gguf, {}))
-        self.assertTrue(SigmaRustBackend.supports(facts_safetensors, {}))
+        self.assertFalse(SigmaRustBackend.supports(facts_safetensors, {}))
         self.assertFalse(SigmaRustBackend.supports(facts_other, {}))
 
     def test_score_priority(self):

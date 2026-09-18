@@ -61,15 +61,17 @@ QUANT_TYPES: List[Dict[str, Any]] = [
     {"id": "F16", "label": "F16 (nessuna quantizzazione)", "bpw": 16.0,
      "note": "Massima fedelta', file grande quanto il modello originale."},
     {"id": "Q8_0", "label": "Q8_0", "bpw": 8.5,
-     "note": "Praticamente indistinguibile dal F16."},
+     "note": "Praticamente indistinguibile dal F16. Compatibile con tutti i modelli, inclusi MoE con dimensioni non standard."},
     {"id": "Q6_K", "label": "Q6_K", "bpw": 6.6,
      "note": "Perdita trascurabile."},
     {"id": "Q5_K_M", "label": "Q5_K_M", "bpw": 5.7,
      "note": "Ottimo compromesso quando la VRAM basta."},
     {"id": "Q4_K_M", "label": "Q4_K_M (consigliato)", "bpw": 4.9,
-     "note": "Lo standard: buona qualita', meta' della memoria di Q8."},
+     "note": "Lo standard: buona qualita', meta' della memoria di Q8. I tensori MoE con righe non divisibili per 256 vengono automaticamente portati a Q4_0."},
     {"id": "Q4_K_S", "label": "Q4_K_S", "bpw": 4.6,
-     "note": "Leggermente piu' compatto di Q4_K_M."},
+     "note": "Leggermente piu' compatto di Q4_K_M. I tensori MoE con righe non divisibili per 256 vengono automaticamente portati a Q4_0."},
+    {"id": "Q4_0", "label": "Q4_0", "bpw": 4.34,
+     "note": "Compatibile con tutti i modelli (blocchi da 32). Preferibile a Q4_K_S per architetture MoE con dimensioni non standard (es. GPT-OSS)."},
     {"id": "Q3_K_M", "label": "Q3_K_M", "bpw": 3.9,
      "note": "Per hardware limitato; la qualita' cala in modo visibile."},
     {"id": "Q2_K", "label": "Q2_K", "bpw": 3.0,
@@ -148,61 +150,82 @@ class GgufConverter:
     def convertible_models(cls) -> List[Dict[str, Any]]:
         """Local safetensors models that can be converted, with size estimates."""
         results: List[Dict[str, Any]] = []
-        base = models_dir()
-        if not os.path.isdir(base):
-            return results
+        from core.model_paths import all_models_dirs
 
-        for entry in sorted(os.listdir(base)):
-            path = os.path.join(base, entry)
-            if not os.path.isdir(path):
-                continue
-            # A store accumulates half-downloaded, hand-copied and foreign
-            # directories. One of them failing to parse must not empty the
-            # whole list: skip it, say so in the log, keep scanning.
-            try:
-                facts = ModelInspector.inspect(path)
-            except Exception as exc:  # noqa: BLE001 - any malformed directory
-                log.warning(
-                    "[GgufConverter] '%s' non ispezionabile, escluso dalla lista: %s",
-                    entry, exc,
-                )
-                continue
-            if facts is None or facts.weight_format not in ("safetensors", "gguf"):
-                continue
+        known_roots = {os.path.abspath(str(d)).lower() for d in all_models_dirs(refresh=True)}
+        seen_paths = set()
 
-            # An existing GGUF can be re-quantized without redoing the slow
-            # Hugging Face conversion: that stage is already paid for, and
-            # dropping an F16 to Q4_K_M is a straight file transform. Offering
-            # it here is the difference between minutes and hours when the
-            # first choice turns out too large for the machine.
-            already_gguf = facts.weight_format == "gguf"
-            if already_gguf and not cls._is_requantizable(path):
+        for base in all_models_dirs(refresh=True):
+            base_str = str(base)
+            if not os.path.isdir(base_str):
                 continue
 
             try:
-                estimated = cls._estimate_outputs(facts)
-                compatibility = cls.check_compatibility(facts)
-            except Exception as exc:  # noqa: BLE001 - stima non essenziale
-                log.warning(
-                    "[GgufConverter] stima non riuscita per '%s': %s", entry, exc
-                )
-                estimated, compatibility = [], {}
+                entries = sorted(os.listdir(base_str))
+            except Exception as exc:
+                log.debug("[GgufConverter] Directory non leggibile '%s': %s", base_str, exc)
+                continue
 
-            results.append({
-                "moe": cls._moe_note(facts),
-                "name": entry,
-                "path": path,
-                "source_format": facts.weight_format,
-                "architecture": (facts.architectures or ["?"])[0],
-                "params_b": round(facts.param_count / 1e9, 2),
-                "size_gb": round(facts.total_bytes / 2**30, 2),
-                "layers": facts.num_hidden_layers,
-                "is_multimodal": facts.is_multimodal,
-                "estimated_outputs": estimated,
-                "fits_in_vram": cls._vram_fit(estimated),
-                "already_converted": os.path.isdir(path + "-GGUF"),
-                "compatibility": compatibility,
-            })
+            for entry in entries:
+                if entry.startswith((".", "$")) or entry.lower() in (
+                    "system volume information", "$recycle.bin", "recovery", "program files", "programmi"
+                ):
+                    continue
+
+                path = os.path.join(base_str, entry)
+                if not os.path.isdir(path):
+                    continue
+
+                # Evita di considerare una cartella contenitore (come D:\ModelliAI) come modello singolo
+                canon = os.path.abspath(path).lower()
+                if canon in known_roots or canon in seen_paths:
+                    continue
+                seen_paths.add(canon)
+
+                try:
+                    facts = ModelInspector.inspect(path)
+                except Exception as exc:  # noqa: BLE001 - any malformed directory
+                    log.warning(
+                        "[GgufConverter] '%s' non ispezionabile, escluso dalla lista: %s",
+                        entry, exc,
+                    )
+                    continue
+                if facts is None or facts.weight_format not in ("safetensors", "gguf"):
+                    continue
+
+                # An existing GGUF can be re-quantized without redoing the slow
+                # Hugging Face conversion: that stage is already paid for, and
+                # dropping an F16 to Q4_K_M is a straight file transform. Offering
+                # it here is the difference between minutes and hours when the
+                # first choice turns out too large for the machine.
+                already_gguf = facts.weight_format == "gguf"
+                if already_gguf and not cls._is_requantizable(path):
+                    continue
+
+                try:
+                    estimated = cls._estimate_outputs(facts)
+                    compatibility = cls.check_compatibility(facts)
+                except Exception as exc:  # noqa: BLE001 - stima non essenziale
+                    log.warning(
+                        "[GgufConverter] stima non riuscita per '%s': %s", entry, exc
+                    )
+                    estimated, compatibility = [], {}
+
+                results.append({
+                    "moe": cls._moe_note(facts),
+                    "name": entry,
+                    "path": path,
+                    "source_format": facts.weight_format,
+                    "architecture": (facts.architectures or ["?"])[0],
+                    "params_b": round(facts.param_count / 1e9, 2),
+                    "size_gb": round(facts.total_bytes / 2**30, 2),
+                    "layers": facts.num_hidden_layers,
+                    "is_multimodal": facts.is_multimodal,
+                    "estimated_outputs": estimated,
+                    "fits_in_vram": cls._vram_fit(estimated),
+                    "already_converted": os.path.isdir(path + "-GGUF"),
+                    "compatibility": compatibility,
+                })
         return results
 
     @staticmethod
@@ -375,7 +398,8 @@ class GgufConverter:
         from core.engine.backends.base import module_available
 
         writer = module_available("gguf")
-        quantizer = module_available("llama_cpp")
+        binario_quant = cls._quantize_binario()
+        quantizer = module_available("llama_cpp") or bool(binario_quant)
 
         # Auto-recover quantizer (llama_cpp) if not yet imported/present
         if not quantizer:
@@ -384,7 +408,7 @@ class GgufConverter:
                 platform_info = detect_platform()
                 install_gguf_runtime(platform_info)
                 importlib.invalidate_caches()
-                quantizer = module_available("llama_cpp")
+                quantizer = module_available("llama_cpp") or bool(cls._quantize_binario())
             except Exception:
                 pass
 
@@ -537,9 +561,16 @@ class GgufConverter:
         # calls it "qwen3_5", the GGUF file records "qwen35". Checking the
         # runtime for the Hugging Face spelling reports every such model as
         # unsupported when it runs perfectly well.
+        is_already_gguf = getattr(facts, "weight_format", "") == "gguf"
         gguf_arch = cls._gguf_arch_name(hf_type)
-        converter_ok = cls._converter_supports(facts)
-        writer_ok = cls._writer_supports(gguf_arch) if gguf_arch else False
+        if not gguf_arch and is_already_gguf and hf_type and hf_type != "gguf":
+            # Per un file già GGUF, model_type è già l'architettura GGUF estratta dai metadati
+            gguf_arch = hf_type
+
+        # Se il modello è già un file GGUF, la conversione da HF è già stata effettuata
+        # e non serve il convertitore convert_hf_to_gguf.py, né il writer python
+        converter_ok = True if is_already_gguf else cls._converter_supports(facts)
+        writer_ok = True if is_already_gguf else (cls._writer_supports(gguf_arch) if gguf_arch else False)
         runtime_ok = cls._runtime_supports(gguf_arch) if gguf_arch else False
 
         report = {
@@ -578,7 +609,7 @@ class GgufConverter:
         # conosce l'architettura non la conoscera' nemmeno una build piu'
         # recente. Consigliare un aggiornamento manderebbe a cercare una
         # versione che nessuno ha pubblicato.
-        if report["writer"] is False:
+        if report["writer"] is False and not is_already_gguf:
             report["upstream_missing"] = True
             report["summary"] = (
                 "L'architettura '" + nome + "' non e ancora implementata in "
@@ -588,12 +619,23 @@ class GgufConverter:
                 "utilizzabile con il backend transformers, se la memoria basta."
             )
         elif not blocking:
-            report["summary"] = "Compatibile: conversione ed esecuzione supportate."
+            report["summary"] = (
+                "Compatibile: quantizzazione ed esecuzione supportate."
+                if is_already_gguf
+                else "Compatibile: conversione ed esecuzione supportate."
+            )
         elif blocking == ["runtime"]:
             report["summary"] = (
                 "Il runtime llama.cpp installato non conosce l'architettura '"
-                + nome + "'. La conversione riuscirebbe, ma il GGUF non "
-                "sarebbe caricabile. " + aggiorna_motore
+                + nome + "'. "
+                + ("La quantizzazione" if is_already_gguf else "La conversione")
+                + " riuscirebbe, ma il GGUF non sarebbe caricabile. "
+                + aggiorna_motore
+            )
+        elif is_already_gguf:
+            report["summary"] = (
+                "L'architettura '" + nome + "' non e supportata dal runtime installato. "
+                + aggiorna_motore
             )
         elif "runtime" not in blocking:
             report["summary"] = (
@@ -931,8 +973,23 @@ class GgufConverter:
     def start(cls, model_name: str, quantization: str = "Q4_K_M",
               keep_intermediate: bool = False) -> Dict[str, Any]:
         """Queues a conversion and returns at once; poll the job for progress."""
-        source = os.path.join(models_dir(), model_name)
-        if not os.path.isdir(source):
+        from core.model_paths import all_models_dirs
+
+        source = None
+        if os.path.isabs(model_name) and os.path.isdir(model_name):
+            source = model_name
+        else:
+            for base in all_models_dirs(refresh=True):
+                candidate = os.path.join(str(base), model_name)
+                if os.path.isdir(candidate):
+                    source = candidate
+                    break
+                candidate2 = os.path.join(str(base), model_name.replace("/", "--"))
+                if os.path.isdir(candidate2):
+                    source = candidate2
+                    break
+
+        if source is None or not os.path.isdir(source):
             return {"success": False, "error": "Modello non trovato: " + str(model_name)}
 
         part_files = [f for f in os.listdir(source) if f.endswith((".part", ".download", ".tmp"))]
@@ -961,7 +1018,8 @@ class GgufConverter:
         # da cancellare a mano.
         piano_spazio = {"ok": True, "intermediate": "auto"}
         if facts is not None:
-            piano_spazio = cls._plan_conversion_space(facts, quantization, models_dir())
+            dest_dir = os.path.dirname(source)
+            piano_spazio = cls._plan_conversion_space(facts, quantization, dest_dir)
             if not piano_spazio["ok"]:
                 return {
                     "success": False,
@@ -1119,6 +1177,19 @@ class GgufConverter:
         final_name = base_name + "." + job.quantization + ".gguf"
         final_path = os.path.join(target_dir, final_name)
 
+        # Rimuove file parziali o cache residue di quantizzazioni precedenti fallite/interrotte
+        if os.path.isfile(final_path):
+            try:
+                os.remove(final_path)
+            except OSError:
+                pass
+        facts_cache = os.path.join(target_dir, ".sigma_facts.json")
+        if os.path.isfile(facts_cache):
+            try:
+                os.remove(facts_cache)
+            except OSError:
+                pass
+
         existing_gguf = cls._existing_gguf(source)
 
         try:
@@ -1258,6 +1329,12 @@ class GgufConverter:
             if not existing_gguf and not conserva and os.path.exists(intermediate):
                 try:
                     os.remove(intermediate)
+                except Exception:
+                    pass
+            # Rimuove il file di output finale incompleto per evitare che rimanga un GGUF corrotto
+            if os.path.isfile(final_path):
+                try:
+                    os.remove(final_path)
                 except Exception:
                     pass
             # Senza questo, la cartella creata a inizio job resta li' vuota e
@@ -1621,28 +1698,105 @@ class GgufConverter:
                 return percorso
         return None
 
+    @staticmethod
+    def _tensori_incompatibili_k(gguf_path: str) -> List[str]:
+        """Nomi dei tensori con righe non divisibili per 256 (incompatibili con K-quant).
+
+        I tipi K (Q2_K, Q3_K, Q4_K, Q5_K, Q6_K) richiedono che la dimensione
+        della prima riga sia multipla di 256 per costruire i super-blocchi.
+        Modelli MoE come GPT-OSS usano dimensioni come 2880 (divisibile per 32
+        ma non per 256): la quantizzazione K fallisce su questi tensori con
+        codice di uscita 1 e nessun messaggio chiaro.
+        """
+        try:
+            from gguf.gguf_reader import GGUFReader
+            reader = GGUFReader(gguf_path)
+            return [
+                str(t.name)
+                for t in getattr(reader, "tensors", [])
+                if len(t.shape) > 0 and int(t.shape[0]) % 256 != 0
+            ]
+        except Exception as exc:
+            log.debug("[GgufConverter] Scansione tensori K incompatibili fallita: %s", exc)
+            return []
+
     @classmethod
     def _quantize_con_motore(cls, binario: str, source: str, output: str,
                              quant_type: str,
                              override: Optional[List[Dict[str, Any]]] = None) -> None:
-        """Quantizza con l'eseguibile del motore, in un processo separato."""
+        """Quantizza con l'eseguibile del motore, in un processo separato.
+
+        Per i tipi K-quant, rileva automaticamente i tensori con righe non
+        divisibili per 256 e li forza a q4_0 tramite --tensor-type-file: i
+        blocchi da 32 di Q4_0 sono compatibili con qualsiasi dimensione,
+        e la perdita di qualita' rispetto al K-quant e' minima su pochi tensori
+        MoE rispetto al crash garantito senza questo ripiego.
+        """
+        import tempfile
+
+        # I tipi K-quant richiedono righe multiple di 256. Per i modelli MoE
+        # che non rispettano questo vincolo si usa un file di sostituzione
+        # selettiva: i tensori problematici escono a q4_0, tutti gli altri
+        # vengono trattati col tipo richiesto.
+        _K_TIPI = {"Q2_K", "Q3_K", "Q3_K_S", "Q3_K_M", "Q3_K_L",
+                   "Q4_K", "Q4_K_S", "Q4_K_M",
+                   "Q5_K", "Q5_K_S", "Q5_K_M", "Q6_K"}
+        tipo_normalizzato = quant_type.upper().replace(" ", "")
+
         comando = [binario]
-        for voce in (override or []):
-            if voce.get("tipo"):
-                comando += ["--tensor-type",
-                            str(voce["tensore"]) + "=" + str(voce["tipo"])]
-        if cls._va_riquantizzato(source):
-            # llama.cpp rifiuta di default di ripartire da un file gia'
-            # quantizzato. Il divieto protegge da un doppio arrotondamento
-            # involontario, ma qui e' voluto: o il piano spazio ha scelto q8_0
-            # come intermedio, o la sorgente e' un GGUF che l'utente ha scelto.
-            comando.append("--allow-requantize")
-        comando += [source, output, quant_type,
-                    str(max((os.cpu_count() or 4) - 1, 1))]
-        esito = subprocess.run(
-            comando, capture_output=True, text=True, errors="replace",
-            timeout=6 * 60 * 60, cwd=os.path.dirname(binario),
-        )
+        file_tmp_tipi = None
+
+        try:
+            # Override espliciti per tensori oltre il limite HF
+            override_nomi = {voce["tensore"] for voce in (override or []) if voce.get("tipo")}
+            for voce in (override or []):
+                if voce.get("tipo"):
+                    comando += ["--tensor-type",
+                                str(voce["tensore"]) + "=" + str(voce["tipo"])]
+
+            # Fallback automatico per tensori incompatibili con K-quant
+            if tipo_normalizzato in _K_TIPI:
+                incompatibili = [
+                    nome for nome in cls._tensori_incompatibili_k(source)
+                    if nome not in override_nomi
+                ]
+                if incompatibili:
+                    log.info(
+                        "[GgufConverter] %d tensori con righe non divisibili per 256: "
+                        "verranno quantizzati a q4_0 invece di %s (compatibilita' K-quant).",
+                        len(incompatibili), quant_type,
+                    )
+                    # --tensor-type-file e' piu' robusto di tanti --tensor-type
+                    # consecutivi: nessun limite di lunghezza della linea di comando.
+                    tmp = tempfile.NamedTemporaryFile(
+                        mode="w", suffix=".txt", delete=False, encoding="utf-8"
+                    )
+                    for nome in incompatibili:
+                        tmp.write(nome + "=q4_0\n")
+                    tmp.close()
+                    file_tmp_tipi = tmp.name
+                    comando += ["--tensor-type-file", file_tmp_tipi]
+
+            if cls._va_riquantizzato(source):
+                # llama.cpp rifiuta di default di ripartire da un file gia'
+                # quantizzato. Il divieto protegge da un doppio arrotondamento
+                # involontario, ma qui e' voluto: o il piano spazio ha scelto q8_0
+                # come intermedio, o la sorgente e' un GGUF che l'utente ha scelto.
+                comando.append("--allow-requantize")
+
+            comando += [source, output, quant_type,
+                        str(max((os.cpu_count() or 4) - 1, 1))]
+            esito = subprocess.run(
+                comando, capture_output=True, text=True, errors="replace",
+                timeout=6 * 60 * 60, cwd=os.path.dirname(binario),
+            )
+        finally:
+            if file_tmp_tipi and os.path.exists(file_tmp_tipi):
+                try:
+                    os.remove(file_tmp_tipi)
+                except Exception:
+                    pass
+
         if esito.returncode != 0:
             uscita = (esito.stderr or "") + os.linesep + (esito.stdout or "")
             righe = [r.strip() for r in uscita.splitlines() if r.strip()]

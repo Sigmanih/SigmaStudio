@@ -120,10 +120,11 @@ PREDEFINITI: Dict[str, Any] = {
     "network": False,
     #: Porte dev-server da esporre verso l'host quando la rete e' accesa.
     "ports": ["3000:3000", "5000:5000", "5173:5173", "8080:8080"],
-    #: Quanta memoria puo' prendersi. Un `npm install` impazzito non deve poter
-    #: mettere in ginocchio la macchina che serve anche il modello.
+    #: Limiti risorse sandbox
     "memory": "4g",
     "cpus": "2",
+    #: Hot-reload automatico del kernel nativo Rust (ricompila e riavvia il container di runtime alle modifiche dei file .rs)
+    "rust_hot_reload": False,
 }
 
 
@@ -653,8 +654,18 @@ def info_docker_estese() -> Dict[str, Any]:
     except Exception as exc:
         log.debug("[Docker] recupero immagini fallito: %s", exc)
 
+    rust_online = False
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://127.0.0.1:8090/health", method="GET")
+        with urllib.request.urlopen(req, timeout=0.3) as resp:
+            rust_online = (resp.status == 200)
+    except Exception:
+        pass
+
     return {
         **base,
+        "rust_kernel_online": rust_online,
         "containers": containers[:25],
         "images": images[:25],
     }
