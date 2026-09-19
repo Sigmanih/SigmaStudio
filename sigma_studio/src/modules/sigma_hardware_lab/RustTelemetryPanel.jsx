@@ -95,7 +95,12 @@ export default function RustTelemetryPanel({ compact = false }) {
                 pages_allocated: raw.kv_cache?.allocated_pages ?? null,
                 pages_total: raw.kv_cache?.total_pages ?? null,
                 system_prompt_reuse: raw.kv_cache?.hits ?? null,
+                spilled_pages_on_disk: raw.kv_cache?.spilled_pages_on_disk ?? 0,
+                total_spills: raw.kv_cache?.total_spills ?? 0,
+                total_restores: raw.kv_cache?.total_restores ?? 0,
+                nvme_active: true,
               },
+
               hardware: {
                 ram: {
                   total_mb: raw.hardware?.ram_gb ? Math.round(raw.hardware.ram_gb * 1024) : null,
@@ -174,6 +179,11 @@ export default function RustTelemetryPanel({ compact = false }) {
       : null;
   const hitRatePct =
     nd(kvCache.radix_hit_rate) === null ? null : Math.round(kvCache.radix_hit_rate * 100);
+
+  const spilledPages = kvCache.spilled_pages_on_disk ?? 0;
+  const totalSpills = kvCache.total_spills ?? 0;
+  const totalRestores = kvCache.total_restores ?? 0;
+
 
   const gpus = Array.isArray(hardware.gpus) ? hardware.gpus : [];
   const ram = hardware.ram || {};
@@ -471,11 +481,60 @@ export default function RustTelemetryPanel({ compact = false }) {
               </div>
             </div>
 
+            {/* NVMe Disk Spillover & Virtual Paging */}
+            <div
+              style={{
+                marginTop: '6px',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                background: isLight ? '#f1f5f9' : 'rgba(0, 0, 0, 0.25)',
+                border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.06)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', fontWeight: 600 }}>
+                  <HardDrive size={13} color="#00f2fe" />
+                  <span>NVMe Virtual Paging Fabric</span>
+                </div>
+                <span
+                  style={{
+                    fontSize: '0.64rem',
+                    fontWeight: 700,
+                    color: '#10b981',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    padding: '2px 5px',
+                    borderRadius: '4px'
+                  }}
+                >
+                  NVMe Fast Spill
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div>
+                  <div style={{ fontSize: '0.68rem', color: textMuted }}>Pagine su NVMe</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 700, color: spilledPages > 0 ? '#f59e0b' : '#10b981', marginTop: '2px' }}>
+                    {isOnline ? `${spilledPages} pag` : '—'}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.68rem', color: textMuted }}>Spill / Restore Totali</div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#bc8cff', marginTop: '2px' }}>
+                    {isOnline ? `${totalSpills} / ${totalRestores}` : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div style={{ fontSize: '0.72rem', color: textMuted, marginTop: '2px', lineHeight: 1.4 }}>
               Zero overhead di frammentazione grazie all'allocazione unificata in blocchi da 16 token.
             </div>
           </div>
         </div>
+
 
         {/* Sezione 3: Dual-GPU & Hardware */}
         <div

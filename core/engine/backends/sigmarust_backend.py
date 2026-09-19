@@ -115,15 +115,95 @@ class NamedPipeClient:
         self._connect()
 
     def cancel_generation(self, request_id: str) -> bool:
-        """Annulla una generazione in corso tramite il flag atomico del kernel Rust."""
-        payload = json.dumps({"request_id": request_id}).encode("utf-8")
+        """Annulla una generazione in corso tramite IPC nativo o endpoint REST."""
+        res_ipc = self.cancel_ipc(request_id)
+        if res_ipc is not None:
+            return res_ipc
+
         try:
-            resp = self._send_frame(OP_CANCEL_REQUEST, payload)
-            data = json.loads(resp.decode("utf-8")) if resp else {}
-            return data.get("status") == "cancelled" or data.get("success", False)
+            req = urllib.request.Request(
+                f"{self._url}/api/engine/cancel",
+                data=json.dumps({"request_id": request_id}).encode("utf-8"),
+                headers=_intestazioni({"Content-Type": "application/json"}),
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data.get("cancelled", False)
         except Exception as exc:
             log.warning("[IPC] cancel_generation fallita: %s", exc)
             return False
+
+    def send_ipc(self, payload_dict: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Invia una richiesta strutturata sul canale IPC nativo (Named Pipe o Unix Socket)
+        utilizzando il framing length-prefixed [u32 len LE][JSON bytes] compatibile con Rust.
+        """
+        if self._transport not in ("named_pipe", "named_pipe_raw", "unix_socket") or not self._handle:
+            return None
+
+        try:
+            raw_json = json.dumps(payload_dict).encode("utf-8")
+            frame = struct.pack("<I", len(raw_json)) + raw_json
+            t0 = time.perf_counter_ns()
+
+            if self._transport == "named_pipe":
+                import win32file
+                import pywintypes
+                overlapped = pywintypes.OVERLAPPED()
+                win32file.WriteFile(self._handle, frame, overlapped)
+                len_bytes = self._read_exact(4)
+                if len(len_bytes) < 4:
+                    return None
+                resp_len = struct.unpack("<I", len_bytes)[0]
+                resp_body = self._read_exact(resp_len)
+            elif self._transport == "named_pipe_raw":
+                self._handle.write(frame)
+                self._handle.flush()
+                len_bytes = self._read_raw_exact(4)
+                resp_len = struct.unpack("<I", len_bytes)[0]
+                resp_body = self._read_raw_exact(resp_len)
+            elif self._transport == "unix_socket":
+                self._handle.sendall(frame)
+                len_bytes = self._recv_exact(4)
+                resp_len = struct.unpack("<I", len_bytes)[0]
+                resp_body = self._recv_exact(resp_len)
+            else:
+                return None
+
+            t1 = time.perf_counter_ns()
+            self._last_latency_ns = t1 - t0
+            return json.loads(resp_body.decode("utf-8"))
+        except Exception as exc:
+            log.debug("[IPC] Errore frame IPC (%s), passaggio a fallback HTTP", exc)
+            self._transport = "http"
+            return None
+
+    def tokenize_ipc(self, text: str) -> Optional[List[int]]:
+        """Esegue la tokenizzazione direttamente tramite IPC nativo senza passare per HTTP."""
+        resp = self.send_ipc({"op": "tokenize", "text": text})
+        if resp and resp.get("status") == "ok":
+            token_ids = resp.get("token_ids")
+            if token_ids is not None:
+                return [int(t) for t in token_ids]
+        return None
+
+    def tokenize(self, text: str) -> List[int]:
+        """Tokenizza tramite canale IPC o fallback deterministico."""
+        if not text:
+            return []
+        tokens = self.tokenize_ipc(text)
+        if tokens is not None:
+            return tokens
+        import zlib
+        return [zlib.crc32(word.encode("utf-8")) & 0x7FFFFFFF for word in text.split()]
+
+    def cancel_ipc(self, request_id: str) -> Optional[bool]:
+
+        """Segnala l'annullamento atomico di una richiesta tramite IPC nativo."""
+        resp = self.send_ipc({"op": "cancel_request", "request_id": request_id})
+        if resp and resp.get("status") in ("ok", "cancelled"):
+            return True
+        return None
 
     def reconnect(self) -> None:
         """Riconnessione automatica al trasporto IPC con timeout 1s."""
@@ -133,6 +213,7 @@ class NamedPipeClient:
     def _reconnect(self) -> None:
         """Alias privato per la riconnessione automatica."""
         self.reconnect()
+
 
     def _connect(self) -> None:
         pipe_name = _ipc_pipe_name()
@@ -353,7 +434,7 @@ class NamedPipeClient:
                 if self._transport == "named_pipe":
                     import win32file
                     win32file.CloseHandle(self._handle)
-                elif self._transport == "unix_socket":
+                elif self._transport in ("unix_socket", "named_pipe_raw"):
                     self._handle.close()
             except Exception:
                 pass
@@ -363,6 +444,8 @@ class NamedPipeClient:
 
 #: Alias per retrocompatibilità con codice esistente
 IpcPipeClient = NamedPipeClient
+SigmaRustClient = NamedPipeClient
+
 
 
 def _is_rust_kernel_online(url: str = _DEFAULT_RUST_URL, timeout_s: float = 0.5) -> bool:
@@ -854,9 +937,18 @@ class SigmaRustBackend(InferenceBackend):
             return self.get_status().get("radix_cache", {})
 
     def tokenize(self, text: str) -> List[int]:
-        """Tokenizza il testo tramite il kernel Rust se disponibile, o genera ID deterministici."""
+        """Tokenizza il testo tramite IPC nativo ultra-veloce, REST HTTP o ripiego deterministico."""
         if not text:
             return []
+
+        # 1. Prova prioritaria via canale IPC nativo (< 0.1 ms)
+        if hasattr(self, "_ipc") and self._ipc:
+            ipc_tokens = self._ipc.tokenize_ipc(text)
+            if ipc_tokens is not None:
+                return ipc_tokens
+
+
+        # 2. Fallback via endpoint REST HTTP del micro-kernel
         try:
             req = urllib.request.Request(
                 f"{self._url}/api/engine/tokenize",
@@ -871,7 +963,9 @@ class SigmaRustBackend(InferenceBackend):
                     return [int(t) for t in tokens]
         except Exception:
             pass
-        # Ripiego deterministico: mappa le parole su interi positivi stabili
+
+        # 3. Ripiego deterministico: mappa le parole su interi positivi stabili
         import zlib
         return [zlib.crc32(word.encode("utf-8")) & 0x7FFFFFFF for word in text.split()]
+
 
