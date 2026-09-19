@@ -109,3 +109,61 @@ class TestIlCorpoRifiutatoNonSiPerde:
             {"tool": "terminal", "success": False, "error": "uscito con codice 1"},
         )
         assert "hai emesso" not in ledger.render_state_block()
+
+
+# ==============================================================================
+# Il confine opposto: cosa NON deve diventare una chiamata
+#
+# Il ripiego che accettava qualunque JSON in qualunque punto del testo prendeva
+# un esempio citato nella prosa e lo eseguiva. Un parser che estrae azioni si
+# giudica da entrambi i lati, e il lato che mancava era questo.
+# ==============================================================================
+
+from core.harness.loop import extract_tool_invocations
+
+
+class TestLaProsaNonEUnaChiamata:
+
+    def test_un_json_citato_nella_prosa_non_viene_eseguito(self):
+        """Il caso che eseguiva `rm -rf build`."""
+        testo = (
+            "Per configurare il deploy, il file usa questo formato:\n\n"
+            '{"command": "rm -rf build && npm run deploy", "shell": true}\n\n'
+            "Non eseguirlo ora, e' solo un esempio."
+        )
+        assert extract_tool_invocations(testo) == []
+
+    def test_un_recinto_a_due_backtick_dentro_una_frase_non_e_una_chiamata(self):
+        testo = "Usa la variabile ``tool:read_file`` come riferimento nel testo."
+        assert extract_tool_invocations(testo) == []
+
+    def test_un_json_che_non_dichiara_il_tool_non_viene_indovinato(self):
+        """Indovinare il tool dalle chiavi e' la parte pericolosa."""
+        testo = 'Il manifest ha questa forma: {"path": "config/app.json"} e va letto a mano.'
+        assert extract_tool_invocations(testo) == []
+
+    def test_una_chiamata_vera_a_inizio_riga_passa_ancora(self):
+        testo = '```tool:read_file\n{"path": "core/loop.py"}\n```'
+        chiamate = extract_tool_invocations(testo)
+        assert [(c["tool"], c["params"]["path"]) for c in chiamate] == [
+            ("read_file", "core/loop.py")
+        ]
+
+    def test_due_backtick_a_inizio_riga_restano_accettati(self):
+        """I modelli locali li emettono davvero: la stretta e' sulla posizione,
+        non sul numero di backtick."""
+        testo = '``tool:write_file\n{"path": "a.txt", "content": "ciao"}\n``'
+        chiamate = extract_tool_invocations(testo)
+        assert chiamate and chiamate[0]["tool"] == "write_file"
+
+    def test_il_recinto_aperto_e_mai_chiuso_resta_recuperabile(self):
+        """Era il problema vero che il ripiego voleva risolvere, e resta risolto."""
+        testo = 'Procedo.\n\n```tool:read_file\n{"path": "core/loop.py"}'
+        chiamate = extract_tool_invocations(testo)
+        assert chiamate and chiamate[0]["tool"] == "read_file"
+
+    def test_un_json_nudo_che_dichiara_il_tool_e_una_chiamata(self):
+        """Se il modello dice quale tool vuole, e il JSON e' tutto il messaggio,
+        l'intenzione c'e' ed e' esplicita."""
+        chiamate = extract_tool_invocations('{"tool": "list_dir", "params": {"path": "core"}}')
+        assert [(c["tool"], c["params"]["path"]) for c in chiamate] == [("list_dir", "core")]

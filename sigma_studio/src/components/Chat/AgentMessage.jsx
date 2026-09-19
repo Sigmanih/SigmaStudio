@@ -776,49 +776,36 @@ export default function AgentMessage({
             let displayContent = stripLiveToolBlocks(m.content || '');
             let displayThinking = m.thinking || '';
 
-            if (!isUser && !isSystem && !displayThinking && displayContent) {
-              const thinkMatch = displayContent.match(/<(?:think|thinking|thought)>([\s\S]*?)<\/(?:think|thinking|thought)>/i)
-                || displayContent.match(/<\|channel\>thought([\s\S]*?)<channel\|>/i)
-                || displayContent.match(/<\|thought\|>([\s\S]*?)<\/\|thought\|>/i);
-              if (thinkMatch) {
-                displayThinking = (thinkMatch[1] || '').trim();
-                displayContent = displayContent
-                  .replace(/<(?:think|thinking|thought)>[\s\S]*?<\/(?:think|thinking|thought)>/gi, '')
-                  .replace(/<\|channel\>thought[\s\S]*?<channel\|>/gi, '')
-                  .replace(/<\|thought\|>[\s\S]*?<\/\|thought\|>/gi, '')
-                  .replace(/<\|channel\>thought/gi, '')
-                  .replace(/<channel\|>/gi, '')
-                  .replace(/^thought\s*\n/i, '')
-                  .trim();
-              } else if (displayContent.startsWith('<|channel>thought') || displayContent.startsWith('<channel|>') || displayContent.startsWith('thought\n')) {
-                displayContent = displayContent
-                  .replace(/<\|channel\>thought/gi, '')
-                  .replace(/<channel\|>/gi, '')
-                  .replace(/^thought\s*\n/i, '')
-                  .trim();
-              } else if (/^(?:Analyze User Input|Identify Key Constraints|Context:|Thinking:|Role:|\*\*Analyze|The user is asking|Need maybe|Need to|Need final|Let me think|Let's draft|Wait, let me|Actually, look|"Ciao)/i.test(displayContent.trim()) || displayContent.includes('Analyze User Input')) {
-                const monologueMatch = displayContent.match(/^(Analyze\s+User\s+Input:[\s\S]*?(?:Final\s+Output\s+Generation:[^\n]*|Proceeds\.?|✅)+)\s*([\s\S]+)$/i);
-                if (monologueMatch) {
-                  displayThinking = monologueMatch[1].trim();
-                  displayContent = monologueMatch[2].trim();
-                } else {
-                  const responseMarker = displayContent.match(/(?:\n\n|\n|^)\s*(?:(?:Let\'?s\s+draft[:\s]*|Let\s+me\s+write\s+the\s+final\s+response\s+now[:\s]*|final\.)\s*\n+)?(Ciao[,!\s]|Salve[,!\s]|Buongiorno[,!\s]|Buonasera[,!\s]|Ecco\s+|Benvenuto[,!\s]|Certamente|Certo[,!]|In\s+\*?\*?Sigma\s+Studio\*?\*?|\*\*Sigma\s+Studio\*\*|Come\s+Sigma\s+Architect|Come\s+Sigma\s+Assistant|La\s+mia\s+opinione|#\s+|Path:)/i);
-                  if (responseMarker) {
-                    const splitPos = responseMarker.index;
-                    displayThinking = displayContent.substring(0, splitPos).trim();
-                    displayContent = displayContent.substring(splitPos).trim();
-                  } else {
-                    displayThinking = displayContent.trim();
-                    displayContent = '';
-                  }
+            if (!isUser && !isSystem) {
+              // 1. Estrazione di tag espliciti residui (per messaggi storici o non in streaming)
+              if (!displayThinking && displayContent) {
+                const thinkMatch = displayContent.match(/<(?:think|thinking|thought)>([\s\S]*?)<\/(?:think|thinking|thought)>/i)
+                  || displayContent.match(/<\|channel\>thought([\s\S]*?)<channel\|>/i)
+                  || displayContent.match(/<\|thought\|>([\s\S]*?)<\/\|thought\|>/i);
+                if (thinkMatch) {
+                  displayThinking = (thinkMatch[1] || '').trim();
+                  displayContent = displayContent
+                    .replace(/<(?:think|thinking|thought)>[\s\S]*?<\/(?:think|thinking|thought)>/gi, '')
+                    .replace(/<\|channel\>thought[\s\S]*?<channel\|>/gi, '')
+                    .replace(/<\|thought\|>[\s\S]*?<\/\|thought\|>/gi, '')
+                    .replace(/<\|channel\>thought/gi, '')
+                    .replace(/<channel\|>/gi, '')
+                    .replace(/^thought\s*\n/i, '')
+                    .trim();
+                } else if (displayContent.startsWith('<|channel>thought') || displayContent.startsWith('<channel|>') || displayContent.startsWith('thought\n')) {
+                  displayContent = displayContent
+                    .replace(/<\|channel\>thought/gi, '')
+                    .replace(/<channel\|>/gi, '')
+                    .replace(/^thought\s*\n/i, '')
+                    .trim();
                 }
-              } else {
-                const splitMatch = displayContent.match(/✅|\bFinal Polish:.*?\n/s);
-                if (splitMatch) {
-                  const splitPos = splitMatch.index + splitMatch[0].length;
-                  displayThinking = displayContent.substring(0, splitPos).trim();
-                  displayContent = displayContent.substring(splitPos).replace(/^[🤖✅\s]+/, '').trim();
-                }
+              }
+
+              // 2. Garanzia di visibilità: se la risposta visibile è vuota ma esiste thinking e lo stream è terminato,
+              // mostriamo il contenuto come risposta per non lasciare la bolla vuota.
+              if (!displayContent.trim() && displayThinking.trim() && !m.streaming && !m.streamingThinking) {
+                displayContent = displayThinking;
+                displayThinking = '';
               }
             }
 

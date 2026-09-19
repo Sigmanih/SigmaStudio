@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 import RealtimeTelemetryChart from './RealtimeTelemetryChart';
+import RustTelemetryPanel from './RustTelemetryPanel';
 import TabHeader from '../../components/common/TabHeader';
 
 const INACTIVE_HARDWARE_NODES = [
@@ -494,6 +495,9 @@ export default function HardwareLab({ addToast }) {
 
       {/* Main Content Area Scrollable */}
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 24px 32px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+      {/* RUST ENGINE & SCHEDULER CONTINUOUS BATCHING TELEMETRY PANEL */}
+      <RustTelemetryPanel />
 
       {/* 2. ROW-BASED HARDWARE MASTER LIST (LEFT) + UX CHART INSPECTOR (RIGHT) */}
       <div style={{

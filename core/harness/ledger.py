@@ -461,6 +461,7 @@ class DevSessionLedger:
                 rec = self._file(path)
                 rec.last_touch = time.time()
                 if ok:
+                    self._consecutive_dup_commands = 0
                     if tool == "edit_file":
                         rec.edits += 1
                         if result.get("lines_after") is not None:
@@ -489,7 +490,7 @@ class DevSessionLedger:
                     rec.last_error = str(result.get("error", ""))[:MAX_ERROR_CHARS]
 
             elif tool == "terminal":
-                cmd = str(params.get("command") or result.get("command") or "")[:200]
+                cmd = str(params.get("command") or result.get("command") or "").strip()
                 rc = result.get("returncode", 0)
                 stdout_txt = result.get("stdout") or ""
                 stderr_txt = result.get("stderr") or ""
@@ -1299,9 +1300,16 @@ def check_completion_allowed(ledger: DevSessionLedger) -> Dict[str, Any]:
        no broken syntax, and a green verification command.
     3. Coding tasks with no files touched: rejected.
     """
-    # Modalita' esplorazione/audit/conversazione: se l'obiettivo e' consultare, analizzare o spiegare,
-    # o se non ci sono state modifiche ai file di codice e nessun requisito di coding pendente.
-    if ledger.is_exploration_task() or not ledger.has_modifications():
+    # Modalita' esplorazione/audit/conversazione: se l'obiettivo e' consultare, analizzare o spiegare
+    if ledger.is_exploration_task() and not ledger.has_modifications():
+        if not ledger.has_reads() and not ledger.has_searches() and not ledger.has_listings():
+            return {
+                "allowed": False,
+                "reason": (
+                    "Un report o analisi non ancorato a file reali non e' completabile. "
+                    "Leggi almeno un file con `read_file` prima di richiamare complete_goal."
+                ),
+            }
         if not ledger.unmet_requirements():
             return {
                 "allowed": True,

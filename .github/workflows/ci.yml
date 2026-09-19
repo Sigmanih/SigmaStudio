@@ -94,3 +94,21 @@ jobs:
       
       - name: Run launcher --info
         run: python sigma_launcher.py --info
+
+  test-rust-kernel:
+    name: Rust Kernel Workspace Check & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo check workspace
+        run: |
+          if [ -d "projects/sigma_engine_rust" ]; then
+            cd projects/sigma_engine_rust && cargo check --workspace --all-targets
+          fi
+      - name: Cargo test workspace
+        run: |
+          if [ -d "projects/sigma_engine_rust" ]; then
+            cd projects/sigma_engine_rust && cargo test --workspace --quiet
+          fi
+

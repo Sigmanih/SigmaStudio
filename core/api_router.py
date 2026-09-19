@@ -29,6 +29,7 @@ def register_get_handlers(handler_class):
         '/api/engine/profile': 'handle_engine_profile',
         '/api/engine/overrides': 'handle_engine_overrides_get',
         '/api/engine/runtime_check': 'handle_engine_runtime_check',
+        '/api/engine/rust/metrics': 'handle_engine_rust_metrics',
         '/api/engine/models': 'handle_engine_models',
         '/api/roles': 'handle_roles_list',
         '/api/developer/roles': 'handle_roles_list',

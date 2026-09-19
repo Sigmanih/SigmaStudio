@@ -271,3 +271,84 @@ def test_l_isolamento_della_squadra_e_dell_obiettivo_non_del_ruolo():
     esecuzione = inspect.getsource(DevOrchestrator._execute_task)
     assert "isolate_worktree" not in esecuzione, (
         "il singolo ruolo non deve aprirsi un worktree suo")
+
+
+# ==============================================================================
+# Lo stesso schema, un piano sopra: il MODULO che nessuno importa
+#
+# Le prove qui sopra camminano i parametri del ciclo e del ventaglio. Non
+# vedono il caso che si e' presentato per ottavo: un modulo intero — con le sue
+# funzioni, i suoi docstring e le sue promesse di prestazione — che nessuna
+# riga di produzione importa.
+#
+# `core/harness/fs.py` prometteva lo stato git «via IPC in meno di 1 ms». Il
+# protocollo che parlava non era quello del kernel, quindi il percorso veloce
+# non poteva riuscire mai; il parsing di `--porcelain` restituiva liste
+# sbagliate; e fuori dal file non c'era un solo chiamante. Tre difetti che
+# nessun test del modulo avrebbe trovato, perche' il modulo non aveva test.
+#
+# Questa prova non chiede che tutto sia usato: chiede che un modulo nuovo di
+# `core/harness/` sia **raggiungibile**. Un modulo che nessuno importa e' una
+# promessa che nessuno puo' mantenere.
+# ==============================================================================
+
+#: Moduli invocati da fuori Python — un hook, uno script — e che quindi non
+#: hanno un importatore dentro il pacchetto.
+SENZA_IMPORTATORE = frozenset({"__init__", "cli", "hooks"})
+
+
+def _ha_punto_di_ingresso(percorso: Path) -> bool:
+    """Un modulo con `if __name__ == "__main__"` si raggiunge da solo.
+
+    `protocol_bench.py` e' esattamente questo: un ponte con la sua riga di
+    comando, che nessuno importa e che si lancia con `python -m`. Chiedergli
+    un importatore lo dichiarerebbe morto mentre e' il banco su cui e' stato
+    scelto il modello di tutti i ruoli.
+    """
+    try:
+        return '__name__ == "__main__"' in percorso.read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+
+
+def _moduli_harness():
+    cartella = RADICE / "core" / "harness"
+    return sorted(
+        p.stem for p in cartella.glob("*.py")
+        if p.stem not in SENZA_IMPORTATORE
+        and not p.stem.startswith("_")
+        and not _ha_punto_di_ingresso(p)
+    )
+
+
+@pytest.mark.parametrize("modulo", _moduli_harness())
+def test_ogni_modulo_dell_harness_ha_un_importatore(modulo):
+    """Qualcuno, fuori dal modulo stesso, deve importarlo."""
+    import re
+
+    schema = re.compile(
+        rf"(?:from\s+core\.harness\.{modulo}\s+import|"
+        rf"from\s+core\.harness\s+import\s+[^\n]*\b{modulo}\b|"
+        rf"import\s+core\.harness\.{modulo}\b)"
+    )
+
+    for percorso in RADICE.rglob("*.py"):
+        parti = percorso.parts
+        if ".venv" in parti or "tests" in parti or "__pycache__" in parti:
+            continue
+        if percorso.stem == modulo and percorso.parent.name == "harness":
+            continue
+        try:
+            testo = percorso.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if schema.search(testo):
+            return
+
+    pytest.fail(
+        f"core/harness/{modulo}.py non e' importato da nessuna riga di "
+        "produzione. Collegalo a un percorso che l'utente puo' raggiungere, "
+        "oppure toglilo: un modulo che nessuno importa non e' una capacita', "
+        "e i suoi difetti non li trova nessuno."
+    )

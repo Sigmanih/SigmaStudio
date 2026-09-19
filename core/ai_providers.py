@@ -804,11 +804,13 @@ def call_ollama_stream(
 
         options["num_thread"] = optimal_threads
         options["use_mmap"] = True
+        options.setdefault("num_keep", 2048)
         payload = {
             "model": model,
             "messages": messages,
             "stream": True,
             "options": options,
+            "keep_alive": "120m",
         }
         resp = requests.post(endpoint, json=payload, stream=True, timeout=int(timeout or 300))
         if resp.status_code == 404 and "not found" in resp.text:

@@ -495,6 +495,139 @@ def handle_engine_overrides_clear(self):
     return self.send_json_response({"success": True, **clear(body.get("model") or None)})
 
 
+def handle_engine_rust_metrics(self):
+    """GET /api/engine/rust/metrics — Telemetria live dello scheduler Rust.
+
+    Interroga sigma_engine_rust su http://127.0.0.1:8090/v1/benchmark/metrics (con fallback
+    su /api/benchmark/metrics) e restituisce un JSON canonico con sezioni scheduler,
+    kv_cache e hardware. Se il motore non è raggiungibile (timeout, rifiuto),
+    risponde con status 'unavailable' e campi a null senza sollevare eccezioni.
+    """
+    import json
+    import urllib.request
+    import urllib.error
+
+    candidate_urls = [
+        "http://127.0.0.1:8090/v1/benchmark/metrics",
+        "http://127.0.0.1:8090/api/benchmark/metrics",
+        "http://127.0.0.1:8090/api/metrics",
+    ]
+    unavailable_payload = {
+        "success": True,
+        "status": "unavailable",
+        "scheduler": None,
+        "kv_cache": None,
+        "hardware": None,
+        "error": None
+    }
+
+    data = None
+    last_err = None
+    for endpoint_url in candidate_urls:
+        try:
+            from core.engine.backends.sigmarust_backend import _intestazioni
+            req = urllib.request.Request(
+                endpoint_url, headers=_intestazioni(), method="GET")
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+                data = json.loads(raw)
+                if data and isinstance(data, dict):
+                    break
+        except Exception as exc:
+            last_err = exc
+            continue
+
+    if not data or not isinstance(data, dict):
+        log.debug("handle_engine_rust_metrics: motore Rust non raggiungibile (%s)", last_err)
+        unavailable_payload["error"] = str(last_err) if last_err else "Connessione rifiutata"
+        return self.send_json_response(unavailable_payload)
+
+    if data.get("status") == "error":
+        unavailable_payload["error"] = data.get("message", "errore dal motore Rust")
+        return self.send_json_response(unavailable_payload)
+
+    # Normalizza le sezioni in base al payload restituito dal micro-kernel Rust
+    scheduler = data.get("scheduler_stats") or data.get("scheduler") or data.get("batch_stats") or {}
+    kv_cache = data.get("kv_cache_stats") or data.get("kv_cache") or data.get("paged_kv") or {}
+    hardware = data.get("hardware") or data.get("gpu") or {}
+
+    def _primo(mappa, *chiavi):
+        """Il primo valore presente, o None. Un campo assente non vale zero:
+        zero e' una misura, l'assenza no."""
+        for chiave in chiavi:
+            if chiave in mappa and mappa[chiave] is not None:
+                return mappa[chiave]
+        return None
+
+    _latenza = _primo(scheduler, "avg_latency_ms", "latency_ms")
+    normalized_scheduler = {
+        "batch_count": _primo(scheduler, "batches_formed", "batch_count", "batches"),
+        "avg_latency_ms": round(float(_latenza), 2) if _latenza is not None else None,
+        "queue_depth": _primo(scheduler, "pending_count", "queue_depth", "pending_tasks"),
+        "total_processed": _primo(scheduler, "total_processed"),
+        "total_cancelled": _primo(scheduler, "total_cancelled"),
+    }
+
+    _hit = _primo(kv_cache, "prefix_hit_rate", "radix_hit_rate", "hit_rate")
+    normalized_kv = {
+        "radix_hit_rate": round(float(_hit), 4) if _hit is not None else None,
+        "pages_allocated": _primo(kv_cache, "allocated_pages", "pages_allocated", "allocated"),
+        # 2048 era il valore di ripiego: la capacita' della cache di un'altra
+        # macchina, mostrata come se fosse questa.
+        "pages_total": _primo(kv_cache, "total_capacity_pages", "pages_total"),
+        "system_prompt_reuse": _primo(kv_cache, "cached_prompt_templates", "system_prompt_reuse"),
+    }
+
+    # La RAM si misura: psutil la legge davvero. Se non c'e', i campi restano
+    # a None e il pannello scrive "non disponibile".
+    #
+    # Prima il ramo di ripiego inventava: 96 GB per difetto, il 35% usato. E i
+    # due dispositivi GPU nascevano con util_pct 12 e mem_used_mb 4200 scritti
+    # a mano, accanto a due nomi di schede che su un'altra macchina non ci
+    # sono. Il pannello sembrava vivo e diceva sempre le stesse cifre.
+    #
+    # La regola: un campo di telemetria senza misura vale None. Un numero
+    # plausibile e' peggio di un campo vuoto, perche' nessuno va a controllarlo.
+    ram = {"total_mb": None, "used_mb": None, "free_mb": None, "misurata": False}
+    try:
+        import psutil
+        vm = psutil.virtual_memory()
+        ram = {
+            "total_mb": round(vm.total / (1024 * 1024)),
+            "used_mb": round(vm.used / (1024 * 1024)),
+            "free_mb": round(vm.available / (1024 * 1024)),
+            "misurata": True,
+        }
+    except Exception as exc:
+        log.debug("handle_engine_rust_metrics: RAM non misurabile (%s)", exc)
+
+    # Le schede: solo quelle che il kernel ha davvero riportato. Un elenco
+    # vuoto e' un risultato legittimo — su Raspberry Pi 5 non ce ne sono — e
+    # il pannello deve reggerlo.
+    gpu_list = hardware.get("gpus") or []
+    if not gpu_list:
+        gpu_list = [
+            {"name": nome, "util_pct": None, "mem_used_mb": None, "mem_total_mb": None,
+             "misurata": False}
+            for nome in (hardware.get("gpu_devices") or [])
+        ]
+
+    normalized_hw = {
+        "gpus": gpu_list,
+        "gpu_count": len(gpu_list),
+        "ram": ram,
+    }
+
+    return self.send_json_response({
+        "success": True,
+        "status": "ok",
+        "scheduler": normalized_scheduler,
+        "kv_cache": normalized_kv,
+        "hardware": normalized_hw,
+        "raw": data
+    })
+
+
 def handle_engine_runtime_check(self):
     """GET /api/engine/runtime_check — Il runtime GGUF gira su questa CPU?
 

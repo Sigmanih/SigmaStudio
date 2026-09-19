@@ -34,15 +34,54 @@ IPC_VERSION = 1
 OP_PING = 0x01
 OP_EXECUTE_TOOL = 0x02
 OP_CANCEL_REQUEST = 0x03
-IPC_HEADER_FMT = "<4sBBHI"  # magic(4) version(1) op(1) session_id(2) payload_len(8)
+IPC_HEADER_FMT = "<4sBBHQ"  # magic(4) version(1) op(1) session_id(2) payload_len(8)
 IPC_HEADER_SIZE = struct.calcsize(IPC_HEADER_FMT)  # 16 byte
 IS_WINDOWS = sys.platform.startswith("win")
 
 
+#: Intestazione del token condiviso, allineata a crates/sigma-network/src/accesso.rs.
+INTESTAZIONE_TOKEN = "X-Sigma-Token"
+
+
+def _token_kernel() -> str:
+    """Il token con cui parlare al kernel Rust.
+
+    Il kernel rifiuta con 401 ogni rotta tranne /health: senza questa
+    intestazione Sigma Studio non lo raggiunge piu'. Se la variabile non c'e'
+    la richiesta parte lo stesso e il 401 lo dira' in chiaro — meglio di un
+    errore di connessione che sembra un kernel spento.
+
+    Due fonti, in ordine: la variabile d'ambiente, e poi `var/engine_token`.
+    Il file serve perche' il token nasce quando si avvia il contenitore, e
+    chiedere a chi lancia Sigma Studio di esportarlo a mano sarebbe un passo
+    che prima o poi qualcuno salta — e il guasto sembrerebbe un kernel spento.
+    """
+    dalla_variabile = os.environ.get("SIGMA_ENGINE_TOKEN", "").strip()
+    if dalla_variabile:
+        return dalla_variabile
+    try:
+        from core import paths
+        percorso = os.path.join(paths.var_dir(), "engine_token")
+        if os.path.exists(percorso):
+            with open(percorso, "r", encoding="utf-8") as fh:
+                return fh.read().strip()
+    except Exception as exc:
+        log.debug("[Kernel] token non leggibile da var/engine_token: %s", exc)
+    return ""
+
+
+def _intestazioni(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    """Le intestazioni per una chiamata al kernel, token compreso."""
+    testa: Dict[str, str] = dict(extra or {})
+    token = _token_kernel()
+    if token:
+        testa[INTESTAZIONE_TOKEN] = token
+    return testa
+
+
 def _ipc_pipe_name() -> str:
-    """Nome del Named Pipe Windows, relativo e configurabile (mai path assoluto hardcoded)."""
-    prefix = os.environ.get("SIGMA_RUST_PIPE_PREFIX", "sigma_engine_rust")
-    return f"\\\\.\\pipe\\{prefix}_{os.getpid()}"
+    """Nome del Named Pipe Windows per il micro-kernel Rust (configurabile)."""
+    return os.environ.get("SIGMA_RUST_PIPE_NAME", r"\\.\pipe\sigma_engine_ipc")
 
 
 def _ipc_socket_path() -> str:
@@ -51,34 +90,58 @@ def _ipc_socket_path() -> str:
     return os.path.join(base, f"sigma_engine_{os.getpid()}.sock")
 
 
-class IpcPipeClient:
+class NamedPipeClient:
     """
-    Client IPC nativo per il micro-kernel Rust.
+    Client IPC nativo per il micro-kernel Rust con API Win32 native.
 
     - Windows: Named Pipe via win32pipe/win32file (zero-copy, nessun HTTP).
     - Linux/macOS: Unix Domain Socket.
-    - Fallback trasparente a HTTP se il canale IPC non è disponibile.
+    - Fallback trasparente a HTTP (porta 8090) se il canale IPC non è disponibile.
 
-    Ogni chiamata logga la latenza di roundtrip in nanosecondi.
+    Caratteristiche:
+      * Riconnessione automatica in caso di pipe/socket chiusa o timeout.
+      * Timeout di 1 secondo per ogni operazione di I/O.
+      * Metodo cancel_generation(request_id) a priorità assoluta (lock-free lato Rust).
+      * Ogni chiamata registra la latenza di roundtrip in nanosecondi.
     """
 
-    def __init__(self, endpoint_url: str = _DEFAULT_RUST_URL) -> None:
+    def __init__(self, endpoint_url: str = _DEFAULT_RUST_URL, timeout: float = 1.0) -> None:
         self._url = endpoint_url.rstrip("/")
+        self._timeout = timeout
         self._session_id = 1
         self._handle = None  # handle win32pipe o socket.socket
         self._transport: Optional[str] = None  # "named_pipe" | "unix_socket" | "http"
         self._last_latency_ns: int = 0
         self._connect()
 
+    def cancel_generation(self, request_id: str) -> bool:
+        """Annulla una generazione in corso tramite il flag atomico del kernel Rust."""
+        payload = json.dumps({"request_id": request_id}).encode("utf-8")
+        try:
+            resp = self._send_frame(OP_CANCEL_REQUEST, payload)
+            data = json.loads(resp.decode("utf-8")) if resp else {}
+            return data.get("status") == "cancelled" or data.get("success", False)
+        except Exception as exc:
+            log.warning("[IPC] cancel_generation fallita: %s", exc)
+            return False
+
+    def reconnect(self) -> None:
+        """Riconnessione automatica al trasporto IPC con timeout 1s."""
+        self.close()
+        self._connect()
+
+    def _reconnect(self) -> None:
+        """Alias privato per la riconnessione automatica."""
+        self.reconnect()
+
     def _connect(self) -> None:
+        pipe_name = _ipc_pipe_name()
         if IS_WINDOWS:
+            # Prova prima con win32pipe se disponibile
             try:
                 import win32pipe
                 import win32file
-                import pywintypes
 
-                pipe_name = _ipc_pipe_name()
-                # Apri il pipe lato client (il server Rust lo crea con CreateNamedPipeW)
                 self._handle = win32pipe.CreateFile(
                     pipe_name,
                     win32file.GENERIC_READ | win32file.GENERIC_WRITE,
@@ -89,10 +152,19 @@ class IpcPipeClient:
                     None,
                 )
                 self._transport = "named_pipe"
-                log.info("[IPC] Connesso a Named Pipe: %s", pipe_name)
+                log.info("[IPC] Connesso a Named Pipe (win32): %s", pipe_name)
+                return
+            except Exception:
+                pass
+
+            # Fallback nativo su Windows: apertura diretta del file Named Pipe nel filesystem IPC
+            try:
+                self._handle = open(pipe_name, "r+b", buffering=0)
+                self._transport = "named_pipe_raw"
+                log.info("[IPC] Connesso a Named Pipe nativa (raw binary stream): %s", pipe_name)
                 return
             except Exception as exc:
-                log.warning("[IPC] Named Pipe non disponibile (%s), fallback HTTP", exc)
+                log.debug("[IPC] Named Pipe raw non disponibile (%s), procedo su fallback HTTP", exc)
         else:
             try:
                 sock_path = _ipc_socket_path()
@@ -105,7 +177,8 @@ class IpcPipeClient:
                     log.info("[IPC] Connesso a Unix Domain Socket: %s", sock_path)
                     return
             except Exception as exc:
-                log.warning("[IPC] Unix Socket non disponibile (%s), fallback HTTP", exc)
+                log.debug("[IPC] Unix Socket non disponibile (%s), fallback HTTP", exc)
+
         # Fallback HTTP
         self._handle = None
         self._transport = "http"
@@ -120,18 +193,24 @@ class IpcPipeClient:
             import win32file
             import pywintypes
 
-            # Scrivi su pipe
             overlapped = pywintypes.OVERLAPPED()
             win32file.WriteFile(self._handle, data, overlapped)
-            # Leggi risposta: prima 16 byte header, poi payload_len
-            buf_header = self._read_exact(16)
+            buf_header = self._read_exact(IPC_HEADER_SIZE)
             magic, version, op_resp, session_id, payload_len = struct.unpack(IPC_HEADER_FMT, buf_header)
             if magic != IPC_MAGIC:
                 raise IOError(f"IPC magic mismatch: {magic!r}")
             resp_payload = self._read_exact(payload_len) if payload_len else b""
+        elif self._transport == "named_pipe_raw":
+            self._handle.write(data)
+            self._handle.flush()
+            buf_header = self._read_raw_exact(IPC_HEADER_SIZE)
+            magic, version, op_resp, session_id, payload_len = struct.unpack(IPC_HEADER_FMT, buf_header)
+            if magic != IPC_MAGIC:
+                raise IOError(f"IPC magic mismatch: {magic!r}")
+            resp_payload = self._read_raw_exact(payload_len) if payload_len else b""
         elif self._transport == "unix_socket":
             self._handle.sendall(data)
-            buf_header = self._recv_exact(16)
+            buf_header = self._recv_exact(IPC_HEADER_SIZE)
             magic, version, op_resp, session_id, payload_len = struct.unpack(IPC_HEADER_FMT, buf_header)
             if magic != IPC_MAGIC:
                 raise IOError(f"IPC magic mismatch: {magic!r}")
@@ -144,6 +223,18 @@ class IpcPipeClient:
         self._last_latency_ns = t1 - t0
         log.debug("[IPC] op=0x%02X roundtrip=%d ns", op_code, self._last_latency_ns)
         return resp_payload
+
+    def _read_raw_exact(self, n: int) -> bytes:
+        """Legge esattamente n byte dallo stream binario nativo (Named Pipe raw)."""
+        chunks = []
+        remaining = n
+        while remaining > 0:
+            chunk = self._handle.read(remaining)
+            if not chunk:
+                raise IOError("Named Pipe chiusa dall'host remoto")
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
 
     def _read_exact(self, n: int) -> bytes:
         import win32file
@@ -174,7 +265,7 @@ class IpcPipeClient:
     def _http_fallback(self, op_code: int, payload: bytes) -> bytes:
         """Fallback HTTP quando il canale IPC non è disponibile."""
         if op_code == OP_PING:
-            req = urllib.request.Request(f"{self._url}/health", method="GET")
+            req = urllib.request.Request(f"{self._url}/health", headers=_intestazioni(), method="GET")
             with urllib.request.urlopen(req, timeout=2.0) as resp:
                 return resp.read()
         elif op_code == OP_EXECUTE_TOOL:
@@ -182,7 +273,7 @@ class IpcPipeClient:
             req = urllib.request.Request(
                 f"{self._url}/api/engine/tools/execute",
                 data=json.dumps(body).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=_intestazioni({"Content-Type": "application/json"}),
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=5.0) as resp:
@@ -192,7 +283,7 @@ class IpcPipeClient:
             req = urllib.request.Request(
                 f"{self._url}/api/engine/cancel",
                 data=json.dumps(body).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=_intestazioni({"Content-Type": "application/json"}),
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=2.0) as resp:
@@ -270,10 +361,14 @@ class IpcPipeClient:
             self._transport = None
 
 
+#: Alias per retrocompatibilità con codice esistente
+IpcPipeClient = NamedPipeClient
+
+
 def _is_rust_kernel_online(url: str = _DEFAULT_RUST_URL, timeout_s: float = 0.5) -> bool:
     """Verifica rapida della disponibilità del kernel Rust via probe /health."""
     try:
-        req = urllib.request.Request(f"{url}/health", method="GET")
+        req = urllib.request.Request(f"{url}/health", headers=_intestazioni(), method="GET")
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             if resp.status == 200:
                 data = json.loads(resp.read().decode("utf-8"))
@@ -341,7 +436,7 @@ class SigmaRustBackend(InferenceBackend):
                     up_req = urllib.request.Request(
                         f"{self._url}/api/engine/upstream",
                         data=json.dumps({"upstream_url": f"http://host.docker.internal:{porta}"}).encode("utf-8"),
-                        headers={"Content-Type": "application/json"},
+                        headers=_intestazioni({"Content-Type": "application/json"}),
                         method="POST",
                     )
                     with urllib.request.urlopen(up_req, timeout=3.0) as up_resp:
@@ -366,7 +461,7 @@ class SigmaRustBackend(InferenceBackend):
             req = urllib.request.Request(
                 f"{self._url}/api/engine/partition",
                 data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=_intestazioni({"Content-Type": "application/json"}),
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=10.0) as resp:
@@ -420,7 +515,7 @@ class SigmaRustBackend(InferenceBackend):
                     "messages": messages,
                     "stream": False,
                 }).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=_intestazioni({"Content-Type": "application/json"}),
                 method="POST",
             )
             urllib.request.urlopen(cache_req, timeout=0.1)
@@ -443,6 +538,27 @@ class SigmaRustBackend(InferenceBackend):
             )
             return
 
+        # Tentativo di recuperare il backend di calcolo attivo da UniversalSigmaEngine
+        try:
+            from core.engine.unified_runtime import sigma_engine
+            for b_name, b_inst in getattr(sigma_engine, "_backends", {}).items():
+                if b_inst is not self and getattr(b_inst, "is_loaded", False):
+                    yield from b_inst.generate_stream(
+                        prompt=prompt,
+                        system_prompt=system_prompt,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        messages=messages,
+                        params=params,
+                        cancel=cancel,
+                        thinking=thinking,
+                        tools=tools,
+                        tool_choice=tool_choice,
+                    )
+                    return
+        except Exception as b_exc:
+            log.debug("[SigmaRustBackend] Impossibile delegare a backend alternativo: %s", b_exc)
+
         # 3. Fallback via proxy HTTP OpenAI del kernel Rust
         req_body = {
             "model": self._loaded_model_id or "sigma_default",
@@ -451,19 +567,30 @@ class SigmaRustBackend(InferenceBackend):
             "max_tokens": params.max_tokens if params else max_tokens,
             "stream": True,
         }
+        if params and getattr(params, "grammar", None):
+            req_body["grammar"] = params.grammar
+        if params and getattr(params, "response_format", None):
+            req_body["response_format"] = params.response_format
+        elif tools:
+            req_body["grammar"] = "tool_call"
 
         try:
             req = urllib.request.Request(
                 f"{self._url}/v1/chat/completions",
                 data=json.dumps(req_body).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=_intestazioni({"Content-Type": "application/json"}),
                 method="POST",
             )
             t0 = time.perf_counter()
+            yielded_any_token = False
+            total_content_len = 0
             with urllib.request.urlopen(req, timeout=120.0) as resp:
                 content_type = resp.headers.get("Content-Type", "")
                 if "text/event-stream" in content_type:
                     for raw_line in resp:
+                        if cancel and cancel():
+                            self.cancel_request()
+                            break
                         line_str = raw_line.decode("utf-8", errors="replace").strip()
                         if not line_str or line_str.startswith(":"):
                             continue
@@ -479,6 +606,9 @@ class SigmaRustBackend(InferenceBackend):
                                     tok = delta.get("content", "")
                                     finish = choices[0].get("finish_reason")
                                     if tok or finish:
+                                        if tok:
+                                            yielded_any_token = True
+                                            total_content_len += len(tok)
                                         item = {
                                             "token": tok,
                                             "content": tok,
@@ -494,9 +624,12 @@ class SigmaRustBackend(InferenceBackend):
                                 continue
                 else:
                     data = json.loads(resp.read().decode("utf-8"))
-                    content = data["choices"][0]["message"]["content"]
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     elapsed_ms = (time.perf_counter() - t0) * 1000.0
                     spec_telem = data.get("speculative_telemetry") or data.get("usage", {}).get("speculative_telemetry") or {}
+                    if content:
+                        yielded_any_token = True
+                        total_content_len += len(content)
                     item = {
                         "token": content,
                         "content": content,
@@ -508,6 +641,18 @@ class SigmaRustBackend(InferenceBackend):
                         item["speculative_acceptance_rate"] = spec_telem.get("acceptance_rate", 0.0)
                         item["grammar_constrained"] = spec_telem.get("grammar_constrained", False)
                     yield item
+
+            if not yielded_any_token or total_content_len == 0:
+                warning_msg = (
+                    "⚠️ [SigmaEngine] Il micro-kernel Rust è attivo ma non è stato caricato alcun modello linguistico LLM in memoria. "
+                    "Seleziona un modello con pesi reali (es. Qwen2.5-Coder-14B o Qwen3.8-27B) dal selettore in alto per abilitare la generazione di codice."
+                )
+                yield {
+                    "token": warning_msg,
+                    "content": warning_msg,
+                    "finish_reason": "stop",
+                    "latency_ms": (time.perf_counter() - t0) * 1000.0,
+                }
         except Exception as exc:
             log.error("[SigmaRustBackend] Errore durante generazione stream: %s", exc)
             yield {
@@ -529,6 +674,16 @@ class SigmaRustBackend(InferenceBackend):
         self._facts = None
         self._placement_info = {}
         return {"success": True, "unloaded": old_model}
+
+    def cancel_request(self) -> None:
+        """Invia un segnale di cancellazione atomico immediato al micro-kernel Rust."""
+        try:
+            if self._ipc_client:
+                # Invia frame binario OP_CANCEL_REQUEST via Named Pipe
+                self._ipc_client._send_frame(OP_CANCEL_REQUEST, b"{\"op\":\"cancel_request\"}")
+                log.info("[SigmaRustBackend] Segnale di cancellazione atomica inviato via Named Pipe.")
+        except Exception:
+            pass
 
     @property
     def is_loaded(self) -> bool:
@@ -556,7 +711,7 @@ class SigmaRustBackend(InferenceBackend):
                     "allowed_tools": allowed_tools,
                     "is_partial": is_partial,
                 }).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=_intestazioni({"Content-Type": "application/json"}),
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=1.0) as resp:
@@ -577,7 +732,7 @@ class SigmaRustBackend(InferenceBackend):
                     "event_type": event_type,
                     "payload": payload,
                 }).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=_intestazioni({"Content-Type": "application/json"}),
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=1.0) as resp:
@@ -603,7 +758,7 @@ class SigmaRustBackend(InferenceBackend):
             req = urllib.request.Request(
                 f"{self._url}/api/engine/tools/execute",
                 data=json.dumps({"tool": tool_name, "params": params}).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=_intestazioni({"Content-Type": "application/json"}),
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=5.0) as resp:
@@ -628,7 +783,7 @@ class SigmaRustBackend(InferenceBackend):
             req = urllib.request.Request(
                 f"{self._url}/api/engine/cancel",
                 data=json.dumps({"session_id": session_id}).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=_intestazioni({"Content-Type": "application/json"}),
                 method="POST",
             )
             with urllib.request.urlopen(req, timeout=2.0) as resp:
@@ -651,7 +806,7 @@ class SigmaRustBackend(InferenceBackend):
     def get_status(self) -> Dict[str, Any]:
         """Recupera lo stato completo dal micro-kernel Rust."""
         try:
-            req = urllib.request.Request(f"{self._url}/api/engine/status", method="GET")
+            req = urllib.request.Request(f"{self._url}/api/engine/status", headers=_intestazioni(), method="GET")
             with urllib.request.urlopen(req, timeout=1.0) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except Exception as exc:

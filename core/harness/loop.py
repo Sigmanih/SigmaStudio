@@ -40,6 +40,7 @@ from core.harness.ledger import (
 )
 from core.harness.policy import ToolPolicy, canonical, filter_tool_docs
 from core.harness import delivery, review, worktree
+from core.harness.cicli import RilevatoreCicli, comando_bloccato_in_ciclo
 from core.harness.compaction import compact_history_with_memory
 from core.harness.roles import GENERIC_MODEL_ALIASES
 from core.harness.tool_schema import (
@@ -921,33 +922,31 @@ def _first_json_object(text: str) -> Optional[str]:
 
 
 def _unterminated_tool_call(text: str) -> Optional[Dict[str, Any]]:
-    """A tool call opened with ```tool: whose closing fence is absent.
+    """A tool call opened with `*tool: whose closing fence is absent.
 
     Returns the parsed call when the body holds a complete JSON object, and
     None when it does not — which is the honest signal that the generation was
     cut off mid-argument.
     """
-    marker = text.rfind("```tool:")
-    if marker == -1:
+    matches = list(re.finditer(r"`{1,4}tool:(\w+)", text, re.IGNORECASE))
+    if not matches:
         return None
-    rest = text[marker + len("```tool:"):]
-    if "```" in rest:
-        return None  # properly closed; the normal patterns handle it
-
-    newline = rest.find("\n")
-    if newline == -1:
-        return None
-    name = rest[:newline].strip().lower()
+    last_m = matches[-1]
+    name = last_m.group(1).strip().lower()
     if not name or not name.isidentifier():
         return None
 
-    body = _first_json_object(rest[newline:])
+    rest = text[last_m.end():]
+    if "```" in rest:
+        return None  # properly closed; the normal patterns handle it
+
+    body = _first_json_object(rest)
     if body is None:
         return None
     params = _loads_forgiving(body)
     if not isinstance(params, dict):
         return None
-    return {"tool": name, "params": params, "raw_block": text[marker:]}
+    return {"tool": name, "params": params, "raw_block": text[last_m.start():]}
 
 
 def _drop_superseded_reads(messages: List[Dict[str, str]], path: str) -> None:
@@ -1067,6 +1066,25 @@ def resolve_workspace_path(path: Optional[str], workspace_root: str,
     """
     if not workspace_root:
         workspace_root = get_default_workspace_root()
+
+    # Se stiamo operando dentro un container Docker (workspace_root docker://<container>/...)
+    if isinstance(workspace_root, str) and workspace_root.startswith("docker://"):
+        from core.harness.docker_fs import parse_docker_uri
+        import posixpath
+        cid, internal_root = parse_docker_uri(workspace_root)
+        if not path or not isinstance(path, str):
+            return f"docker://{cid}{internal_root}"
+        clean_docker = path.strip().strip("'\"`")
+        if clean_docker.startswith("docker://"):
+            return clean_docker
+        clean_docker = re.sub(r"^[./\\]+", "", clean_docker).replace("\\", "/")
+        norm_docker = posixpath.normpath(posixpath.join(internal_root, clean_docker))
+        return f"docker://{cid}{norm_docker}"
+
+    # Se il singolo path richiesto porta già il prefisso docker://
+    if isinstance(path, str) and path.strip().strip("'\"`").startswith("docker://"):
+        return path.strip().strip("'\"`")
+
     workspace_root = os.path.abspath(workspace_root)
 
     if not path or not isinstance(path, str):
@@ -1193,7 +1211,11 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
     tools = []
 
     # 1. Matches ```tool:name ... ```
-    tool_named_block = re.compile(r"```tool:(\w+)\s*([\s\S]*?)```", re.IGNORECASE)
+    # Il recinto deve stare a INIZIO RIGA. Con due backtick accettati ovunque,
+    # la frase «usa la variabile ``tool:read_file`` come riferimento» diventava
+    # una chiamata: un agente che spiega un tool lo eseguiva.
+    tool_named_block = re.compile(
+        r"(?:^|\n)[ \t]*`{2,4}tool:(\w+)\s*([\s\S]*?)`{2,4}", re.IGNORECASE)
     for match in tool_named_block.finditer(text):
         tool_name = match.group(1).lower()
         body = match.group(2)
@@ -1202,7 +1224,9 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
 
     # 2. Matches ```tool\n...``` or ```json\n{"tool": "..."}``` or ```json\n{"action": "..."}```
     if not tools:
-        generic_block = re.compile(r"```(?:tool|json|bash|sh|powershell)?\s*([\s\S]*?)```", re.IGNORECASE)
+        generic_block = re.compile(
+            r"(?:^|\n)[ \t]*`{2,4}(?:tool|json|bash|sh|powershell)?[ \t]*\n?([\s\S]*?)`{2,4}",
+            re.IGNORECASE)
         for match in generic_block.finditer(text):
             body = match.group(1).strip()
             try:
@@ -1261,13 +1285,34 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
                 params = normalize_tool_params(raw_content, t_name)
                 tools.append({"tool": t_name, "params": params, "raw_block": m.group(0)})
 
-    # Last: a fence that was opened and never closed. The model routinely omits
-    # the trailing ``` once its JSON argument is complete, and refusing the call
-    # over missing punctuation discards work that is entirely well-formed.
+    # 5. Fence that was opened and never closed
     if not tools:
         salvaged = _unterminated_tool_call(text)
         if salvaged:
             tools.append(salvaged)
+
+    # 6. JSON nudo, senza recinto e senza tag: vale solo se il modello ha
+    #    DETTO quale tool vuole, e se quel JSON e' tutto il messaggio.
+    #
+    #    Il ripiego precedente indovinava il tool dalla forma delle chiavi:
+    #    «c'e' `command`, quindi e' terminal». Bastava che una risposta
+    #    CITASSE un JSON — «il file usa questo formato: {"command": "rm -rf
+    #    build"}» — perche' il comando venisse eseguito, e la frase «non
+    #    eseguirlo ora» era nello stesso messaggio. Un parser che estrae
+    #    azioni non puo' indovinare l'intenzione: se il nome del tool non
+    #    c'e' scritto, non c'e' una chiamata.
+    if not tools:
+        nudo = text.strip()
+        if nudo.startswith("{") and nudo.endswith("}"):
+            data = _loads_forgiving(nudo)
+            if isinstance(data, dict):
+                t_name = (data.get("tool") or data.get("action")
+                          or data.get("name") or data.get("tool_name") or "")
+                t_name = str(t_name).strip().lower()
+                if t_name and t_name.isidentifier():
+                    params = (data.get("parameters") or data.get("arguments")
+                              or data.get("params") or data.get("action_input") or data)
+                    tools.append({"tool": t_name, "params": params, "raw_block": nudo})
 
     return tools
 
@@ -2118,7 +2163,14 @@ def _stream_agent_turn_impl(
 
     def _cancelled() -> bool:
         try:
-            return bool(should_cancel and should_cancel())
+            cancelled = bool(should_cancel and should_cancel())
+            if cancelled:
+                try:
+                    from core.engine.backends.sigmarust_backend import NamedPipeClient
+                    NamedPipeClient().cancel_generation(str(session_id or "default"))
+                except Exception:
+                    pass
+            return cancelled
         except Exception:
             return False
 
@@ -2372,6 +2424,11 @@ def _stream_agent_turn_impl(
     spec_attempts = 0
     last_pipeline_signature = None
     failed_call_signatures: set = set()
+    # Il rilevatore normalizza le firme e tiene la finestra delle azioni: e'
+    # lui a riconoscere il ciclo a due mosse, che la ripetizione secca non
+    # vede. Vive accanto ai due insiemi qui sotto finche' ogni punto non ci e'
+    # passato attraverso; le decisioni le prende lui.
+    rilevatore = RilevatoreCicli(workspace_root)
     # Successful calls whose repetition cannot produce new information.
     inert_call_signatures: set = set()
     total_generated_tokens = 0
@@ -2462,6 +2519,27 @@ def _stream_agent_turn_impl(
         else:
             yield {"type": "status", "text": "🔍 Sintesi e formattazione risposta..."}
 
+        # Telemetria live di contesto: emessa ad ogni turno nel flusso eventi.
+        # prompt_tokens: stima del contesto in ingresso a questo turno.
+        # ttft_ms / tps: riferiti al turno precedente completato (nulli al primo).
+        _approx_prompt = sum(len(m.get("content", "")) for m in full_messages) // 4
+        _ttft_ms = None
+        _tps = None
+        if current_turn > 1 and turn_first_token_time is not None and t_call_start:
+            _elapsed_s = max(turn_first_token_time - t_call_start, 1e-9)
+            _ttft_ms = round(_elapsed_s * 1000, 2)
+            if turn_tokens > 0 and overall_first_token_time is not None:
+                _gen_s = max(time.perf_counter() - overall_first_token_time, 1e-9)
+                _tps = round(turn_tokens / _gen_s, 2)
+        yield {
+            "type": "context_telemetry",
+            "turn": current_turn,
+            "prompt_tokens": _approx_prompt,
+            "ttft_ms": _ttft_ms,
+            "tps": _tps,
+            "generated_tokens_last_turn": turn_tokens if current_turn > 1 else 0,
+        }
+
         try:
             # On a recovery turn the decode is masked to the tool-call shape.
             # The agent reached this turn by producing prose or nothing at all
@@ -2547,21 +2625,25 @@ def _stream_agent_turn_impl(
                 accumulated_response.append(token)
 
                 # Filter thinking tags
-                if "<think>" in token:
+                if any(tag in token for tag in ("<think>", "<thought>", "<|channel>thought", "<|thought|>")):
                     in_think_block = True
-                    cleaned = token.replace("<think>", "")
+                    cleaned = re.sub(r"<(?:think|thought)>|<\|channel\>thought|<\|thought\|>", "", token)
                     if cleaned:
                         yield {"type": "thought", "token": cleaned}
                     continue
-                elif "</think>" in token:
+                elif any(tag in token for tag in ("</think>", "</thought>", "<channel|>", "</|thought|>")):
                     in_think_block = False
-                    cleaned = token.replace("</think>", "")
+                    cleaned = re.sub(r"</(?:think|thought)>|<channel\|>|</\|thought\|>", "", token)
                     if cleaned:
                         yield {"type": "token", "token": cleaned}
                     continue
 
                 if in_think_block:
-                    yield {"type": "thought", "token": token}
+                    if "```tool:" in token or "```xml" in token or "\n\nCiao" in token or "\n\n**Sigma" in token:
+                        in_think_block = False
+                        yield {"type": "token", "token": token}
+                    else:
+                        yield {"type": "thought", "token": token}
                     continue
 
                 # Detect if entering or inside a structured tool block (```tool: or XML tags)
@@ -2864,7 +2946,9 @@ def _stream_agent_turn_impl(
             # unchecked it is a stall that looks like activity, because every
             # call succeeds.
             inert_signature = (t_name, json.dumps(t_params, sort_keys=True, default=str)[:400])
-            if t_name in ("list_dir", "list_directory", "ls", "glob") and inert_signature in inert_call_signatures:
+            if (t_name in ("list_dir", "list_directory", "ls", "glob")
+                    and (rilevatore.gia_inerte(t_name, t_params)
+                         or inert_signature in inert_call_signatures)):
                 msg = (
                     f"Tool '{t_name}' NON eseguito: hai gia ottenuto esattamente "
                     "questo elenco e nulla e cambiato da allora. Il risultato "
@@ -2999,10 +3083,11 @@ def _stream_agent_turn_impl(
             # il solo modo che l'agente ha di sapere se ha finito.
             call_signature = (t_name, json.dumps(t_params, sort_keys=True, default=str)[:600])
             ripetibile = t_name in ("terminal", "shell", "exec", "command")
-            if not ripetibile and call_signature in failed_call_signatures:
+            if not ripetibile and (rilevatore.gia_fallita(t_name, t_params)
+                                   or call_signature in failed_call_signatures):
                 repeat_note = (
                     f"Tool '{t_name}' NON eseguito: hai gia effettuato questa "
-                    "identica chiamata e ha gia fallito. Ripeterla dara lo stesso "
+                    "chiamata e ha gia fallito. Ripeterla dara lo stesso "
                     "risultato. Cambia approccio: leggi il file, cerca il percorso "
                     "corretto, oppure esegui l'azione mancante che ti e stata indicata."
                 )
@@ -3013,6 +3098,80 @@ def _stream_agent_turn_impl(
                 }
                 tool_observations.append(repeat_note + "\n")
                 continue
+
+            # Il ciclo a due o tre mosse. Nessuna delle chiamate e' ripetuta di
+            # seguito, quindi la guardia qui sopra non lo vede: edit_file
+            # fallisce, read_file riesce, edit_file fallisce uguale, e ogni
+            # giro sembra un tentativo nuovo. Il discriminante e' che in mezzo
+            # non e' cambiato nessun file.
+            if not ripetibile:
+                ciclo = rilevatore.ciclo_in_corso(t_name, t_params)
+                if ciclo:
+                    nota_ciclo = (
+                        f"Tool '{t_name}' NON eseguito: stai girando in tondo — {ciclo}. "
+                        "Rifarlo produrra' lo stesso risultato di prima.\n"
+                        "Cambia il piano, non il tentativo: se una modifica non entra, "
+                        "il problema non e' la chiamata ma cio' che stai chiedendo. "
+                        "Scrivi il file per intero con write_file, oppure dichiara "
+                        "nella risposta cosa ti impedisce di procedere."
+                    )
+                    turn_gave_direction = True
+                    yield {
+                        "type": "tool_result",
+                        "tool": t_name,
+                        "result": {"tool": t_name, "success": False, "error": nota_ciclo},
+                    }
+                    yield {"type": "ciclo_rilevato", "tool": t_name, "dettaglio": ciclo}
+                    tool_observations.append(nota_ciclo + "\n")
+                    rilevatore.registra(t_name, t_params, riuscito=False)
+                    continue
+
+            # Anti-Stall FSM per comandi terminale: se lo stesso comando e' gia' stato eseguito
+            # per 2 volte consecutive con esito positivo (exit_code == 0) e nessun file e' cambiato,
+            # blocca la 3a esecuzione ridondante e indirizza in modo vincolante verso la chiusura del task.
+            if ripetibile:
+                bloccato = comando_bloccato_in_ciclo(ledger)
+                cmd_str = str(t_params.get("command") or t_params.get("raw") or "").strip()
+                if bloccato and bloccato["esito"] == "ok":
+                    fsm_msg = (
+                        f"Tool '{t_name}' NON rieseguito (Anti-Stall FSM): il comando '{cmd_str[:80]}' e gia stato eseguito "
+                        f"{bloccato['volte']} volte consecutive con ESITO POSITIVO e nessun file e cambiato nel frattempo.\n"
+                        "La verifica e pienamente superata. Non ripetere lo stesso comando: procedi ORA ad aggiornare la pipeline "
+                        "impostando lo status a 'done' per questo task tramite il blocco ```tool:pipeline oppure dichiara completato l'obiettivo con ```tool:complete_goal."
+                    )
+                    yield {
+                        "type": "tool_result",
+                        "tool": t_name,
+                        "result": {"tool": t_name, "success": False, "error": fsm_msg},
+                    }
+                    tool_observations.append(fsm_msg + "\n")
+                    continue
+
+                if bloccato and bloccato["esito"] == "fallito":
+                    # Il caso che la guardia precedente non copriva, ed e' il
+                    # piu' frequente: `pytest` che fallisce identico due volte
+                    # di fila perche' fra un tentativo e l'altro non e' stato
+                    # corretto niente. Il contatore del ledger si azzera a ogni
+                    # scrittura riuscita, quindi arrivare a due vuol dire
+                    # davvero «nessuna modifica in mezzo».
+                    fsm_msg = (
+                        f"Tool '{t_name}' NON rieseguito: il comando '{cmd_str[:80]}' e' gia' "
+                        f"fallito {bloccato['volte']} volte di seguito e dall'ultima volta "
+                        "non hai modificato nessun file. Rieseguirlo dara' lo stesso errore.\n"
+                        f"QUESTO E' L'ERRORE: {bloccato['errore']}\n"
+                        "Leggilo, individua il file e la riga che nomina, CORREGGI, e solo "
+                        "dopo riesegui: dopo una modifica vera il comando torna disponibile."
+                    )
+                    turn_gave_direction = True
+                    yield {
+                        "type": "tool_result",
+                        "tool": t_name,
+                        "result": {"tool": t_name, "success": False, "error": fsm_msg},
+                    }
+                    yield {"type": "ciclo_rilevato", "tool": t_name,
+                           "dettaglio": f"comando fallito {bloccato['volte']} volte senza modifiche"}
+                    tool_observations.append(fsm_msg + "\n")
+                    continue
 
             # Com'era il file prima: serve a mostrare il diff vero e a saper
             # tornare indietro se la modifica non viene approvata.
@@ -3088,6 +3247,15 @@ def _stream_agent_turn_impl(
                     }
 
             ledger.record_tool(t_name, t_params, result)
+            # La finestra del rilevatore va aggiornata sempre, riuscita o no:
+            # e' la sequenza a dire se si sta girando in tondo, non il singolo
+            # esito. La scrittura riuscita la azzera perche' dopo una modifica
+            # vera nessun tentativo precedente e' piu' garantito fallire.
+            rilevatore.registra(
+                t_name, t_params,
+                riuscito=bool(result.get("success")),
+                workspace_cambiato=bool(result.get("success") and t_name in PRODUCTIVE_TOOLS),
+            )
             # Qualunque tool riuscito e' progresso. Contare solo scritture e
             # comandi faceva scattare il recupero al terzo turno di OGNI run:
             # `spec` e `pipeline` sono passi obbligatori del ciclo di lavoro,
@@ -3113,6 +3281,7 @@ def _stream_agent_turn_impl(
                 # gliel'ha rinfacciato: quattordici turni per un file scritto
                 # al terzo.
                 failed_call_signatures.clear()
+                rilevatore.workspace_cambiato()
             if t_name == "read_file" and result.get("success") and result.get("path"):
                 reads_this_turn.append(str(result["path"]))
             # Una scrittura invalida la lettura precedente dello stesso file
@@ -3129,6 +3298,7 @@ def _stream_agent_turn_impl(
                 inert_call_signatures.add(
                     (t_name, json.dumps(t_params, sort_keys=True, default=str)[:400])
                 )
+                rilevatore.registra_inerte(t_name, t_params)
             if not result.get("success"):
                 run_metrics["tool_failures"] += 1
                 failed_call_signatures.add(

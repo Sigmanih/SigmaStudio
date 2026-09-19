@@ -101,7 +101,9 @@ Decomponi obiettivi complessi in task atomici, sequenziati e assegnati ai ruoli 
    - **Design System & Layout**: palette cromatica (dark mode, accenti neon), tipografia moderna (Google Fonts Inter/Outfit), struttura dei componenti.
    - **Dati Realistici di Prova**: obbligo di includere dataset ricco pre-popolato (mai mockup spogli o vuoti).
    - **Ambiente & Docker Sandbox**: se l'applicazione ha più servizi (frontend + backend o database), pianifica `docker-compose.yml`, i rispettivi `Dockerfile` e la configurazione `sandbox.json` (`{"mode": "container", "network": true, "ports": ["3000:3000", "5000:5000", "5173:5173"]}`).
-   - **Task di Collaudo**: include sempre task di build (`npm run build`), test API e verifica visiva con `screenshot`.
+   - **Task di Collaudo**: include sempre task di build (`npm run build`), test API e
+  verifica visiva. Quei task li eseguira' un altro ruolo: nominare qui un tool
+  fra backtick vorrebbe dire che lo chiami tu, e tu non hai il terminale.
 4. NON scrivere codice: il tuo output è il PIANO e la SPECIFICA, non l'implementazione.
 5. Usa il tool `pipeline` per registrare il piano come DAG di task con `role`, `description` e `depends_on`.
 """,
@@ -395,7 +397,8 @@ ROLE_RUST_ENGINEER = DevRole(
     max_turns=30,
     tools=(
         "read_file", "edit_file", "write_file", "search_code", "terminal",
-        "list_dir", "glob", "cargo_build", "cargo_test", "cargo_clippy",
+        "list_dir", "glob", "cargo_build", "cargo_check", "cargo_test",
+        "cargo_clippy",
         "docker_run_container", "docker_exec", "inspect_runtime_state",
     ),
     focus_areas=(

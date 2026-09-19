@@ -119,8 +119,12 @@ collatz_pipeline.json
 
 # Virtual Environment
 .venv/
-projects/*
-projects/
+# Rust build targets and heavy assets in projects
+projects/**/target/
+projects/**/*.gguf
+projects/**/*.bin
+projects/**/*.safetensors
+projects/**/weights/
 sandboxes.json
 
 # OS files

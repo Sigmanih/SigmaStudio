@@ -53,10 +53,56 @@ export default function ChatWorkspaceTab() {
           if (msgs.length === 0) return;
           const formatted = msgs.map(m => {
             const role = m.role === 'user' ? '👤 Tu' : `🤖 ${m.agentRole || m.agentName || 'AI'}`;
-            const text = m.content || m.thinking || '';
-            return `${role}:\n${text}`;
-          }).join('\n\n---\n\n');
-          navigator.clipboard.writeText(formatted);
+            const parts = [];
+
+            // 1. Ragionamento / Thinking
+            if (m.thinking && typeof m.thinking === 'string' && m.thinking.trim()) {
+              parts.push(`💭 RAGIONAMENTO:\n${m.thinking.trim()}`);
+            }
+
+            // 2. Div Azioni / Tools
+            const tools = m.tools || m.tool_calls || m.actions || [];
+            if (Array.isArray(tools) && tools.length > 0) {
+              const toolLines = tools.map((t, i) => {
+                const name = t.name || t.tool || `Tool #${i + 1}`;
+                const args = t.arguments || t.args || t.input;
+                const argsStr = args ? (typeof args === 'string' ? args : JSON.stringify(args)) : '';
+                const result = t.output || t.result || t.response;
+                const resStr = result ? ` -> ${typeof result === 'string' ? result : JSON.stringify(result)}` : '';
+                return `⚙️ Azione: ${name}${argsStr ? ` (${argsStr})` : ''}${resStr}`;
+              }).join('\n');
+              parts.push(`🔧 STRUMENTI E AZIONI:\n${toolLines}`);
+            }
+
+            // 3. Contenuto principale
+            if (m.content && typeof m.content === 'string' && m.content.trim()) {
+              parts.push(m.content.trim());
+            }
+
+            // 4. Metriche di prestazione (tps, ttft, token, durata)
+            const metrics = m.metrics || {};
+            const tps = metrics.tokens_per_second ?? m.tps;
+            const ttft = metrics.routing_time_ms ?? m.ttft_ms ?? metrics.ttft_ms;
+            const tokens = metrics.token_count ?? m.tokens ?? metrics.tokens;
+            const dur = m.duration_s ?? (metrics.generation_time_ms ? (metrics.generation_time_ms / 1000).toFixed(2) : null);
+
+            const metricParts = [];
+            if (tps) metricParts.push(`⚡ ${tps} t/s`);
+            if (ttft !== undefined && ttft !== null) metricParts.push(`⏱️ TTFT: ${Math.round(ttft)}ms`);
+            if (tokens) metricParts.push(`🔢 Token: ${tokens}`);
+            if (dur) metricParts.push(`🕒 Durata: ${dur}s`);
+
+            if (metricParts.length > 0) {
+              parts.push(`📊 METRICHE: ${metricParts.join(' | ')}`);
+            }
+
+            if (parts.length === 0) return null;
+            return `${role}:\n${parts.join('\n\n')}`;
+          }).filter(Boolean).join('\n\n---\n\n');
+
+          if (formatted) {
+            navigator.clipboard.writeText(formatted);
+          }
         }}
         onExportPdf={() => {
           const msgs = core.messages || [];

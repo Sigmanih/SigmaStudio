@@ -149,16 +149,18 @@ class _ThinkTagRouter:
 
     Cleanly routes `<think>...</think>`, `<|channel>thought...<channel|>`, etc.
     blocks to the thinking channel, holding back only partial tag prefixes like `<th` until resolved.
+    Does not rely on language-specific heuristics or greetings.
     """
 
     def __init__(self):
         self._buffer = ""
         self._in_thinking = False
+        self._started_token = False
 
     @staticmethod
     def _is_close_tag(tag: str) -> bool:
         t = tag.lower()
-        return t.startswith("</") or "channel|" in t or "/thought" in t
+        return t.startswith("</") or "channel|" in t or "/thought" in t or t.startswith("<response") or t.startswith("<output") or t.startswith("<answer")
 
     def feed(self, text: str) -> list[tuple[str, str]]:
         """Return [(channel, text), …] where channel is 'token' or 'thinking'."""
@@ -173,6 +175,8 @@ class _ThinkTagRouter:
             if before:
                 out.append(("thinking" if self._in_thinking else "token", before))
             self._in_thinking = not self._is_close_tag(match.group())
+            if not self._in_thinking:
+                self._started_token = True
             self._buffer = self._buffer[match.end():]
 
         # Hold back trailing '<' that might be part of an incoming tag (up to 18 chars for <|channel>thought)
@@ -852,8 +856,10 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         clean_text, extracted_thinking = _clean_all_tags(full_text, message)
         thinking_out = "\n\n".join(t for t in (full_thinking, extracted_thinking) if t and t.strip())
 
-        # A reasoning-only answer is still an answer: don't leave the bubble empty.
-        if not clean_text.strip() and thinking_out.strip():
+        # Se la risposta è scivolata dentro thinking_out o clean_text è solo un residuo
+        # Se il modello non ha chiuso il tag di pensiero e la risposta visibile è vuota,
+        # promuoviamo il testo a risposta per garantire che l'utente non riceva una risposta vuota.
+        if thinking_out.strip() and not clean_text.strip():
             clean_text, thinking_out = thinking_out, ""
 
         created_files, actions_log = [], []

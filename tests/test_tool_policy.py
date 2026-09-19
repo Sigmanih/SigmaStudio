@@ -100,6 +100,22 @@ class TestMessaggioDiRifiuto:
         assert "read_file" in sezione
 
 
+#: I nomi che sono davvero tool. Il prompt di un ruolo parla anche di
+#: concetti che si chiamano come un tool senza esserlo, e confonderli
+#: trasformerebbe questo controllo in rumore.
+def _e_un_tool(nome: str) -> bool:
+    from core.harness.tool_schema import TOOL_SCHEMAS
+    from core.harness.policy import ALIASES
+
+    noti = {s["function"]["name"] for s in TOOL_SCHEMAS} | set(ALIASES)
+    extra = {
+        "cargo_build", "cargo_test", "cargo_check", "cargo_clippy",
+        "docker_run_container", "docker_exec", "inspect_runtime_state",
+        "queue_add", "propose_verify", "complete_goal", "pipeline", "spec",
+    }
+    return nome in noti or nome in extra
+
+
 class TestCoerenzaConIRuoli:
     """La policy e `is_tool_allowed` devono rispondere la stessa cosa.
 
@@ -108,12 +124,72 @@ class TestCoerenzaConIRuoli:
     eseguire. Divergere significherebbe mostrare un permesso e negarne un altro.
     """
 
-    @pytest.mark.parametrize("role_id", sorted(DEV_ROLES))
-    def test_ogni_ruolo_puo_usare_i_propri_tool(self, role_id):
+    def test_ogni_ruolo_puo_usare_i_propri_tool(self):
+        """Il confronto parte dal registro CARICATO, non dai predefiniti.
+
+        `config/roles.json` si sovrappone campo per campo ed e' progettato per
+        farlo: aggiunge ruoli e restringe elenchi di tool. Partire da
+        `DEV_ROLES` provava una proprieta' su un dato che in produzione non
+        arriva mai — e infatti dichiarava rotto `rust_engineer`, che nel file
+        ha sette tool invece di tredici ed e' coerente con tutti e sette.
+        """
         engine = RoleEngine()
-        role = DEV_ROLES[role_id]
-        for tool in role.tools:
-            assert engine.is_tool_allowed(role_id, tool), f"{role_id}/{tool}"
+        for role_id, role in engine.roles.items():
+            for tool in role.tools:
+                assert engine.is_tool_allowed(role_id, tool), f"{role_id}/{tool}"
+
+    def test_il_file_di_configurazione_vince_sui_predefiniti(self):
+        """La sovrapposizione e' una funzionalita': se smettesse di funzionare
+        i ruoli del file tornerebbero silenziosamente ai valori di fabbrica."""
+        engine = RoleEngine()
+        assert set(engine.roles) >= set(DEV_ROLES), "i predefiniti non spariscono"
+        in_piu = set(engine.roles) - set(DEV_ROLES)
+        assert in_piu, "config/roles.json deve poter aggiungere ruoli"
+
+    def test_nessun_prompt_nomina_un_tool_che_il_ruolo_non_ha(self):
+        """Il controllo che `filter_tool_docs` non puo' fare.
+
+        Il filtro toglie dall'elenco i tool non permessi, ma il corpo del
+        prompt non lo guarda nessuno: un ruolo puo' leggere «verifica con
+        `cargo_check`» e poi prendersi un rifiuto su `cargo_check`. E' il
+        «sistema che si contraddice» di STATO_HARNESS.md, e la colpa sembra
+        del modello.
+        """
+        import re
+
+        engine = RoleEngine()
+        problemi = []
+        for role_id, role in engine.roles.items():
+            prompt = getattr(role, "system_prompt", "") or ""
+            # Solo i tool nominati fra backtick: il testo libero parla anche
+            # di concetti che si chiamano come un tool senza esserlo.
+            citati = set(re.findall(r"`(\w+)`", prompt))
+            for nome in sorted(citati):
+                if not _e_un_tool(nome):
+                    continue
+                if not engine.is_tool_allowed(role_id, nome):
+                    problemi.append(f"{role_id}: il prompt nomina `{nome}`, che non puo' usare")
+        assert not problemi, "; ".join(problemi)
+
+    def test_nemmeno_i_predefiniti_nominano_tool_che_non_hanno(self):
+        """Lo stesso controllo, sui valori di fabbrica.
+
+        Chi gira senza `config/roles.json` riceve questi, e li' il prompt di
+        `rust_engineer` diceva di verificare con `cargo_check` mentre il suo
+        elenco conteneva `cargo_build`, `cargo_test` e `cargo_clippy`: il tool
+        nominato non esisteva per quel ruolo.
+        """
+        import re
+
+        from core.harness.policy import ToolPolicy
+
+        problemi = []
+        for role_id, role in DEV_ROLES.items():
+            policy = ToolPolicy.of(role.tools, label=role.name)
+            for nome in sorted(set(re.findall(r"`(\w+)`", role.system_prompt or ""))):
+                if _e_un_tool(nome) and not policy.permits(nome):
+                    problemi.append(f"{role_id}: il prompt nomina `{nome}`, che non ha")
+        assert not problemi, "; ".join(problemi)
 
     def test_il_coder_non_puo_spingere_su_git(self):
         assert not RoleEngine().is_tool_allowed("coder", "git_push")

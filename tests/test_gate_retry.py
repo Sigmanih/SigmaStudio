@@ -31,10 +31,28 @@ class TestCosaRiapreUnaChiusuraRifiutata:
         assert "spec" in GATE_INPUT_TOOLS
 
     def test_una_scrittura_azzera_le_firme_fallite(self):
-        """Il caso gia' noto: il workspace e' cambiato."""
+        """Il caso gia' noto: il workspace e' cambiato.
+
+        L'ancora e' la riga del ramo, non la prima comparsa di
+        `PRODUCTIVE_TOOLS` nella funzione: da quando il rilevatore di cicli
+        riceve lo stesso segnale, quel nome compare anche qualche riga sopra,
+        e cercare da li' guardava il blocco sbagliato.
+        """
         sorgente = inspect.getsource(_stream_agent_turn_impl)
-        blocco = sorgente[sorgente.index("t_name in PRODUCTIVE_TOOLS"):][:600]
+        ancora = 'if result.get("success") and t_name in PRODUCTIVE_TOOLS:'
+        assert ancora in sorgente
+        blocco = sorgente[sorgente.index(ancora):][:700]
         assert "failed_call_signatures.clear()" in blocco
+
+    def test_una_scrittura_azzera_anche_la_finestra_del_rilevatore(self):
+        """Le due memorie devono azzerarsi insieme.
+
+        Se il rilevatore di cicli tenesse la finestra anche dopo una modifica
+        vera, il ciclo correggi-verifica verrebbe scambiato per uno stallo —
+        cioe' esattamente il difetto che questa pagina racconta, alla rovescia.
+        """
+        sorgente = inspect.getsource(_stream_agent_turn_impl)
+        assert "workspace_cambiato=bool(result.get(\"success\") and t_name in PRODUCTIVE_TOOLS)" in sorgente
 
     def test_anche_un_aggiornamento_del_piano_le_azzera(self):
         """Il caso nuovo, e quello che bloccava i run."""

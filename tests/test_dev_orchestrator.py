@@ -28,9 +28,17 @@ def test_orchestrator_initialization():
     assert "roles" in status
     # Non il numero — cresce a ogni ruolo nuovo — ma che l'orchestratore veda
     # gli stessi ruoli che il registro dichiara.
-    from core.harness.roles import DEV_ROLES
+    #
+    # Il confronto va fatto con il registro CARICATO, non con i predefiniti:
+    # `config/roles.json` si sovrappone campo per campo e puo' aggiungere
+    # ruoli, ed e' il suo lavoro. Confrontando con `DEV_ROLES` questo test
+    # dichiarava rotto l'orchestratore ogni volta che qualcuno aggiungeva un
+    # ruolo nel file — cioe' proprio quando il meccanismo funzionava.
+    from core.harness.roles import DEV_ROLES, RoleEngine
 
-    assert set(status["roles"]["roles"]) == set(DEV_ROLES)
+    registro = set(RoleEngine().roles)
+    assert set(status["roles"]["roles"]) == registro
+    assert registro >= set(DEV_ROLES), "i predefiniti non spariscono mai"
     assert "designer" in status["roles"]["roles"]
 
 

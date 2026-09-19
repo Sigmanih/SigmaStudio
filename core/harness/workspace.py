@@ -71,3 +71,29 @@ def resolve_root(explicit: Optional[str] = None) -> str:
         return corrente
     from core.harness.fs_manager import get_default_workspace_root
     return get_default_workspace_root()
+
+
+# ------------------------------------------------------------------------------
+# Cosa c'era qui, e perche' non c'e' piu'
+#
+# `get_workspace_git_status()` e `is_workspace_clean()` promettevano lo stato
+# git del workspace «via IPC Named Pipe in meno di 1 ms», appoggiandosi a
+# `core/harness/fs.py`. Tre cose non andavano, e insieme facevano una
+# funzionalita' che non poteva funzionare e che nessuno usava:
+#
+# - `fs.py` scriveva sulla pipe il JSON grezzo `{"cmd": "git_status"}`, mentre
+#   il server Rust pretende un frame binario con intestazione `SIGM` di 16 byte
+#   e un opcode. La lettura IPC non poteva riuscire **mai**: si ripiegava
+#   sempre sul comando `git`, e il «meno di 1 ms» non e' mai stato misurato;
+# - il parsing di `git status --porcelain` era sbagliato. Il primo ramo
+#   catturava ogni codice contenente `A`, `M`, `D` o `R`, quindi la lista
+#   `modified` restava sempre vuota e i file modificati non in stage finivano
+#   fra gli `staged`. Chi ci avesse creduto avrebbe letto il contrario;
+# - **nessuno le chiamava**. Fuori da questo file non c'era un solo chiamante.
+#
+# Era l'ottava occorrenza dello schema «scritto, testato, scollegato» che
+# STATO_HARNESS.md paragrafo 2 descrive. Il tool nativo che servirebbe esiste
+# gia' nel kernel e si chiama `fast_git_status`: se un giorno il percorso
+# veloce servira' davvero, si parte da li' e dal frame binario di
+# `NamedPipeClient`, non da un protocollo inventato.
+# ------------------------------------------------------------------------------
