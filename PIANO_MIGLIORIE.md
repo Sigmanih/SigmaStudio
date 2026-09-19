@@ -522,9 +522,24 @@ Tutti e 4 i task evolutivi sono stati implementati, validati con test e compilat
 
 **Verifica Globale**: `cargo test --workspace` (106/106 test verdi), `cargo build --release` (LTO completato in 34.6s), `npm run build` (successo).
 
-### Proposta Prossima Tranche (V1-V4): Velocità ed Efficienza Team Agenti
-1. **V1 — Speculative Sampling Engine Avanzato**: Generazione parallela target-draft combinando il kernel Rust SIMD con il delegate CUDA per un boost 2.5x nel throughput di decoding.
-2. **V2 — Prefetching Radix Cache Predittivo nel Ledger Agenti**: Pre-caricamento in memoria zero-copy dei nodi Radix dei tool e dei file del workspace previsti dall'agent planner.
-3. **V3 — Matrice di Saturazione VRAM/RAM dinamica nel Dashboard**: Visualizzazione real-time delle pagine KV Cache allocate/evicted per sessione nel pannello Hardware Lab.
-4. **V4 — Fast Context Compression per Tool Calling**: Compressione semantica zero-loss dei log e dei diff dei comandi bash/powershell prima dell'inserimento nel contesto dei prompt dell'agente.
+---
+
+## 9. Tranche V1-V4 · Efficienza, Throughput & Fast Context (Completata · 20 Settembre 2026)
+
+Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release LTO:
+
+| Task | Descrizione | Crate / Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **V1** | **Speculative Sampling Engine Avanzato** (Rejection sampling canonico Leviathan et al., lookahead K elastico, rollback atomico KV-cache) | `crates/sigma-model` | **Fatto** | `cargo test -p sigma-model` (46/46 passati) |
+| **V2** | **Prefetching Radix Cache Predittivo nel Ledger** (metodi `prefetch_and_pin` e `unpin` protetti da eviction + `prefetch_radix_ipc` Python) | `crates/sigma-memory` & `sigmarust_backend.py` | **Fatto** | `cargo test -p sigma-memory` (20/20 passati) & `pytest` (8/8 passati) |
+| **V3** | **Fast Context Compression per Tool Output** (automa `strip_ansi_escapes` O(N), collasso progress bar `\r`, compressione traceback elastica) | `crates/sigma-tools` | **Fatto** | `cargo test -p sigma-tools` (14/14 passati) |
+| **V4** | **Memory Hierarchy Saturation Matrix (L0/L1/L2)** (Visualizzazione real-time VRAM GPU, Host RAM condivisa e NVMe fast spill con gradienti dedicati) | `RustTelemetryPanel.jsx` | **Fatto** | `npm run lint:undef` (0 errori) & build Vite OK |
+
+**Verifica Globale**: `cargo test --workspace` (**109/109 test verdi**), `cargo build --release` (LTO completato in 34.7s), `npm run build` (successo in 909ms).
+
+### Proposta Prossima Tranche (W1-W4): Robustezza & Orchestrazione Parallela
+1. **W1 — Paged Attention Ring Buffer Dynamic Compaction (`crates/sigma-memory`)**: De-frammentazione online in background delle pagine KV con swap lock-free tra GPU e RAM.
+2. **W2 — Subagent Direct Memory Pipe (`core/harness`)**: Passaggio di stato ad altissima velocità tra agenti subordinati tramite handle di memoria condivisa zero-copy anziché JSON stringify.
+3. **W3 — Adaptive Lookahead Auto-Tuner (`crates/sigma-model`)**: Calibrazione automatica in tempo reale del parametro $K$ dello Speculative Sampling basata sul tasso di accettazione misurato.
+4. **W4 — Interactive KV-Cache Memory Inspector nella UI (`sigma_studio`)**: Mappa interattiva a celle per visualizzare la densità dei token memorizzati e liberare spazio con un clic per sessione.
 

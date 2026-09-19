@@ -284,6 +284,25 @@ class NamedPipeClient:
             return True
         return None
 
+    def prefetch_radix_ipc(self, token_ids: List[int], priority: int = 1) -> Optional[Dict[str, Any]]:
+        """Invia istruzione predittiva di prefetching e pinning di una sequenza di token nella Radix Cache."""
+        if not token_ids:
+            return None
+        return self.send_ipc({
+            "op": "prefetch_radix",
+            "tokens": token_ids,
+            "priority": priority,
+        })
+
+    def unpin_radix_ipc(self, token_ids: List[int]) -> Optional[Dict[str, Any]]:
+        """Rimuove il flag di pinning per consentire l'eviction LRU ordinaria."""
+        if not token_ids:
+            return None
+        return self.send_ipc({
+            "op": "unpin_radix",
+            "tokens": token_ids,
+        })
+
     def reconnect(self) -> None:
         """Riconnessione automatica al trasporto IPC con timeout 1s."""
         self.close()

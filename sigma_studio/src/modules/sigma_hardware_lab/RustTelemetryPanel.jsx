@@ -578,6 +578,97 @@ export default function RustTelemetryPanel({ compact = false }) {
           </div>
         </div>
 
+        {/* Sezione 2.5: Tiered Memory Hierarchy Saturation Matrix (L0 VRAM / L1 RAM / L2 NVMe) */}
+        <div
+          style={{
+            background: innerCardBg,
+            border: innerBorder,
+            borderRadius: '12px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.88rem' }}>
+              <Layers size={16} color="#00f2fe" />
+              <span>Memory Hierarchy Saturation (L0/L1/L2)</span>
+            </div>
+            <span
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                color: '#10b981',
+                background: 'rgba(16, 185, 129, 0.1)',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                border: '1px solid rgba(16, 185, 129, 0.25)'
+              }}
+            >
+              Zero-Copy Fabric
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* Livello L0: GPU VRAM */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '3px' }}>
+                <span style={{ fontWeight: 600, color: '#00f2fe' }}>L0 · GPU VRAM (Hot Compute)</span>
+                <span>{vramTotaleGb > 0 ? `${pagesAlloc !== null ? pagesAlloc : 0} pag attive` : 'cpu_only (0 GB)'}</span>
+              </div>
+              <div style={{ height: '6px', width: '100%', background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${vramTotaleGb > 0 ? (pagesPct || 0) : 0}%`,
+                    background: 'linear-gradient(90deg, #00f2fe, #4facfe)',
+                    borderRadius: '3px',
+                    transition: 'width 0.4s ease'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Livello L1: System RAM Host */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '3px' }}>
+                <span style={{ fontWeight: 600, color: '#10b981' }}>L1 · System Host RAM (Radix Tree Shared)</span>
+                <span>{hitRatePct !== null ? `${hitRatePct}% hit rate` : 'standby'}</span>
+              </div>
+              <div style={{ height: '6px', width: '100%', background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${hitRatePct !== null ? Math.min(100, Math.max(15, hitRatePct)) : 10}%`,
+                    background: 'linear-gradient(90deg, #10b981, #059669)',
+                    borderRadius: '3px',
+                    transition: 'width 0.4s ease'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Livello L2: NVMe Fast Spill */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '3px' }}>
+                <span style={{ fontWeight: 600, color: '#f59e0b' }}>L2 · NVMe Spillover Fabric (mmap)</span>
+                <span>{spilledPages > 0 ? `${spilledPages} pag residenti` : '0 pag (ottimale)'}</span>
+              </div>
+              <div style={{ height: '6px', width: '100%', background: isLight ? '#e2e8f0' : 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${Math.min(100, (spilledPages / 256) * 100)}%`,
+                    background: 'linear-gradient(90deg, #f59e0b, #d97706)',
+                    borderRadius: '3px',
+                    transition: 'width 0.4s ease'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Sezione 3: Dual-GPU & Hardware */}
         <div
