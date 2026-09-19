@@ -197,8 +197,87 @@ class NamedPipeClient:
         import zlib
         return [zlib.crc32(word.encode("utf-8")) & 0x7FFFFFFF for word in text.split()]
 
-    def cancel_ipc(self, request_id: str) -> Optional[bool]:
+    @property
+    def is_ipc_connected(self) -> bool:
+        """Indica se il canale di trasporto IPC nativo (Named Pipe o Unix Socket) è attivo."""
+        return self._transport in ("named_pipe", "named_pipe_raw", "unix_socket") and self._handle is not None
 
+    def stream_tokens_ipc(self, payload_dict: Dict[str, Any], cancel: Any = None) -> Generator[Dict[str, Any], None, None]:
+        """Invia una richiesta di streaming e genera sequenzialmente i token ricevuti via IPC nativo.
+        Ogni frame segue il formato length-prefixed [u32 len LE][JSON bytes] con schema:
+        {"type": "token", "delta": "...", "token_id": int} oppure {"type": "done", "finish_reason": "stop"}.
+        """
+        if not self.is_ipc_connected or not self._handle:
+            return
+
+        try:
+            raw_json = json.dumps(payload_dict).encode("utf-8")
+            frame = struct.pack("<I", len(raw_json)) + raw_json
+
+            if self._transport == "named_pipe":
+                import win32file
+                import pywintypes
+                overlapped = pywintypes.OVERLAPPED()
+                win32file.WriteFile(self._handle, frame, overlapped)
+            elif self._transport == "named_pipe_raw":
+                self._handle.write(frame)
+                self._handle.flush()
+            elif self._transport == "unix_socket":
+                self._handle.sendall(frame)
+
+            # Ricezione sequenziale dei token frame
+            while True:
+                if cancel and cancel():
+                    self.cancel_ipc(payload_dict.get("request_id", ""))
+                    break
+
+                if self._transport == "named_pipe":
+                    len_bytes = self._read_exact(4)
+                elif self._transport == "named_pipe_raw":
+                    len_bytes = self._read_raw_exact(4)
+                elif self._transport == "unix_socket":
+                    len_bytes = self._recv_exact(4)
+                else:
+                    break
+
+                if len(len_bytes) < 4:
+                    break
+                resp_len = struct.unpack("<I", len_bytes)[0]
+                if resp_len == 0:
+                    continue
+
+                if self._transport == "named_pipe":
+                    resp_body = self._read_exact(resp_len)
+                elif self._transport == "named_pipe_raw":
+                    resp_body = self._read_raw_exact(resp_len)
+                elif self._transport == "unix_socket":
+                    resp_body = self._recv_exact(resp_len)
+                else:
+                    break
+
+                item = json.loads(resp_body.decode("utf-8"))
+                frame_type = item.get("type", "token")
+                if frame_type == "token":
+                    yield {
+                        "text": item.get("delta", ""),
+                        "token_id": item.get("token_id"),
+                        "finish_reason": None,
+                    }
+                elif frame_type == "done":
+                    yield {
+                        "text": "",
+                        "token_id": None,
+                        "finish_reason": item.get("finish_reason", "stop"),
+                        "usage": item.get("usage", {}),
+                    }
+                    break
+                elif frame_type == "error":
+                    log.warning("[IPC] Frame di errore ricevuto dal kernel: %s", item.get("error"))
+                    break
+        except Exception as exc:
+            log.debug("[IPC] Interruzione stream token IPC (%s)", exc)
+
+    def cancel_ipc(self, request_id: str) -> Optional[bool]:
         """Segnala l'annullamento atomico di una richiesta tramite IPC nativo."""
         resp = self.send_ipc({"op": "cancel_request", "request_id": request_id})
         if resp and resp.get("status") in ("ok", "cancelled"):
@@ -642,7 +721,28 @@ class SigmaRustBackend(InferenceBackend):
         except Exception as b_exc:
             log.debug("[SigmaRustBackend] Impossibile delegare a backend alternativo: %s", b_exc)
 
-        # 3. Fallback via proxy HTTP OpenAI del kernel Rust
+        # 3. Streaming nativo ad altissima velocità via IPC micro-kernel (Named Pipe o Unix Socket)
+        if self._client and self._client.is_ipc_connected:
+            ipc_payload = {
+                "op": "generate_stream",
+                "request_id": f"req_{int(time.time()*1000)}",
+                "model": self._loaded_model_id or "sigma_default",
+                "messages": messages,
+                "temperature": params.temperature if params else temperature,
+                "max_tokens": params.max_tokens if params else max_tokens,
+            }
+            try:
+                stream_iter = self._client.stream_tokens_ipc(ipc_payload, cancel=cancel)
+                has_yielded = False
+                for token_chunk in stream_iter:
+                    has_yielded = True
+                    yield token_chunk
+                if has_yielded:
+                    return
+            except Exception as ipc_stream_exc:
+                log.debug("[SigmaRustBackend] Fallback da IPC stream a HTTP: %s", ipc_stream_exc)
+
+        # 4. Fallback via proxy HTTP OpenAI del kernel Rust
         req_body = {
             "model": self._loaded_model_id or "sigma_default",
             "messages": messages,

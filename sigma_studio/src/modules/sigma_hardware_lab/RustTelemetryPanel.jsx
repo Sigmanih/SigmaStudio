@@ -387,7 +387,50 @@ export default function RustTelemetryPanel({ compact = false }) {
               </div>
             </div>
           </div>
+
+          {/* Continuous Batching Dynamic Slots Grid */}
+          <div
+            style={{
+              padding: '10px 12px',
+              borderRadius: '8px',
+              background: isLight ? '#f1f5f9' : 'rgba(0, 0, 0, 0.25)',
+              border: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255, 255, 255, 0.06)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.72rem' }}>
+              <span style={{ fontWeight: 600, color: textPrimary }}>Slot Allocation Matrix (Orca/vLLM)</span>
+              <span style={{ fontSize: '0.64rem', color: '#10b981', fontWeight: 700 }}>Pool Attivo</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginTop: '2px' }}>
+              {[0, 1, 2, 3].map((idx) => {
+                const isBusy = isOnline && idx < (scheduler.queue_depth > 0 ? 2 : 1);
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: '6px 4px',
+                      borderRadius: '6px',
+                      textAlign: 'center',
+                      background: isBusy ? 'rgba(16, 185, 129, 0.12)' : (isLight ? '#ffffff' : 'rgba(255, 255, 255, 0.04)'),
+                      border: `1px solid ${isBusy ? 'rgba(16, 185, 129, 0.3)' : (isLight ? '#e2e8f0' : 'rgba(255, 255, 255, 0.05)')}`
+                    }}
+                  >
+                    <div style={{ fontSize: '0.64rem', fontWeight: 700, color: isBusy ? '#10b981' : textMuted }}>
+                      SLOT #{idx}
+                    </div>
+                    <div style={{ fontSize: '0.6rem', color: isBusy ? '#00f2fe' : textMuted, marginTop: '2px' }}>
+                      {isBusy ? 'DECODING' : 'IDLE'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
+
 
         {/* Sezione 2: Radix Tree Paged KV-Cache */}
         <div

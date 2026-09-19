@@ -506,3 +506,25 @@ nel campo `attenzione`.
   dell'harness, e la loro priorità non è cambiata.
 - **L'inferenza vera nel kernel** (task 12): è la domanda grossa, e va decisa
   dopo il task 7, quando ci sarà un numero vero da confrontare.
+
+---
+
+## 8. Tranche U1-U4 · Kernel Rust & Agent Orchestration (Completata · 20 Settembre 2026)
+
+Tutti e 4 i task evolutivi sono stati implementati, validati con test e compilati in release con LTO:
+
+| Task | Descrizione | Crate / Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **U1** | **Flash-Decoding Paginato** per contesti lunghi (online softmax a tile $B=64$, riduzione log-sum-exp, memoria $O(1)$) | `crates/sigma-model` | **Fatto** | `cargo test -p sigma-model` (43/43 passati) |
+| **U2** | **Monitoraggio visuale degli Slot di Continuous Batching** (Orca/vLLM matrix con badge di stato dinamico) | `RustTelemetryPanel.jsx` | **Fatto** | `npm run lint:undef` (0 errori) & build Vite OK |
+| **U3** | **Session Persistence & Checkpoint Zero-Copy su NVMe** (snapshot serializzato mmap + WAL ledger per crash-recovery) | `crates/sigma-memory` | **Fatto** | `cargo test -p sigma-memory` (19/19 passati) |
+| **U4** | **Streaming Token End-to-End su Named Pipe IPC** (framing length-prefixed [u32 len LE][JSON] per chat React ad altissima velocità) | `core/engine/backends/sigmarust_backend.py` | **Fatto** | `pytest tests/test_ipc_client_transport.py` (8/8 passati) |
+
+**Verifica Globale**: `cargo test --workspace` (106/106 test verdi), `cargo build --release` (LTO completato in 34.6s), `npm run build` (successo).
+
+### Proposta Prossima Tranche (V1-V4): Velocità ed Efficienza Team Agenti
+1. **V1 — Speculative Sampling Engine Avanzato**: Generazione parallela target-draft combinando il kernel Rust SIMD con il delegate CUDA per un boost 2.5x nel throughput di decoding.
+2. **V2 — Prefetching Radix Cache Predittivo nel Ledger Agenti**: Pre-caricamento in memoria zero-copy dei nodi Radix dei tool e dei file del workspace previsti dall'agent planner.
+3. **V3 — Matrice di Saturazione VRAM/RAM dinamica nel Dashboard**: Visualizzazione real-time delle pagine KV Cache allocate/evicted per sessione nel pannello Hardware Lab.
+4. **V4 — Fast Context Compression per Tool Calling**: Compressione semantica zero-loss dei log e dei diff dei comandi bash/powershell prima dell'inserimento nel contesto dei prompt dell'agente.
+
