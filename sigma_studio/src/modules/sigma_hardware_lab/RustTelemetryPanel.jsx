@@ -28,6 +28,7 @@ export default function RustTelemetryPanel({ compact = false }) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
+  const [isSseActive, setIsSseActive] = useState(false);
 
   const isMountedRef = useRef(true);
 
@@ -62,15 +63,88 @@ export default function RustTelemetryPanel({ compact = false }) {
   useEffect(() => {
     isMountedRef.current = true;
     fetchMetrics();
-    const timer = setInterval(() => {
-      fetchMetrics(false);
-    }, 2000);
+
+    let eventSource = null;
+    let fallbackTimer = null;
+
+    try {
+      eventSource = new EventSource('/api/engine/rust/stream');
+      eventSource.onopen = () => {
+        if (isMountedRef.current) setIsSseActive(true);
+      };
+      eventSource.onmessage = (event) => {
+        if (!isMountedRef.current) return;
+        try {
+          const raw = JSON.parse(event.data);
+          if (raw.status === 'offline') {
+            setErrorMsg(raw.error || 'Motore Rust in standby');
+            setIsSseActive(false);
+          } else {
+            setMetrics((prev) => ({
+              ...(prev || {}),
+              status: 'ok',
+              scheduler: {
+                batch_count: prev?.scheduler?.batch_count ?? 0,
+                avg_latency_ms: raw.scheduler?.avg_latency_ms ?? null,
+                queue_depth: raw.scheduler?.pending ?? 0,
+                total_processed: raw.scheduler?.processed ?? 0,
+                total_cancelled: prev?.scheduler?.total_cancelled ?? 0,
+              },
+              kv_cache: {
+                radix_hit_rate: raw.radix_cache?.hit_ratio ?? raw.kv_cache?.hit_rate ?? null,
+                pages_allocated: raw.kv_cache?.allocated_pages ?? null,
+                pages_total: raw.kv_cache?.total_pages ?? null,
+                system_prompt_reuse: raw.kv_cache?.hits ?? null,
+              },
+              hardware: {
+                ram: {
+                  total_mb: raw.hardware?.ram_gb ? Math.round(raw.hardware.ram_gb * 1024) : null,
+                  used_mb: null,
+                  free_mb: null,
+                  misurata: raw.hardware?.ram_gb !== undefined,
+                },
+                gpus: (raw.hardware?.gpu_devices || []).map((name, idx) => ({
+                  name,
+                  id: idx,
+                  util_pct: null,
+                  mem_used_mb: null,
+                  mem_total_mb: null,
+                  misurata: false,
+                })),
+                gpu_count: (raw.hardware?.gpu_devices || []).length,
+              },
+              raw,
+            }));
+            setErrorMsg(null);
+            setLoading(false);
+            setLastUpdated(new Date().toLocaleTimeString());
+          }
+        } catch {
+          // ignora errori di parsing di chunk parziali
+        }
+      };
+      eventSource.onerror = () => {
+        if (isMountedRef.current) {
+          setIsSseActive(false);
+        }
+      };
+    } catch {
+      setIsSseActive(false);
+    }
+
+    // Fallback con polling periodico solo se lo stream SSE non è attivo
+    fallbackTimer = setInterval(() => {
+      if (!isSseActive) {
+        fetchMetrics(false);
+      }
+    }, 3000);
 
     return () => {
       isMountedRef.current = false;
-      clearInterval(timer);
+      if (eventSource) eventSource.close();
+      if (fallbackTimer) clearInterval(fallbackTimer);
     };
-  }, [fetchMetrics]);
+  }, [fetchMetrics, isSseActive]);
 
   // Design tokens & palette
   const cardBg = isLight ? '#ffffff' : 'rgba(13, 16, 25, 0.75)';
@@ -154,9 +228,9 @@ export default function RustTelemetryPanel({ compact = false }) {
                   borderRadius: '20px',
                   textTransform: 'uppercase',
                   letterSpacing: '0.05em',
-                  background: isOnline ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                  color: isOnline ? '#10b981' : '#f59e0b',
-                  border: `1px solid ${isOnline ? 'rgba(16, 185, 129, 0.35)' : 'rgba(245, 158, 11, 0.35)'}`,
+                  background: isSseActive ? 'rgba(0, 242, 254, 0.15)' : (isOnline ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)'),
+                  color: isSseActive ? '#00f2fe' : (isOnline ? '#10b981' : '#f59e0b'),
+                  border: `1px solid ${isSseActive ? 'rgba(0, 242, 254, 0.35)' : (isOnline ? 'rgba(16, 185, 129, 0.35)' : 'rgba(245, 158, 11, 0.35)')}`,
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '4px'
@@ -167,10 +241,10 @@ export default function RustTelemetryPanel({ compact = false }) {
                     width: '6px',
                     height: '6px',
                     borderRadius: '50%',
-                    background: isOnline ? '#10b981' : '#f59e0b'
+                    background: isSseActive ? '#00f2fe' : (isOnline ? '#10b981' : '#f59e0b')
                   }}
                 />
-                {isOnline ? 'ONLINE • PORTA 8090' : 'STANDBY / DISCONNESSO'}
+                {isSseActive ? 'LIVE SSE (1 HZ)' : (isOnline ? 'ONLINE • PORTA 8090' : 'STANDBY / DISCONNESSO')}
               </span>
             </div>
             <div style={{ fontSize: '0.76rem', color: textMuted, marginTop: '2px' }}>

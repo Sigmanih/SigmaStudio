@@ -647,3 +647,34 @@ def handle_engine_runtime_check(self):
     if esito.get("motivo") == "istruzione_illegale":
         risposta["rimedio"] = illegal_instruction_report(esito.get("cpu"))
     return self.send_json_response(risposta)
+
+
+def handle_engine_rust_stream(self):
+    """GET /api/engine/rust/stream — Proxy Server-Sent Events (SSE) a 1Hz per la telemetria live del kernel Rust."""
+    import json
+    import urllib.request
+    from core.engine.backends.sigmarust_backend import _DEFAULT_RUST_URL, _intestazioni
+
+    self.send_response(200)
+    self.send_header("Content-Type", "text/event-stream")
+    self.send_header("Cache-Control", "no-cache")
+    self.send_header("Connection", "keep-alive")
+    self.send_header("Access-Control-Allow-Origin", "*")
+    self.end_headers()
+
+    url = f"{_DEFAULT_RUST_URL}/api/engine/telemetry/stream"
+    try:
+        req = urllib.request.Request(url, headers=_intestazioni(), method="GET")
+        with urllib.request.urlopen(req, timeout=10.0) as resp:
+            for line in resp:
+                self.wfile.write(line)
+                self.wfile.flush()
+    except Exception as exc:
+        log.debug("handle_engine_rust_stream: stream interrotto o kernel non attivo (%s)", exc)
+        try:
+            offline_payload = json.dumps({"status": "offline", "error": str(exc)})
+            self.wfile.write(f"data: {offline_payload}\n\n".encode("utf-8"))
+            self.wfile.flush()
+        except Exception:
+            pass
+

@@ -16,6 +16,7 @@ from core.engine.engine_router import (
     handle_engine_overrides_clear,
     handle_engine_runtime_check,
     handle_engine_rust_metrics,
+    handle_engine_rust_stream,
     handle_engine_partition,
     handle_engine_hf_import,
     handle_engine_models,

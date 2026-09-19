@@ -144,6 +144,33 @@ def _resolve_sampling(model, provider_key, provider_cfg, profile, reasoning):
         return None
 
 
+def _lookup_radix_prefix_cache(messages):
+    """Interroga la Radix Prefix Cache del micro-kernel Rust sul prefisso comune dei messaggi.
+    Restituisce (matched_tokens, total_tokens, ratio_pct, tokens, backend)."""
+    try:
+        from core.engine.backends.sigmarust_backend import SigmaRustBackend
+        backend = SigmaRustBackend()
+        if len(messages) > 1:
+            prefix_text = "\n".join(f"{m.get('role', '')}: {m.get('content', '')}" for m in messages[:-1])
+        elif messages and messages[0].get("role") == "system":
+            prefix_text = messages[0].get("content", "")
+        else:
+            return 0, 0, 0.0, [], backend
+        if not prefix_text.strip():
+            return 0, 0, 0.0, [], backend
+        tokens = backend.tokenize(prefix_text)
+        if not tokens:
+            return 0, 0, 0.0, [], backend
+        res = backend.lookup_prefix_cache(tokens)
+        matched = int(res.get("matched_tokens", 0))
+        total = len(tokens)
+        ratio = round(matched / total * 100.0, 1) if total > 0 else 0.0
+        return matched, total, ratio, tokens, backend
+    except Exception as exc:
+        log.debug("Radix cache lookup non disponibile (%s)", exc)
+        return 0, 0, 0.0, [], None
+
+
 class _ThinkTagRouter:
     """Split a token stream into answer text and reasoning text on the fly.
 
@@ -525,6 +552,8 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
 
     hw_info = hardware_note or _detect_hardware_note(provider, model)
 
+    radix_matched, radix_total, radix_ratio, radix_prefix_tokens, rust_backend = _lookup_radix_prefix_cache(messages)
+
     # Sent before the first token so the client paints the agent bubble immediately.
     _sse_send(handler, {"meta": {
         "agent_id": resolved_agent_id,
@@ -534,6 +563,11 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         "manifesto_used": manifesto_path,
         "routing_time_ms": routing_time_ms,
         "hardware_note": hw_info,
+        "prefix_cache": {
+            "matched_tokens": radix_matched,
+            "total_prefix_tokens": radix_total,
+            "reused_ratio_pct": radix_ratio,
+        } if radix_matched > 0 else None,
         # Sent before the first token, so it has to describe what is actually
         # happening. It used to say "loading the model" on every request,
         # resident or not, which is why talking to a model already in VRAM felt
@@ -878,6 +912,14 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         if created_files:
             final_content = _format_conversational_summary(final_content, created_files)
 
+        # Se il micro-kernel Rust è attivo e la risposta è valida, registriamo la sequenza nella Radix Cache
+        if rust_backend and clean_text and radix_prefix_tokens:
+            try:
+                ans_tokens = rust_backend.tokenize(clean_text)
+                rust_backend.insert_prefix_cache(radix_prefix_tokens + ans_tokens, page_id=1)
+            except Exception as exc:
+                log.debug("Aggiornamento Radix cache saltato (%s)", exc)
+
         _sse_send(handler, {
             "final_content": final_content,
             "final_thinking": thinking_out,
@@ -889,6 +931,8 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 "generation_time_ms": round((time.perf_counter() - t_call_start) * 1000, 1),
                 "tokens_per_second": calculated_tps,
                 "token_count": generated_token_count,
+                "cached_prefix_tokens": radix_matched,
+                "prefix_cache_ratio_pct": radix_ratio,
                 "hardware_note": hw_info
             }
         })

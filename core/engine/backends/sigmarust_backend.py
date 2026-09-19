@@ -853,3 +853,25 @@ class SigmaRustBackend(InferenceBackend):
         except Exception:
             return self.get_status().get("radix_cache", {})
 
+    def tokenize(self, text: str) -> List[int]:
+        """Tokenizza il testo tramite il kernel Rust se disponibile, o genera ID deterministici."""
+        if not text:
+            return []
+        try:
+            req = urllib.request.Request(
+                f"{self._url}/api/engine/tokenize",
+                data=json.dumps({"text": text}).encode("utf-8"),
+                headers=_intestazioni({"Content-Type": "application/json"}),
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                tokens = data.get("tokens")
+                if tokens:
+                    return [int(t) for t in tokens]
+        except Exception:
+            pass
+        # Ripiego deterministico: mappa le parole su interi positivi stabili
+        import zlib
+        return [zlib.crc32(word.encode("utf-8")) & 0x7FFFFFFF for word in text.split()]
+
