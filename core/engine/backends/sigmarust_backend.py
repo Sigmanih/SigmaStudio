@@ -812,7 +812,44 @@ class SigmaRustBackend(InferenceBackend):
         except Exception as exc:
             return {"status": "error", "error": str(exc)}
 
+    def lookup_prefix_cache(self, tokens: List[int]) -> Dict[str, Any]:
+        """Verifica se una sequenza di token ha un prefisso già presente nella Radix Cache."""
+        try:
+            req = urllib.request.Request(
+                f"{self._url}/api/engine/cache/lookup",
+                data=json.dumps({"tokens": tokens}).encode("utf-8"),
+                headers=_intestazioni({"Content-Type": "application/json"}),
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            return {"status": "error", "error": str(exc), "matched_tokens": 0}
+
+    def insert_prefix_cache(self, tokens: List[int], page_id: int) -> Dict[str, Any]:
+        """Registra un prefisso calcolato nella Radix Prefix Cache del kernel Rust."""
+        try:
+            req = urllib.request.Request(
+                f"{self._url}/api/engine/cache/insert",
+                data=json.dumps({"tokens": tokens, "page_id": page_id}).encode("utf-8"),
+                headers=_intestazioni({"Content-Type": "application/json"}),
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            return {"status": "error", "error": str(exc)}
+
     def get_radix_cache_stats(self) -> Dict[str, Any]:
         """Recupera le metriche di hit-rate e token risparmiati dal Radix Tree Prefix Cache."""
-        return self.get_status().get("radix_cache", {})
+        try:
+            req = urllib.request.Request(
+                f"{self._url}/api/engine/cache/stats",
+                headers=_intestazioni(),
+                method="GET",
+            )
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return self.get_status().get("radix_cache", {})
 

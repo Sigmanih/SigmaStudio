@@ -324,8 +324,36 @@ def _check_jsx_component_imports(content: str) -> Optional[str]:
     return None
 
 
+def _fast_lint_rust(content: str, language: str) -> Optional[Dict[str, Any]]:
+    """Tenta la validazione nativa tramite il tool fast_lint del micro-kernel Rust."""
+    try:
+        from core.engine.backends.sigmarust_backend import _DEFAULT_RUST_URL, _intestazioni
+        import urllib.request
+        payload = json.dumps({
+            "tool": "fast_lint",
+            "params": {"code": content, "language": language}
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            f"{_DEFAULT_RUST_URL}/api/engine/tools/execute",
+            data=payload,
+            headers=_intestazioni({"Content-Type": "application/json"}),
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=0.5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if data.get("success"):
+                return {
+                    "valid": data.get("valid", True),
+                    "error": data.get("message") if not data.get("valid") else None,
+                    "line": (data.get("errors") or [{}])[0].get("line") if data.get("errors") else None
+                }
+    except Exception:
+        return None
+    return None
+
+
 def validate_code_syntax(file_path: str, content: Optional[str] = None) -> Dict[str, Any]:
-    """Validates syntax for Python, JSON, JavaScript/JSX/TypeScript, and CSS."""
+    """Validates syntax for Python, JSON, JavaScript/JSX/TypeScript, CSS, and Rust."""
     p = Path(file_path)
     ext = p.suffix.lower()
 
@@ -352,6 +380,10 @@ def validate_code_syntax(file_path: str, content: Optional[str] = None) -> Dict[
 
     # 2. JSON (.json)
     if ext in (".json", ".jsonc") and not ext == ".jsonc":
+        # Tentativo veloce tramite fast_lint del kernel Rust se attivo
+        rust_lint = _fast_lint_rust(content, "json")
+        if rust_lint is not None:
+            return {"valid": rust_lint["valid"], "language": "json", "error": rust_lint["error"]}
         try:
             json.loads(content)
             return {"valid": True, "language": "json", "error": None}
@@ -362,6 +394,16 @@ def validate_code_syntax(file_path: str, content: Optional[str] = None) -> Dict[
                 "error": f"Errore di formattazione JSON (riga {jde.lineno}): {jde.msg}",
                 "line": jde.lineno,
             }
+
+    # 2b. Rust (.rs)
+    if ext == ".rs":
+        rust_lint = _fast_lint_rust(content, "rust")
+        if rust_lint is not None and not rust_lint["valid"]:
+            return {"valid": False, "language": "rust", "error": rust_lint["error"]}
+        err = _validate_brackets_and_quotes(content, "rust")
+        if err:
+            return {"valid": False, "language": "rust", "error": err}
+        return {"valid": True, "language": "rust", "error": None}
 
     # 3. JavaScript, JSX, TypeScript, TSX (.js, .jsx, .ts, .tsx)
     if ext in (".js", ".jsx", ".ts", ".tsx"):

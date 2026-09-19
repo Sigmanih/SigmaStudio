@@ -58,6 +58,15 @@ class TestFrontendDiagnostics(unittest.TestCase):
         res = validate_code_syntax("style.css", invalid_css)
         self.assertFalse(res["valid"])
 
+    def test_rust_valid_and_invalid(self):
+        valid_rs = "fn compute(x: i32) -> i32 { x * 2 }"
+        invalid_rs = "fn compute(x: i32) -> i32 { x * 2"  # unclosed '{'
+
+        self.assertTrue(validate_code_syntax("main.rs", valid_rs)["valid"])
+        res = validate_code_syntax("main.rs", invalid_rs)
+        self.assertFalse(res["valid"])
+        self.assertEqual(res["language"], "rust")
+
 
 #: I costrutti che facevano sbagliare il bilanciatore. Ognuno compare due
 #: volte: una versione valida, che **non** deve essere respinta, e la stessa

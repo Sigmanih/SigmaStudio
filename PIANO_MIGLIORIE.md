@@ -31,7 +31,7 @@ che segue viene dal sistema che gira adesso, non dal sorgente.
 | k13 | Test dei ruoli sul registro | **fatto** | e trovato un secondo prompt incoerente |
 | k14 | Etichette del pannello | **fatto** | tutte e dieci, non solo quella del test |
 | k11 | Kernel sotto Git | **fatto** | `.gitignore` selettivo su target/pesi, commit interno, step CI in ci.yml |
-| k12 | Inferenza vera o errore onesto | **meta'** | il 503 c'e'; la scelta di architettura resta aperta |
+| k12 | Inferenza vera o errore onesto | **fatto** | 503 onesto, micro-kernel ibrido (scheduler + prefix cache), README architetturale |
 | k08 | Canale del ragionamento | **fatto** | 6 test nuovi; `_ANSWER_TRANSITION_RE` e saluti italiani eliminati da Python e React |
 
 **Suite**: 2171 test Python verdi (erano 2133 con 3 rossi), 106 test Rust verdi.
