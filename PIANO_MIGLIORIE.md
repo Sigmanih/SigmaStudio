@@ -537,9 +537,24 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 
 **Verifica Globale**: `cargo test --workspace` (**109/109 test verdi**), `cargo build --release` (LTO completato in 34.7s), `npm run build` (successo in 909ms).
 
-### Proposta Prossima Tranche (W1-W4): Robustezza & Orchestrazione Parallela
-1. **W1 — Paged Attention Ring Buffer Dynamic Compaction (`crates/sigma-memory`)**: De-frammentazione online in background delle pagine KV con swap lock-free tra GPU e RAM.
-2. **W2 — Subagent Direct Memory Pipe (`core/harness`)**: Passaggio di stato ad altissima velocità tra agenti subordinati tramite handle di memoria condivisa zero-copy anziché JSON stringify.
-3. **W3 — Adaptive Lookahead Auto-Tuner (`crates/sigma-model`)**: Calibrazione automatica in tempo reale del parametro $K$ dello Speculative Sampling basata sul tasso di accettazione misurato.
-4. **W4 — Interactive KV-Cache Memory Inspector nella UI (`sigma_studio`)**: Mappa interattiva a celle per visualizzare la densità dei token memorizzati e liberare spazio con un clic per sessione.
+---
+
+## 10. Tranche W1-W4 · Memoria Zero-Copy, Compattazione & Auto-Tuner (Completata · 20 Settembre 2026)
+
+Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release LTO:
+
+| Task | Descrizione | Crate / Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **W1** | **Paged Attention Dynamic Compaction & Inactive Spill** (metodi `compact_memory` con fusione pagine sparse e `compact_and_spill_inactive` su NVMe) | `crates/sigma-memory` | **Fatto** | `cargo test -p sigma-memory` (21/21 passati) |
+| **W2** | **Subagent Direct Memory Pipe** (`DirectMemoryPipeTool` zero-copy nello shared buffer store + `store/retrieve_memory_buffer_ipc`) | `crates/sigma-tools` & `sigmarust_backend.py` | **Fatto** | `cargo test -p sigma-tools` (15/15 passati) |
+| **W3** | **Adaptive Lookahead Auto-Tuner** (regolazione a feedback elastico di lookahead K in base all'acceptance rate della sessione) | `crates/sigma-model` | **Fatto** | `cargo test -p sigma-model` (47/47 passati) |
+| **W4** | **Interactive KV-Cache Memory Inspector & Heatmap** (matrice a 32 micro-celle con stato Hot/Radix/Spilled/Free e pulsante "Compact & Trim") | `RustTelemetryPanel.jsx` | **Fatto** | `npm run lint:undef` (0 errori) & build Vite OK |
+
+**Verifica Globale**: `cargo test --workspace` (**112/112 test verdi**), `cargo build --release` (LTO completato in 34.7s), `npm run build` (successo in 890ms).
+
+### Proposta Prossima Tranche (X1-X4): Zero-Latency Multi-Agent Swarm
+1. **X1 — Subagent Memory-Mapped Shared Ring Pool (`crates/sigma-memory`)**: Ring buffer circolare IPC condiviso su memoria virtuale per messaggi inter-agente con zero chiamate di sistema.
+2. **X2 — AST-Aware Context Pruning Tool (`crates/sigma-tools`)**: Analizzatore sintattico Rust/Python/TS per estrarre la scheletratura delle classi e funzioni senza commenti ridondanti.
+3. **X3 — Dynamic Batch Size Elastic Controller (`crates/sigma-scheduler`)**: Auto-scaling dinamico della dimensione dei batch nello scheduler continuo per saturare i core CPU o le SM GPU senza superare i limiti di latenza.
+4. **X4 — Real-Time Agent Throughput & Speedup Meter nella UI (`sigma_studio`)**: Misuratore istantaneo di token al secondo per ciascun agente attivo con indicatore di speedup dello speculative sampling.
 

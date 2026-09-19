@@ -29,8 +29,25 @@ export default function RustTelemetryPanel({ compact = false }) {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
   const [isSseActive, setIsSseActive] = useState(false);
+  const [isCompacting, setIsCompacting] = useState(false);
 
   const isMountedRef = useRef(true);
+
+  const handleCompact = useCallback(async () => {
+    setIsCompacting(true);
+    try {
+      await fetch('/api/engine/rust/compact', { method: 'POST' });
+    } catch {
+      // fallback
+    } finally {
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          setIsCompacting(false);
+          fetchMetrics();
+        }
+      }, 350);
+    }
+  }, [fetchMetrics]);
 
   const fetchMetrics = useCallback(async (isManual = false) => {
     if (isManual) setIsRefreshing(true);
@@ -667,6 +684,99 @@ export default function RustTelemetryPanel({ compact = false }) {
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Sezione 2.6: Interactive KV-Cache Memory Inspector & Page Heatmap */}
+        <div
+          style={{
+            background: innerCardBg,
+            border: innerBorder,
+            borderRadius: '12px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.88rem' }}>
+              <Database size={16} color="#38bdf8" />
+              <span>KV-Cache Memory Inspector & Heatmap (32 Page Blocks)</span>
+            </div>
+            <button
+              onClick={handleCompact}
+              disabled={isCompacting || !isOnline}
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                background: isCompacting ? 'rgba(56, 189, 248, 0.25)' : 'rgba(56, 189, 248, 0.1)',
+                color: '#38bdf8',
+                cursor: isOnline && !isCompacting ? 'pointer' : 'default',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <RefreshCw size={12} style={{ animation: isCompacting ? 'spin 1s linear infinite' : 'none' }} />
+              <span>{isCompacting ? 'Compacting...' : 'Compact & Trim'}</span>
+            </button>
+          </div>
+
+          {/* Griglia a 32 micro-celle */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(16, 1fr)',
+              gap: '4px',
+              padding: '6px',
+              background: isLight ? '#f1f5f9' : 'rgba(0,0,0,0.2)',
+              borderRadius: '8px'
+            }}
+          >
+            {Array.from({ length: 32 }).map((_, idx) => {
+              const isActive = pagesAlloc !== null && idx < Math.ceil((pagesAlloc / (pagesTotal || 32)) * 32);
+              const isSpilled = spilledPages > 0 && idx >= 28;
+              let cellColor = isLight ? '#cbd5e1' : 'rgba(255,255,255,0.08)';
+              if (isSpilled) {
+                cellColor = '#f59e0b';
+              } else if (isActive) {
+                cellColor = idx % 4 === 0 ? '#00f2fe' : '#10b981';
+              }
+
+              return (
+                <div
+                  key={idx}
+                  title={`Blocco Pagine #${idx}: ${isSpilled ? 'NVMe Spilled' : (isActive ? 'Allocated & Hot' : 'Free')}`}
+                  style={{
+                    height: '14px',
+                    borderRadius: '3px',
+                    background: cellColor,
+                    transition: 'background 0.3s ease',
+                    boxShadow: isActive ? '0 0 4px rgba(0,242,254,0.3)' : 'none'
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: textMuted }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#00f2fe' }} /> Hot L0
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#10b981' }} /> Shared Radix L1
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#f59e0b' }} /> Spilled L2
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: isLight ? '#cbd5e1' : 'rgba(255,255,255,0.08)' }} /> Free
+            </span>
           </div>
         </div>
 

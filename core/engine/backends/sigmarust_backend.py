@@ -303,6 +303,30 @@ class NamedPipeClient:
             "tokens": token_ids,
         })
 
+    def store_memory_buffer_ipc(self, data: str) -> Optional[int]:
+        """Salva un payload massivo nello store nativo Rust condiviso e restituisce l'handle zero-copy."""
+        resp = self.send_ipc({
+            "op": "execute_tool",
+            "tool": "direct_memory_pipe",
+            "input": {"op": "store", "data": data},
+        })
+        if resp and resp.get("status") == "ok":
+            out = resp.get("output", {})
+            return out.get("buffer_handle")
+        return None
+
+    def retrieve_memory_buffer_ipc(self, handle: int) -> Optional[str]:
+        """Recupera il contenuto di un buffer dallo store condiviso dato il relativo handle numerico."""
+        resp = self.send_ipc({
+            "op": "execute_tool",
+            "tool": "direct_memory_pipe",
+            "input": {"op": "retrieve", "handle": handle},
+        })
+        if resp and resp.get("status") == "ok":
+            out = resp.get("output", {})
+            return out.get("data")
+        return None
+
     def reconnect(self) -> None:
         """Riconnessione automatica al trasporto IPC con timeout 1s."""
         self.close()
