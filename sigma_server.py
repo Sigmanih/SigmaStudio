@@ -403,9 +403,10 @@ def _resolve_available_port(host: str, desired_port: int, max_offset: int = 20) 
         pass
 
     import time
-    time.sleep(0.3)
-    if _is_port_free(host, desired_port):
-        return desired_port
+    for attempt in range(6):
+        time.sleep(0.5)
+        if _is_port_free(host, desired_port):
+            return desired_port
 
     for offset in range(1, max_offset + 1):
         candidate = desired_port + offset
