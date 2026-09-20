@@ -536,7 +536,7 @@ export default function AIConfigTab() {
   const executeServerRestart = async () => {
     setRestartModalOpen(false);
     const host = serverInfo?.lan_ip || (serverHost === '0.0.0.0' ? (typeof window !== 'undefined' ? window.location.hostname : '192.168.1.2') : serverHost) || 'localhost';
-    const port = serverPort || (typeof window !== 'undefined' && window.location.port ? window.location.port : 8014);
+    const port = serverPort || (typeof window !== 'undefined' && window.location.port ? window.location.port : 8000);
     const proto = sslEnabled ? 'https' : 'http';
     const computedTarget = `${proto}://${host}:${port}`;
 
