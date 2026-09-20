@@ -9,7 +9,10 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  HardDrive
+  HardDrive,
+  Network,
+  Share2,
+  Boxes
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 
@@ -766,13 +769,16 @@ export default function RustTelemetryPanel({ compact = false }) {
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.68rem', color: textMuted }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#00f2fe' }} /> Hot L0
+              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#00f2fe' }} /> Hot L0 (f32)
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#10b981' }} /> Shared Radix L1
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#f59e0b' }} /> Spilled L2
+              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#bc8cff' }} /> Quantized Q8_0
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#f59e0b' }} /> Spilled NVMe L2
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: isLight ? '#cbd5e1' : 'rgba(255,255,255,0.08)' }} /> Free
@@ -836,6 +842,94 @@ export default function RustTelemetryPanel({ compact = false }) {
               </div>
               <div style={{ fontSize: '0.62rem', color: textMuted, marginTop: '2px' }}>target/draft alignment</div>
             </div>
+          </div>
+        </div>
+
+        {/* Sezione 2.8: Multi-Agent Swarm Topology & Parallel Tool DAG */}
+        <div
+          style={{
+            background: innerCardBg,
+            border: innerBorder,
+            borderRadius: '12px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.88rem' }}>
+              <Network size={16} color="#00f2fe" />
+              <span>Multi-Agent Swarm Topology & Parallel DAG Engine</span>
+            </div>
+            <span
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                color: '#10b981',
+                background: 'rgba(16, 185, 129, 0.12)',
+                padding: '2px 8px',
+                borderRadius: '20px',
+                border: '1px solid rgba(16, 185, 129, 0.3)'
+              }}
+            >
+              Lock-Free Ring: 128 Slots
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+            {[
+              { id: 'lead', name: 'Kernel Lead', role: 'IPC & Dispatcher', lat: '4 µs', color: '#00f2fe' },
+              { id: 'rust', name: 'Rust Specialist', role: 'SIMD & Memory Core', lat: '8 µs', color: '#10b981' },
+              { id: 'arch', name: 'Architect Agent', role: 'DAG Wave Planner', lat: '12 µs', color: '#eab308' },
+              { id: 'front', name: 'Frontend Agent', role: 'Telemetry UI', lat: '15 µs', color: '#bc8cff' },
+              { id: 'verif', name: 'Verifier Agent', role: 'Continuous Testing', lat: '9 µs', color: '#ec4899' },
+            ].map((node) => (
+              <div
+                key={node.id}
+                style={{
+                  background: isLight ? '#f8fafc' : 'rgba(0,0,0,0.25)',
+                  border: `1px solid ${node.color}33`,
+                  borderRadius: '8px',
+                  padding: '8px 10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: node.color }}>{node.name}</span>
+                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: isOnline ? node.color : '#64748b' }} />
+                </div>
+                <div style={{ fontSize: '0.62rem', color: textMuted }}>{node.role}</div>
+                <div style={{ fontSize: '0.65rem', fontWeight: 600, color: textMuted, marginTop: '2px' }}>
+                  Ring I/O: <span style={{ color: node.color }}>{isOnline ? node.lat : '—'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Subagent Ring & Speculative Tools Info Bar */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '0.7rem',
+              color: textMuted,
+              background: isLight ? '#f1f5f9' : 'rgba(0,0,0,0.15)',
+              padding: '6px 12px',
+              borderRadius: '6px'
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Share2 size={12} color="#00f2fe" />
+              <span>Direct Pipe: <strong>Zero-Copy Memory-Mapped</strong></span>
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <Boxes size={12} color="#eab308" />
+              <span>DAG Execution: <strong>Kahn Topological Waves</strong></span>
+            </span>
           </div>
         </div>
 
