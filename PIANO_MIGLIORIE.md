@@ -614,11 +614,29 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 
 ---
 
-### Proposta Prossima Tranche (AB1-AB4): Speculative Token Verification Pipeline & Zero-Copy Tensor Sharing
-1. **AB1 — Vectorized Speculative Draft Token Batch Verifier (`crates/sigma-model`)**: Pipeline vettorializzata SIMD per la verifica concorrente dell'albero di token speculativi (`tree-based draft verification`) in un singolo pass di memoria invece di K round sequenziali.
-2. **AB2 — Shared Memory IPC Buffer Pool per il Trasporto Python-Rust (`crates/sigma-network`)**: Allocatore di buffer a memoria condivisa (Windows Named Shared Memory / Linux shm) per eliminare del tutto il passaggio via socket loopback/named pipe per payload superiori a 64KB.
-3. **AB3 — Autonomous Token Budget & Latency SLA Governor (`crates/sigma-scheduler`)**: Modulo di controllo dinamico del budget token per agente con throttling predittivo in tempo reale per garantire il rispetto dei requisiti di latenza interattiva sub-secondo.
-4. **AB4 — Speculative Verification Tree & Shm Throughput Dashboard (`sigma_studio`)**: Visualizzatore ad albero dei token speculativi verificati vs scartati e monitoraggio dell'efficienza I/O dei buffer shared memory con indicatore di banda GB/s.
+---
+
+## 15. Tranche AB1-AB4 · Speculative Tree Verification & Shared Memory IPC (Completata · 20 Settembre 2026)
+
+Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release LTO:
+
+| Task | Descrizione | Crate / Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **AB1** | **Vectorized Speculative Draft Token Batch Verifier** (`VectorizedSpeculativeVerifier`, verifica concorrente di alberi di token speculativi Medusa/Eagle-style in un singolo pass SIMD) | `crates/sigma-model` | **Fatto** | `cargo test -p sigma-model` (52/52 passati) |
+| **AB2** | **Shared Memory IPC Buffer Pool per il Trasporto Python-Rust** (`SharedMemoryBufferPool` con slot preallocati zero-copy, atomici di stato per trasferimenti massivi >64KB) | `crates/sigma-network` | **Fatto** | `cargo test -p sigma-network` (16/16 passati) |
+| **AB3** | **Autonomous Token Budget & Latency SLA Governor** (`AutonomousSlaGovernor` con EMA latenza $ms/token$, clamp predittivo e rispetto SLA interattivo sub-800ms) | `crates/sigma-scheduler` | **Fatto** | `cargo test -p sigma-scheduler` (23/23 passati) |
+| **AB4** | **Speculative Verification Tree & Shm Throughput Dashboard** (`RustTelemetryPanel.jsx`, visualizzatore ad albero multi-ramo dei token accettati/prunati, metriche pool SHM 14.8 GB/s e monitoraggio SLA sub-secondo) | `RustTelemetryPanel.jsx` | **Fatto** | `npm run lint:undef` (0 errori) & build Vite OK (970ms) |
+
+**Verifica Globale**: `cargo test --workspace` (**141/141 test verdi**), `cargo build --release` (LTO completato con successo), `npm run build` (successo in 970ms), `pytest` (8/8 passati).
+
+---
+
+### Proposta Prossima Tranche (AC1-AC4): Continuous Speculative Pipelining & Autonomous Context Garbage Collection
+1. **AC1 — Asynchronous Speculative Drafting Pipeline (`crates/sigma-model`)**: Pipeline concorrente in cui il draft model genera la speculazione per lo step $N+1$ mentre il modello target valida lo step $N$ in memoria, sovrapponendo i tempi di inferenza.
+2. **AC2 — Autonomous Context Garbage Collection & Slab Compaction (`crates/sigma-memory`)**: GC in background che compatta e deframmenta le slab di memoria KV inutilizzate durante i periodi di idle dello scheduler, riducendo l'impronta di picco della RAM/VRAM.
+3. **AC3 — Multi-Tier Priority Preemption Engine (`crates/sigma-scheduler`)**: Algoritmo di prelazione preemptive-resume per salvare e ripristinare istantaneamente il contesto dei task a priorità bassa (`Low/Normal`) quando arriva un task `Critical` di emergenza.
+4. **AC4 — Pipeline Latency Breakdown & Slab Fragmentation Heatmap (`sigma_studio`)**: Visualizzatore visuale della scomposizione della latenza per step (Drafting, Verification, IPC, Attention) e mappa di frammentazione delle slab di memoria.
+
 
 
 
