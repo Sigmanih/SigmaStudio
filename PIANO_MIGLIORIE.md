@@ -638,11 +638,11 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 | Task | Descrizione | Crate / Componente | Stato | Prova |
 |:---|:---|:---|:---|:---|
 | **AC1** | **Asynchronous Speculative Drafting Pipeline** (`PipelinedSpeculationEngine`, double-buffering atomico zero-allocation, overlap temporale N/N+1 e rollback invalidation) | `crates/sigma-model` | **Fatto** | `cargo test -p sigma-model` (55/55 passati) |
-| **AC2** | **Autonomous Context Garbage Collection & Slab Compaction** (GC in background che compatta le slab di memoria KV inutilizzate nei periodi di idle dello scheduler) | `crates/sigma-memory` | Da fare | - |
+| **AC2** | **Autonomous Context Garbage Collection & Slab Compaction** (`SlabGarbageCollector`, sweep pagine orfane `ref_count == 0`, compaction slab frammentate allineate a SIMD_ALIGNMENT) | `crates/sigma-memory` | **Fatto** | `cargo test -p sigma-memory` (32/32 passati) |
 | **AC3** | **Multi-Tier Priority Preemption Engine** (Prelazione preemptive-resume istantanea per salvare/ripristinare task a priorità bassa su arrivo task critico) | `crates/sigma-scheduler` | Da fare | - |
 | **AC4** | **Pipeline Latency Breakdown & Slab Fragmentation Heatmap** (Visualizzazione grafica della ripartizione latenza per step e mappa frammentazione slab KV) | `RustTelemetryPanel.jsx` | Da fare | - |
 
-**Verifica Parziale AC1**: `cargo test -p sigma-model` (**55/55 test verdi**), `cargo test --workspace` (**144/144 test verdi**), `pytest` (**8/8 test verdi**).
+**Verifica Parziale AC1-AC2**: `cargo test -p sigma-memory` (**32/32 test verdi**), `cargo test -p sigma-model` (**55/55 test verdi**), `cargo test --workspace` (**148/148 test verdi**), `pytest` (**8/8 test verdi**).
 
 
 
