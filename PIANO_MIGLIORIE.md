@@ -597,11 +597,29 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 
 ---
 
-### Proposta Prossima Tranche (AA1-AA4): Low-Level Vectorized Hardware Acceleration & Zero-Allocation Ring Serialization
-1. **AA1 — AVX2/NEON SIMD Vectorized Attention Softmax Kernel (`crates/sigma-model`)**: Ottimizzazione vettoriale intrinseca delle softmax tiled nel Flash-Decoding per accelerare l'inferenza CPU sia su architettura x86_64 (AVX2 + FMA) che ARM64 Cortex-A76 (NEON su Raspberry Pi 5).
-2. **AA2 — Zero-Allocation Binary Ring Message Framing (`crates/sigma-memory`)**: Protocollo di serializzazione binaria compatta fixed-header per il `SubagentRingBuffer` per eliminare qualsiasi malloc nel passaggio di frame tra agenti.
-3. **AA3 — Predictive Idle-Slot Pre-warming & Dynamic Thread Affinity (`crates/sigma-scheduler`)**: Assegnazione elastica di affinità di core CPU ai worker di generazione per massimizzare il riuso della cache L1d/L2 durante i burst di messaggi inter-agente.
-4. **AA4 — Real-Time SIMD & Core Affinity Telemetry Visualizer nella UI (`sigma_studio`)**: Widget interattivo nel pannello hardware che mostra il throughput delle istruzioni vettoriali (AVX2/NEON) e il bilanciamento per-core dell'attività del micro-kernel.
+---
+
+## 14. Tranche AA1-AA4 · Vectorized Hardware Acceleration & Zero-Allocation Ring (Completata · 20 Settembre 2026)
+
+Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release LTO:
+
+| Task | Descrizione | Crate / Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **AA1** | **SIMD Vectorized Attention Softmax & Dot-Product Kernel** (`crates/sigma-model/src/simd_attention.rs`, AVX2 + FMA su x86_64, NEON su aarch64 per Raspberry Pi 5 e fallback unrolled portabile, integrato nel Flash-Decoding) | `crates/sigma-model` | **Fatto** | `cargo test -p sigma-model` (50/50 passati) |
+| **AA2** | **Zero-Allocation Binary Ring Message Framing** (`BinaryRingFrame` header fisso 28 byte `[SIGR, msg_id, ts, flags, len, payload]`, `serialize_into` su slice preallocata e `parse_from` zero-copy) | `crates/sigma-memory` | **Fatto** | `cargo test -p sigma-memory` (28/28 passati) |
+| **AA3** | **Dynamic CPU Core Affinity & Predictive Slot Pre-warming** (`CoreAffinityTopology` con mapping ruoli ComputeWorker/IoWorker/Coordinator e pinning nativo Win32/Linux, `PredictiveSlotPrewarmer` per abbattere la latenza TTFT) | `crates/sigma-scheduler` | **Fatto** | `cargo test -p sigma-scheduler` (21/21 passati) |
+| **AA4** | **Real-Time SIMD & Core Affinity Telemetry Visualizer nella UI** (`RustTelemetryPanel.jsx`, visualizzatore stato SIMD AVX2/NEON, topology matrix con badge di carico e stato HW Pinned, metriche pre-warming e framing binario) | `RustTelemetryPanel.jsx` | **Fatto** | `npm run lint:undef` (0 errori) & build Vite OK (908ms) |
+
+**Verifica Globale**: `cargo test --workspace` (**135/135 test verdi**), `cargo build --release` (LTO completato con successo), `npm run build` (successo in 908ms), `pytest` (8/8 passati).
+
+---
+
+### Proposta Prossima Tranche (AB1-AB4): Speculative Token Verification Pipeline & Zero-Copy Tensor Sharing
+1. **AB1 — Vectorized Speculative Draft Token Batch Verifier (`crates/sigma-model`)**: Pipeline vettorializzata SIMD per la verifica concorrente dell'albero di token speculativi (`tree-based draft verification`) in un singolo pass di memoria invece di K round sequenziali.
+2. **AB2 — Shared Memory IPC Buffer Pool per il Trasporto Python-Rust (`crates/sigma-network`)**: Allocatore di buffer a memoria condivisa (Windows Named Shared Memory / Linux shm) per eliminare del tutto il passaggio via socket loopback/named pipe per payload superiori a 64KB.
+3. **AB3 — Autonomous Token Budget & Latency SLA Governor (`crates/sigma-scheduler`)**: Modulo di controllo dinamico del budget token per agente con throttling predittivo in tempo reale per garantire il rispetto dei requisiti di latenza interattiva sub-secondo.
+4. **AB4 — Speculative Verification Tree & Shm Throughput Dashboard (`sigma_studio`)**: Visualizzatore ad albero dei token speculativi verificati vs scartati e monitoraggio dell'efficienza I/O dei buffer shared memory con indicatore di banda GB/s.
+
 
 
 

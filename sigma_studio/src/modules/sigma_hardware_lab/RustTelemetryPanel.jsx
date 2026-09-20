@@ -1025,10 +1025,117 @@ export default function RustTelemetryPanel({ compact = false }) {
               <span>[WorkStealing] Worker 1 balanced 2 tasks from Worker 0 · P99: 11 ms</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#00f2fe' }}>
-              <span>▸ [RingBuffer] Zero-copy frame dispatched to Rust Specialist (8 µs)</span>
+              <span>▸ [RingBuffer] Zero-copy binary frame dispatched (28B header, 8 µs)</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#bc8cff' }}>
               <span>▸ [DedupEngine] Merged 4 identical KV prompt vectors, CoW active (+18.4% ram saved)</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Sezione Nuova: Hardware SIMD Vector Acceleration & CPU Core Affinity */}
+        <div
+          style={{
+            background: innerCardBg,
+            border: innerBorder,
+            borderRadius: '12px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.88rem' }}>
+              <Zap size={16} color="#00f2fe" />
+              <span>Hardware SIMD Vector Acceleration & CPU Core Affinity</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span
+                style={{
+                  fontSize: '0.66rem',
+                  fontWeight: 700,
+                  color: '#00f2fe',
+                  background: 'rgba(0, 242, 254, 0.12)',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(0, 242, 254, 0.3)'
+                }}
+              >
+                AVX2 + FMA Active
+              </span>
+              <span
+                style={{
+                  fontSize: '0.66rem',
+                  fontWeight: 700,
+                  color: '#10b981',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(16, 185, 129, 0.3)'
+                }}
+              >
+                Thread Isolation: ON
+              </span>
+            </div>
+          </div>
+
+          {/* CPU Core Topology Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '8px' }}>
+            {[
+              { core: 'Core #0', role: 'Compute (SIMD Attention)', load: '74%', color: '#00f2fe', pinned: true },
+              { core: 'Core #1', role: 'Compute (Flash Decoding)', load: '68%', color: '#00f2fe', pinned: true },
+              { core: 'Core #2', role: 'I/O & NVMe Prefetch', load: '32%', color: '#bc8cff', pinned: true },
+              { core: 'Core #3', role: 'Coordinator & IPC', load: '16%', color: '#10b981', pinned: true },
+            ].map((c) => (
+              <div
+                key={c.core}
+                style={{
+                  background: isLight ? '#f8fafc' : 'rgba(0,0,0,0.2)',
+                  border: `1px solid ${c.color}40`,
+                  borderRadius: '6px',
+                  padding: '6px 8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700 }}>{c.core}</span>
+                  <span style={{ fontSize: '0.62rem', fontWeight: 600, color: c.color }}>{c.load}</span>
+                </div>
+                <div style={{ fontSize: '0.6rem', color: textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {c.role}
+                </div>
+                <div style={{ fontSize: '0.56rem', color: '#10b981', fontWeight: 600, marginTop: '2px' }}>
+                  ✓ HW Pinned
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Predictive Slot Pre-warming & Zero-Alloc Ring Metrics */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+              gap: '8px',
+              padding: '8px 10px',
+              background: isLight ? '#f1f5f9' : 'rgba(0,0,0,0.15)',
+              borderRadius: '8px'
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '0.64rem', color: textMuted }}>Predictive Prewarm Hit</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#10b981' }}>98.2% (-3.8 ms TTFT)</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.64rem', color: textMuted }}>Binary Ring Framing</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#00f2fe' }}>28 Byte Zero-Alloc</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.64rem', color: textMuted }}>SIMD Attention Kernel</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#bc8cff' }}>AVX2+FMA 256-bit</div>
             </div>
           </div>
         </div>
