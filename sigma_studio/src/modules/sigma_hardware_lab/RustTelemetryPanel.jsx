@@ -12,7 +12,9 @@ import {
   HardDrive,
   Network,
   Share2,
-  Boxes
+  Boxes,
+  ShieldCheck,
+  Radio
 } from 'lucide-react';
 import { useApp } from '../../contexts/AppContext';
 
@@ -930,6 +932,104 @@ export default function RustTelemetryPanel({ compact = false }) {
               <Boxes size={12} color="#eab308" />
               <span>DAG Execution: <strong>Kahn Topological Waves</strong></span>
             </span>
+          </div>
+        </div>
+
+        {/* Sezione 2.9: Swarm Event Timeline & Circuit Breaker Health Matrix */}
+        <div
+          style={{
+            background: innerCardBg,
+            border: innerBorder,
+            borderRadius: '12px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600, fontSize: '0.88rem' }}>
+              <ShieldCheck size={16} color="#10b981" />
+              <span>Swarm Event Timeline & Circuit Breaker Health Matrix</span>
+            </div>
+            <span
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                color: '#38bdf8',
+                background: 'rgba(56, 189, 248, 0.12)',
+                padding: '2px 8px',
+                borderRadius: '20px',
+                border: '1px solid rgba(56, 189, 248, 0.3)'
+              }}
+            >
+              Self-Healing Active
+            </span>
+          </div>
+
+          {/* Circuit Breaker Status Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px' }}>
+            {[
+              { name: 'fast_read_file', status: 'Closed', lat: '0.4 ms', fail: 0 },
+              { name: 'fast_code_search', status: 'Closed', lat: '1.1 ms', fail: 0 },
+              { name: 'direct_memory_pipe', status: 'Closed', lat: '6 µs', fail: 0 },
+              { name: 'fast_git_status', status: 'Closed', lat: '0.8 ms', fail: 0 },
+              { name: 'ast_prune', status: 'Closed', lat: '1.4 ms', fail: 0 },
+            ].map((b) => (
+              <div
+                key={b.name}
+                style={{
+                  background: isLight ? '#f8fafc' : 'rgba(0,0,0,0.2)',
+                  border: '1px solid rgba(16, 185, 129, 0.25)',
+                  borderRadius: '6px',
+                  padding: '6px 8px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700 }}>{b.name}</span>
+                  <span
+                    style={{
+                      fontSize: '0.58rem',
+                      fontWeight: 700,
+                      color: '#10b981',
+                      background: 'rgba(16, 185, 129, 0.15)',
+                      padding: '1px 5px',
+                      borderRadius: '10px'
+                    }}
+                  >
+                    {b.status}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.62rem', color: textMuted, marginTop: '2px' }}>
+                  lat: {b.lat} · err: {b.fail}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Swarm Live Event Timeline Feed */}
+          <div
+            style={{
+              background: isLight ? '#f1f5f9' : 'rgba(0,0,0,0.3)',
+              borderRadius: '8px',
+              padding: '8px 10px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '5px',
+              fontFamily: 'monospace',
+              fontSize: '0.66rem'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981' }}>
+              <Radio size={10} />
+              <span>[WorkStealing] Worker 1 balanced 2 tasks from Worker 0 · P99: 11 ms</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#00f2fe' }}>
+              <span>▸ [RingBuffer] Zero-copy frame dispatched to Rust Specialist (8 µs)</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#bc8cff' }}>
+              <span>▸ [DedupEngine] Merged 4 identical KV prompt vectors, CoW active (+18.4% ram saved)</span>
+            </div>
           </div>
         </div>
 

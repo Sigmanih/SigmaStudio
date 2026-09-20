@@ -567,9 +567,25 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 
 **Verifica Globale**: `cargo test --workspace` (**116/116 test verdi**), `cargo build --release` (LTO completato in 34.9s), `npm run build` (successo in 916ms).
 
-### Proposta Prossima Tranche (Y1-Y4): Predictive Swarm Execution & Parallel Tool DAG
-1. **Y1 — Parallel Tool Call Execution DAG (`crates/sigma-tools`)**: Risolutore di dipendenze topologico per eseguire tool indipendenti (es. lint + git status + test) in parallelo asincrono massivo con aggregazione zero-copy.
-2. **Y2 — Speculative Pre-Execution for Tool Calls (`crates/sigma-scheduler`)**: Pre-riscaldamento ed esecuzione speculativa di tool di sola lettura mentre il modello sta ancora completando la generazione degli argomenti.
-3. **Y3 — Adaptive KV-Cache Quantization Dynamic Policy (`crates/sigma-memory`)**: Compressione FP8/Q8_0 selettiva delle pagine KV più fredde per raddoppiare la capacità di memoria a parità di footprint RAM.
-4. **Y4 — Multi-Agent Swarm Topology Graph Viewer nella UI (`sigma_studio`)**: Mappa a nodi e archi interattiva in tempo reale che illustra il flusso di dati e i messaggi scambiati sul Ring Buffer tra gli agenti.
+## 12. Tranche Y1-Y4 · Predictive Swarm Execution & Parallel Tool DAG (Completata · 20 Settembre 2026)
+
+Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release LTO:
+
+| Task | Descrizione | Crate / Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **Y1** | **Parallel Tool Call Execution DAG** (`ToolDependencyGraph`, onde concorrenti di Kahn, verifica integrità e rilevamento cicli) | `crates/sigma-tools` | **Fatto** | `cargo test -p sigma-tools` (18/18 passati) |
+| **Y2** | **Speculative Pre-Execution for Tool Calls** (`SpeculativeToolPreExecutionPool`, esecuzione anticipata read-only durante token decoding, TTL expiry) | `crates/sigma-scheduler` | **Fatto** | `cargo test -p sigma-scheduler` (17/17 passati) |
+| **Y3** | **Adaptive KV-Cache Quantization Dynamic Policy** (`QuantizedCachePage` Q8_0 a 8-bit, `quantize_cold_pages`, dequantizzazione trasparente zero-I/O) | `crates/sigma-memory` | **Fatto** | `cargo test -p sigma-memory` (24/24 passati) |
+| **Y4** | **Multi-Agent Swarm Topology Graph Viewer nella UI** (visualizzatore a nodi e canali del ring buffer 128 slot, badge latenza µs e tier Q8_0) | `RustTelemetryPanel.jsx` | **Fatto** | `npm run lint:undef` (0 errori) & build Vite OK (923ms) |
+
+**Verifica Globale**: `cargo test --workspace` (**120/120 test verdi**), `cargo build --release` (LTO completato in 34.88s), `npm run build` (successo in 923ms), `pytest` (8/8 passati).
+
+---
+
+### Proposta Prossima Tranche (Z1-Z4): Autonomous Swarm Resilience & Self-Healing Kernel
+1. **Z1 — Fast Semantic Memory Deduplication Engine (`crates/sigma-memory`)**: Content-addressable hashing e CoW sharing automatico dei vettori di chiavi e valori tra sessioni concorrenti per compattare ulteriormente il Radix Tree.
+2. **Z2 — Tool Execution Failure Circuit Breaker & Adaptive Fallback (`crates/sigma-tools`)**: Rilevamento deterministico dei fallimenti ricorrenti nei tool dei subagenti con backoff esponenziale e passaggio dinamico a strategie di fallback native.
+3. **Z3 — Work-Stealing Priority Queue per Turni Multi-Agente (`crates/sigma-scheduler`)**: Dequeue concorrente lock-free con bilanciamento di carico e work-stealing tra thread worker per azzerare i picchi di latenza al 99° percentile.
+4. **Z4 — Swarm Event Timeline & Circuit Breaker Inspector nella UI (`sigma_studio`)**: Componente grafico in tempo reale per monitorare gli eventi del ring buffer inter-agente, lo stato dei circuit breaker dei tool e le metriche di de-duplicazione semantica.
+
 
