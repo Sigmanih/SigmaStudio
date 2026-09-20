@@ -724,6 +724,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                         load_duration_ms = round((t_first_token - t_call_start) * 1000, 1)
 
                     # Coherent TPS calculation: Prefer explicit runtime speed, else calculate from decode time
+                    gen_sec = (gen_duration_ms / 1000.0) if gen_duration_ms and gen_duration_ms > 0 else 0.0
                     calculated_tps = chunk.get("speed_tok_s") or chunk.get("tokens_per_second")
                     if not calculated_tps and reported_tokens and gen_sec > 0:
                         calculated_tps = round(reported_tokens / gen_sec, 1)
@@ -1544,13 +1545,16 @@ Contenuto completo...
                 timeout=prov_timeout
             )
         elif active_provider == "anthropic":
-            ai_response, thinking, err = call_anthropic(
+            content, err, _ = call_anthropic(
                 messages, model,
+                api_url=prov_api_url or "https://api.anthropic.com/v1/messages",
                 api_key=prov_api_key,
                 temperature=prov_temperature,
                 max_tokens=prov_max_tokens,
-                timeout=prov_timeout
+                top_p=prov_top_p,
+                timeout=prov_timeout or 30
             )
+            ai_response, thinking = content, None
         else:
             ai_response, thinking, err = call_openai_compatible(
                 messages, model,

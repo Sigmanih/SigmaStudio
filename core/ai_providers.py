@@ -546,7 +546,7 @@ def call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key,
         elif route_provider == "api":
             return call_openai_compatible(messages, model, api_url, api_key, temperature, max_tokens, top_p, request_timeout)
         elif route_provider == "anthropic":
-            r = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p)
+            r = call_anthropic(messages, model, api_url=api_url, api_key=api_key, temperature=temperature, max_tokens=max_tokens, top_p=top_p, timeout=request_timeout)
             return r[0], None, r[1] if len(r) > 1 else None
     except Exception as e:
         return None, None, str(e)
@@ -1050,25 +1050,31 @@ def call_openai_compatible_stream(
 def call_anthropic(
     messages: list,
     model: str,
-    api_url: str,
-    api_key: str,
+    api_url: str = "https://api.anthropic.com/v1/messages",
+    api_key: str = "",
     temperature: float = 0.7,
     max_tokens: int = 4096,
     top_p: float = 0.9,
     tools: list = None,
+    timeout: int = 30,
+    **kwargs,
 ) -> tuple:
     if not REQUESTS_AVAILABLE:
         return None, "requests library not available.", None
-    if not api_url:
-        return None, "API URL non configurata.", None
+    endpoint_url = api_url or "https://api.anthropic.com/v1/messages"
+    if not api_key:
+        return None, "API key Anthropic non configurata.", None
+    effective_timeout = timeout if (timeout and timeout > 0) else 30
     try:
         system_msg = ""
         anthropic_msgs = []
         for m in messages:
-            if m["role"] == "system":
-                system_msg += m["content"] + "\n"
-            elif m["role"] in ("user", "assistant"):
-                anthropic_msgs.append({"role": m["role"], "content": m["content"]})
+            role = m.get("role", "")
+            content = m.get("content", "")
+            if role == "system":
+                system_msg += str(content) + "\n"
+            elif role in ("user", "assistant"):
+                anthropic_msgs.append({"role": role, "content": str(content)})
 
         headers = {
             "Content-Type": "application/json",
@@ -1097,7 +1103,7 @@ def call_anthropic(
             if anthropic_tools:
                 payload["tools"] = anthropic_tools
 
-        resp = requests.post(api_url, json=payload, headers=headers, timeout=120)
+        resp = requests.post(endpoint_url, json=payload, headers=headers, timeout=effective_timeout)
         if resp.status_code == 200:
             data = resp.json()
             content_blocks = data.get("content", [])
@@ -1120,6 +1126,10 @@ def call_anthropic(
         except Exception:
             detail = resp.text
         return None, f"Anthropic error {resp.status_code}: {detail}", None
+    except requests.exceptions.Timeout:
+        return None, f"Timeout ({effective_timeout}s) nella connessione ad Anthropic.", None
+    except requests.exceptions.ConnectionError as e:
+        return None, f"Errore di connessione ad Anthropic: {e}", None
     except Exception as e:
         return None, str(e), None
 

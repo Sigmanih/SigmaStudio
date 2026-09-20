@@ -73,7 +73,8 @@ def _call_ai_model(messages, ai_cfg, model, provider, endpoint, api_url, api_key
     if prov == "ollama":
         return call_ollama(messages, model, endpoint=endpoint, temperature=temperature, max_tokens=max_tokens, top_p=top_p, timeout=request_timeout)
     elif prov == "anthropic":
-        return call_anthropic(messages, model, api_key=api_key, temperature=temperature, max_tokens=max_tokens, timeout=request_timeout)
+        content, err, _ = call_anthropic(messages, model, api_key=api_key, temperature=temperature, max_tokens=max_tokens, timeout=request_timeout)
+        return content, None, err
     else:
         # OpenAI compatible (OpenAI, DeepSeek, Groq, OpenRouter)
         url = api_url or endpoint

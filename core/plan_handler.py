@@ -176,7 +176,7 @@ con step specifici. Ogni step deve contenere le azioni necessarie e una descrizi
     elif route_provider == "api":
         response, thinking, error = call_openai_compatible(plan_messages, model, api_url, api_key, 0.3, max_tokens, top_p, request_timeout)
     elif route_provider == "anthropic":
-        result = call_anthropic(plan_messages, model, api_url, api_key, 0.3, max_tokens, top_p)
+        result = call_anthropic(plan_messages, model, api_url=api_url, api_key=api_key, temperature=0.3, max_tokens=max_tokens, top_p=top_p, timeout=request_timeout)
         response, error = result[0], result[1] if len(result) > 1 else None
         thinking = None
     else:

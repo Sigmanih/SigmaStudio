@@ -488,7 +488,10 @@ def _configured_models_dir() -> Optional[Path]:
     candidate = Path(str(configured)).expanduser()
     if not candidate.is_absolute():
         candidate = project_root() / candidate
-    return candidate.resolve()
+    try:
+        return candidate.resolve()
+    except Exception:
+        return candidate.absolute()
 
 
 def extra_models_dirs(refresh: bool = False) -> list[Path]:

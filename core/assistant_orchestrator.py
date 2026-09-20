@@ -126,7 +126,7 @@ def handle_switch_agent(self, agent_name: str, message: str, history: list, bot_
             top_k, repeat_penalty, num_ctx, seed, timeout
         )
     elif "anthropic" in api_url.lower():
-        ai_response, error = call_anthropic(messages, model, api_url, api_key, temperature, max_tokens, top_p)
+        ai_response, error, _ = call_anthropic(messages, model, api_url=api_url, api_key=api_key, temperature=temperature, max_tokens=max_tokens, top_p=top_p, timeout=timeout)
         ai_thinking = None
     else:
         ai_response, ai_thinking, error = call_openai_compatible(
