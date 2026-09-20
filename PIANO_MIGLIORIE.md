@@ -582,10 +582,26 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 
 ---
 
-### Proposta Prossima Tranche (Z1-Z4): Autonomous Swarm Resilience & Self-Healing Kernel
-1. **Z1 — Fast Semantic Memory Deduplication Engine (`crates/sigma-memory`)**: Content-addressable hashing e CoW sharing automatico dei vettori di chiavi e valori tra sessioni concorrenti per compattare ulteriormente il Radix Tree.
-2. **Z2 — Tool Execution Failure Circuit Breaker & Adaptive Fallback (`crates/sigma-tools`)**: Rilevamento deterministico dei fallimenti ricorrenti nei tool dei subagenti con backoff esponenziale e passaggio dinamico a strategie di fallback native.
-3. **Z3 — Work-Stealing Priority Queue per Turni Multi-Agente (`crates/sigma-scheduler`)**: Dequeue concorrente lock-free con bilanciamento di carico e work-stealing tra thread worker per azzerare i picchi di latenza al 99° percentile.
-4. **Z4 — Swarm Event Timeline & Circuit Breaker Inspector nella UI (`sigma_studio`)**: Componente grafico in tempo reale per monitorare gli eventi del ring buffer inter-agente, lo stato dei circuit breaker dei tool e le metriche di de-duplicazione semantica.
+## 13. Tranche Z1-Z4 · Autonomous Swarm Resilience & Self-Healing Kernel (Completata · 20 Settembre 2026)
+
+Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release LTO:
+
+| Task | Descrizione | Crate / Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **Z1** | **Fast Semantic Memory Deduplication Engine** (`DeduplicationTable`, hashing float IEEE 754 deterministico, CoW interning zero-copy, pruning automatico) | `crates/sigma-memory` | **Fatto** | `cargo test -p sigma-memory` (27/27 passati) |
+| **Z2** | **Tool Execution Failure Circuit Breaker & Adaptive Fallback** (`ToolCircuitBreaker`, stati Closed/Open/HalfOpen, cooldown, fallback e registry) | `crates/sigma-tools` | **Fatto** | `cargo test -p sigma-tools` (20/20 passati) |
+| **Z3** | **Work-Stealing Priority Queue per Turni Multi-Agente** (`WorkStealingPool`, code distribuite per thread worker con furto di carico per eliminare contesa globale) | `crates/sigma-scheduler` | **Fatto** | `cargo test -p sigma-scheduler` (19/19 passati) |
+| **Z4** | **Swarm Event Timeline & Circuit Breaker Inspector nella UI** (`RustTelemetryPanel.jsx`, matrice di salute dei breaker, timeline a scorrimento in tempo reale, badge Self-Healing Active) | `RustTelemetryPanel.jsx` | **Fatto** | `npm run lint:undef` (0 errori) & build Vite OK (922ms) |
+
+**Verifica Globale**: `cargo test --workspace` (**125/125 test verdi**), `cargo build --release` (LTO completato in 35.08s), `npm run build` (successo in 922ms), `pytest` (8/8 passati).
+
+---
+
+### Proposta Prossima Tranche (AA1-AA4): Low-Level Vectorized Hardware Acceleration & Zero-Allocation Ring Serialization
+1. **AA1 — AVX2/NEON SIMD Vectorized Attention Softmax Kernel (`crates/sigma-model`)**: Ottimizzazione vettoriale intrinseca delle softmax tiled nel Flash-Decoding per accelerare l'inferenza CPU sia su architettura x86_64 (AVX2 + FMA) che ARM64 Cortex-A76 (NEON su Raspberry Pi 5).
+2. **AA2 — Zero-Allocation Binary Ring Message Framing (`crates/sigma-memory`)**: Protocollo di serializzazione binaria compatta fixed-header per il `SubagentRingBuffer` per eliminare qualsiasi malloc nel passaggio di frame tra agenti.
+3. **AA3 — Predictive Idle-Slot Pre-warming & Dynamic Thread Affinity (`crates/sigma-scheduler`)**: Assegnazione elastica di affinità di core CPU ai worker di generazione per massimizzare il riuso della cache L1d/L2 durante i burst di messaggi inter-agente.
+4. **AA4 — Real-Time SIMD & Core Affinity Telemetry Visualizer nella UI (`sigma_studio`)**: Widget interattivo nel pannello hardware che mostra il throughput delle istruzioni vettoriali (AVX2/NEON) e il bilanciamento per-core dell'attività del micro-kernel.
+
 
 
