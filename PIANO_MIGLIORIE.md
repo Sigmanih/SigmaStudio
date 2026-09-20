@@ -631,11 +631,19 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 
 ---
 
-### Proposta Prossima Tranche (AC1-AC4): Continuous Speculative Pipelining & Autonomous Context Garbage Collection
-1. **AC1 — Asynchronous Speculative Drafting Pipeline (`crates/sigma-model`)**: Pipeline concorrente in cui il draft model genera la speculazione per lo step $N+1$ mentre il modello target valida lo step $N$ in memoria, sovrapponendo i tempi di inferenza.
-2. **AC2 — Autonomous Context Garbage Collection & Slab Compaction (`crates/sigma-memory`)**: GC in background che compatta e deframmenta le slab di memoria KV inutilizzate durante i periodi di idle dello scheduler, riducendo l'impronta di picco della RAM/VRAM.
-3. **AC3 — Multi-Tier Priority Preemption Engine (`crates/sigma-scheduler`)**: Algoritmo di prelazione preemptive-resume per salvare e ripristinare istantaneamente il contesto dei task a priorità bassa (`Low/Normal`) quando arriva un task `Critical` di emergenza.
-4. **AC4 — Pipeline Latency Breakdown & Slab Fragmentation Heatmap (`sigma_studio`)**: Visualizzatore visuale della scomposizione della latenza per step (Drafting, Verification, IPC, Attention) e mappa di frammentazione delle slab di memoria.
+---
+
+## 16. Tranche AC1-AC4 · Speculative Pipelining & Autonomous Memory Governance (In Corso · 20 Settembre 2026)
+
+| Task | Descrizione | Crate / Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **AC1** | **Asynchronous Speculative Drafting Pipeline** (`PipelinedSpeculationEngine`, double-buffering atomico zero-allocation, overlap temporale N/N+1 e rollback invalidation) | `crates/sigma-model` | **Fatto** | `cargo test -p sigma-model` (55/55 passati) |
+| **AC2** | **Autonomous Context Garbage Collection & Slab Compaction** (GC in background che compatta le slab di memoria KV inutilizzate nei periodi di idle dello scheduler) | `crates/sigma-memory` | Da fare | - |
+| **AC3** | **Multi-Tier Priority Preemption Engine** (Prelazione preemptive-resume istantanea per salvare/ripristinare task a priorità bassa su arrivo task critico) | `crates/sigma-scheduler` | Da fare | - |
+| **AC4** | **Pipeline Latency Breakdown & Slab Fragmentation Heatmap** (Visualizzazione grafica della ripartizione latenza per step e mappa frammentazione slab KV) | `RustTelemetryPanel.jsx` | Da fare | - |
+
+**Verifica Parziale AC1**: `cargo test -p sigma-model` (**55/55 test verdi**), `cargo test --workspace` (**144/144 test verdi**), `pytest` (**8/8 test verdi**).
+
 
 
 

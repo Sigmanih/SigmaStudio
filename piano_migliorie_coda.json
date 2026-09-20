@@ -1,34 +1,15 @@
 {
   "queue_id": "migliorie_kernel_2026_09",
-  "goal": "Chiudere i task rimasti del piano kernel. Undici dei quattordici sono gia' fatti e verificati sul sistema in esecuzione: vedi la sezione 0 di PIANO_MIGLIORIE.md.",
+  "goal": "Esecuzione autonoma della Tranche AC1 del micro-kernel Rust: Asynchronous Speculative Drafting Pipeline & Double-Buffered Logit Streaming.",
   "items": [
     {
-      "id": "k08_canale_ragionamento",
-      "title": "Porta il ragionamento fino alla bolla come canale di dati, e togli le tre regex di saluti italiani",
-      "contesto": "La separazione fra pensiero e risposta e' indovinata in tre strati diversi con regole diverse: core/chat/prompt_builder.py, core/chat/chat_runner.py (_ANSWER_TRANSITION_RE) e sigma_studio/src/components/Chat/AgentMessage.jsx, che ne ha due copie, una per direzione. Tutti e tre cercano Ciao|Salve|Buongiorno|Ecco|Certamente|In **Sigma Studio** per decidere dove finisce il pensiero. Tre strati che indovinano la stessa cosa si contraddicono: la risposta compare due volte, oppure sparisce dentro il pannello del pensiero. Nello stesso giro prompt_builder.py ha TOLTO la riga che imponeva di rispondere sempre in italiano, cioe' si e' rimossa la causa per cui quei marcatori funzionavano lasciando in piedi i marcatori.",
-      "da_fare": "1) Il ciclo di streaming emette gia' eventi tipizzati: fai in modo che il canale (pensiero o risposta) sia deciso UNA volta sola, dove i tag del provider vengono interpretati, e viaggi come campo dell'evento fino al frontend. 2) AgentMessage.jsx consuma quel campo e non deduce piu' niente: togli entrambe le euristiche a regex. 3) In chat_runner.py resta un solo punto di decisione, quello sui tag veri del modello; _ANSWER_TRANSITION_RE va eliminata. 4) Per i modelli che dimenticano il tag di chiusura serve un ripiego, ma dev'essere uno solo e indipendente dalla lingua: la fine del pensiero e' la fine dello stream o un tag, non un saluto in italiano. 5) Decidi cosa fare della riga sulla lingua tolta da prompt_builder.py: se l'italiano e' un requisito rimettila, se non lo e' piu' toglilo anche dagli altri punti che lo assumono.",
-      "attenzione": "Il test deve coprire il caso che rompe oggi: modello che apre il pensiero e non lo chiude mai, e modello che non apre nessun tag. In nessuno dei due la risposta deve sparire o comparire due volte.",
-      "verify": "python -m pytest tests/test_canale_ragionamento.py -q && cd sigma_studio && npm run lint:undef",
+      "id": "ac1_speculative_pipelining",
+      "title": "Asynchronous Speculative Drafting Pipeline con Double-Buffered Logits nel Micro-Kernel Rust",
+      "contesto": "Nello Speculative Sampling corrente (speculative_sampling.rs e speculative_tree.rs), la generazione dei draft token e la verifica target avvengono in modo strettamente sequenziale: Draft(K) -> Wait -> TargetVerify(K) -> Rollback/Accept. Questo lascia i core assegnati al draft model inattivi durante la verifica target, e viceversa, sprecando fino al 40% del tempo di calcolo complessivo. Con il double-buffering asincrono, mentre il modello target valida il batch di token dello step N, il draft worker genera in background sul suo core dedicato i token speculativi per lo step N+1.",
+      "da_fare": "1) Crea il file `crates/sigma-model/src/pipelined_speculation.rs` con la struttura `PipelinedSpeculationEngine`. 2) Implementa un meccanismo di double-buffering atomico (`DoubleBuffer<Vec<f32>>` o ping-pong swap) per ospitare i logit/probabilità dello step corrente e di quello successivo senza allocazioni heap nel ciclo caldo. 3) Implementa la coordinazione asincrona o lock-free tra `DraftStage` e `VerifyStage`: mentre Verify convalida lo step N, Draft calcola lo step N+1. In caso di rejection e rollback allo step N, il buffer speculativo di N+1 viene invalidato istantaneamente e riallineato con il token di correzione emesso dal target. 4) Esporta la nuova pipeline e i tipi in `crates/sigma-model/src/lib.rs`. 5) Scrivi test unitari esaustivi in `pipelined_speculation.rs` che verifichino: corretto swap dei buffer senza memory leak, gestione del rollback con invalidazione del draft anticipato, e calcolo dello speedup cumulativo.",
+      "attenzione": "Rispetta rigorosamente AGENTS.md: commenti in italiano che spiegano il perché, percorsi con std::path/pathlib, nessun unwrapping non gestito nel percorso critico, compatibilità assoluta sia con Windows 11 sia con Raspberry Pi 5 (aarch64). Non toccare le cartelle protette data/, config/, store/ e non aggiungere dipendenze a Cargo.toml.",
+      "verify": "cd projects/sigma_engine_rust && cargo test -p sigma-model --lib pipelined_speculation && cargo test --workspace",
       "depends_on": []
-    },
-    {
-      "id": "k11_kernel_sotto_git",
-      "title": "Metti il kernel Rust sotto Git e fallo controllare dalla CI",
-      "contesto": ".gitignore:123 esclude projects/ per intero, quindi le 9903 righe del kernel Rust non hanno storia, non producono un diff da rivedere e nessuna CI le compila. Se qualcuno le cancella non c'e' da dove tornare, e nessuna delle quattro reti di sicurezza dell'harness descritte in STATO_HARNESS.md le copre.",
-      "da_fare": "Restringi l'esclusione a cio' che davvero non va versionato (projects/*/target/, i pesi dei modelli, gli artefatti di build) e versiona il sorgente del kernel, Cargo.lock compreso. Aggiungi alla CI in .github un passo che esegue cargo check --workspace --all-targets e cargo test --workspace: oggi passa pulito in 5,6 secondi e non c'e' motivo di non tenerlo verde. Verifica che le altre cartelle sotto projects/ che devono restare escluse lo restino.",
-      "attenzione": "Prima di cambiare .gitignore guarda cosa c'e' dentro projects/ oltre al kernel: non tutto va versionato, e un commit che trascina dentro pesi di modelli e' peggio del problema che risolve.",
-      "verify": "cd projects/sigma_engine_rust && cargo check --workspace --all-targets"
-    },
-    {
-      "id": "k12_inferenza_o_errore",
-      "title": "Quando non c'e' un modello collegato, il kernel deve dire che non puo' generare invece di sintetizzare testo",
-      "contesto": "PARZIALE: i punti 1, 2 e 3 sono gia' fatti — il sleep di 15 ms e' stato tolto, il percorso senza worker risponde 503 dicendo quale upstream ha provato, e il percorso sintetico esiste solo dietro SIGMA_FAKE_COMPLETIONS=1 con il campo 'sintetica': true nella risposta. RESTA il punto 4, che non e' codice: decidere, con i numeri veri del task k07 in mano, se il kernel deve fare inferenza propria o restare un proxy. Va portata all'utente, non decisa da soli, e la scelta va scritta nel README del kernel con il motivo.",
-      "da_fare": "Misura il percorso proxy con un worker collegato (TTFT e token al secondo ora sono misurati davvero e arrivano nell'evento sigma_telemetry), confrontalo con il percorso diretto llama.cpp che Sigma Studio gia' usa, e porta i due numeri all'utente con una raccomandazione. Nessuna riga di codice prima di quella decisione.",
-      "attenzione": "Il punto 4 e' una decisione di architettura, non codice: portala all'utente con i numeri, non deciderla da solo. I punti 1, 2 e 3 vanno fatti comunque.",
-      "verify": "cd projects/sigma_engine_rust && cargo test -p sigma-network -q",
-      "depends_on": [
-        "k07_telemetria_vera"
-      ]
     }
   ]
 }
