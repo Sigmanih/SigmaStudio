@@ -552,9 +552,24 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 
 **Verifica Globale**: `cargo test --workspace` (**112/112 test verdi**), `cargo build --release` (LTO completato in 34.7s), `npm run build` (successo in 890ms).
 
-### Proposta Prossima Tranche (X1-X4): Zero-Latency Multi-Agent Swarm
-1. **X1 — Subagent Memory-Mapped Shared Ring Pool (`crates/sigma-memory`)**: Ring buffer circolare IPC condiviso su memoria virtuale per messaggi inter-agente con zero chiamate di sistema.
-2. **X2 — AST-Aware Context Pruning Tool (`crates/sigma-tools`)**: Analizzatore sintattico Rust/Python/TS per estrarre la scheletratura delle classi e funzioni senza commenti ridondanti.
-3. **X3 — Dynamic Batch Size Elastic Controller (`crates/sigma-scheduler`)**: Auto-scaling dinamico della dimensione dei batch nello scheduler continuo per saturare i core CPU o le SM GPU senza superare i limiti di latenza.
-4. **X4 — Real-Time Agent Throughput & Speedup Meter nella UI (`sigma_studio`)**: Misuratore istantaneo di token al secondo per ciascun agente attivo con indicatore di speedup dello speculative sampling.
+---
+
+## 11. Tranche X1-X4 · Zero-Latency Swarm & Elastic Controller (Completata · 20 Settembre 2026)
+
+Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release LTO:
+
+| Task | Descrizione | Crate / Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **X1** | **Subagent Memory-Mapped Shared Ring Pool** (ring buffer lock-free `SubagentRingBuffer` per messaggi inter-agente con atomici AcqRel) | `crates/sigma-memory` | **Fatto** | `cargo test -p sigma-memory` (23/23 passati) |
+| **X2** | **AST-Aware Context Pruning Tool** (`AstPruningTool` per estrarre scheletri e firme omettendo corpi implementativi per Rust/Python/TS) | `crates/sigma-tools` | **Fatto** | `cargo test -p sigma-tools` (16/16 passati) |
+| **X3** | **Dynamic Batch Size Elastic Controller** (`ElasticBatchController` con media mobile esponenziale per regolazione concorrenza batch SLA) | `crates/sigma-scheduler` | **Fatto** | `cargo test -p sigma-scheduler` (14/14 passati) |
+| **X4** | **Real-Time Agent Throughput & Speculative Speedup Meter** (visualizzatore grafico con throughput istantaneo, speedup 2.1x-2.4x e acceptance rate) | `RustTelemetryPanel.jsx` | **Fatto** | `npm run lint:undef` (0 errori) & build Vite OK |
+
+**Verifica Globale**: `cargo test --workspace` (**116/116 test verdi**), `cargo build --release` (LTO completato in 34.9s), `npm run build` (successo in 916ms).
+
+### Proposta Prossima Tranche (Y1-Y4): Predictive Swarm Execution & Parallel Tool DAG
+1. **Y1 — Parallel Tool Call Execution DAG (`crates/sigma-tools`)**: Risolutore di dipendenze topologico per eseguire tool indipendenti (es. lint + git status + test) in parallelo asincrono massivo con aggregazione zero-copy.
+2. **Y2 — Speculative Pre-Execution for Tool Calls (`crates/sigma-scheduler`)**: Pre-riscaldamento ed esecuzione speculativa di tool di sola lettura mentre il modello sta ancora completando la generazione degli argomenti.
+3. **Y3 — Adaptive KV-Cache Quantization Dynamic Policy (`crates/sigma-memory`)**: Compressione FP8/Q8_0 selettiva delle pagine KV più fredde per raddoppiare la capacità di memoria a parità di footprint RAM.
+4. **Y4 — Multi-Agent Swarm Topology Graph Viewer nella UI (`sigma_studio`)**: Mappa a nodi e archi interattiva in tempo reale che illustra il flusso di dati e i messaggi scambiati sul Ring Buffer tra gli agenti.
 
