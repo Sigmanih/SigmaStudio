@@ -501,3 +501,79 @@ class TestUnPianoNuovoSiFaApprovare:
         assert i_rifiuto < i_replan, (
             "il controllo deve venire prima della sostituzione, altrimenti "
             "il piano e' gia' cambiato quando si chiede il permesso")
+
+
+# ==============================================================================
+# «non compila» non puo' voler dire «qualunque cosa e' andata storta»
+#
+# Ventaglio del 22 settembre, tre task, tre tentativi a testa: nove run, 225
+# turni, zero lavoro consegnato. La diagnosi diceva
+#
+#     «.github/workflows/ci.yml» non compila
+#     «gitignore» non compila
+#
+# e rimandava l'agente a «leggere il file e correggere SOLO quell'errore».
+# Il file non esisteva — era il task a doverlo creare — e un YAML non si
+# compila. Tre agenti mandati a riparare un errore di sintassi inesistente,
+# in un file inesistente, finche' i turni non finivano.
+#
+# La causa: il controllo trattava `last_error` come «non compila».
+# `last_error` raccoglie QUALUNQUE operazione fallita su quel percorso: file
+# assente, `old_string` che non combacia, scrittura respinta. La sintassi
+# rotta e' un fatto diverso, sta in `syntax_error`, e ha un rimedio diverso.
+# ==============================================================================
+
+class _TaskFinto:
+    id = "t_prova"
+    title = "un task qualunque"
+    files_modified = []
+
+
+def _diagnosi(files, commands=None):
+    from core.harness.autocorrezione import Bilancio, diagnostica
+
+    return diagnostica(_TaskFinto(), {"files": files, "commands": commands or []},
+                       Bilancio())
+
+
+class TestLaDiagnosiNominaLaCausaVera:
+
+    def test_un_file_che_non_esiste_non_e_un_errore_di_sintassi(self):
+        d = _diagnosi([{"path": ".github/workflows/ci.yml",
+                        "last_error": "File non trovato: .github/workflows/ci.yml"}])
+        assert "non compila" not in d.motivo
+        assert "non esiste" in d.motivo
+        assert "write_file" in d.istruzione, (
+            "va detto come crearlo, non come correggerlo")
+
+    def test_nemmeno_per_un_file_che_non_e_codice(self):
+        d = _diagnosi([{"path": ".gitignore", "last_error": "File non trovato"}])
+        assert "non compila" not in d.motivo
+
+    def test_una_modifica_non_applicata_ha_il_suo_rimedio(self):
+        d = _diagnosi([{"path": "core/app.py",
+                        "last_error": "old_string non trovato. Il blocco piu' "
+                                      "simile e' alla riga 12 (94% di somiglianza)"}])
+        assert "modifica non applicata" in d.motivo
+        assert "ricopia" in d.istruzione.lower()
+
+    def test_old_string_non_viene_scambiato_per_file_assente(self):
+        """«old_string non trovato» contiene «non trovato»: l'ordine dei rami
+        e' l'unica cosa che impedisce di mandare l'agente a creare un file
+        che c'e' gia'."""
+        d = _diagnosi([{"path": "core/app.py",
+                        "last_error": "old_string non trovato"}])
+        assert "non esiste" not in d.motivo
+
+    def test_la_sintassi_rotta_resta_riconosciuta(self):
+        """La correzione non deve spegnere il controllo che funzionava."""
+        d = _diagnosi([{"path": "core/app.py",
+                        "syntax_error": "Errore di sintassi (riga 8): Unexpected token"}])
+        assert "non compila" in d.motivo
+        assert "riga 8" in d.istruzione
+
+    def test_un_guasto_generico_dice_cosa_guardare(self):
+        d = _diagnosi([{"path": "core/app.py",
+                        "last_error": "Rifiutato: la nuova versione e' molto piu' corta"}])
+        assert "operazione fallita" in d.motivo
+        assert "Rifiutato" in d.istruzione

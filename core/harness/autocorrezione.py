@@ -180,13 +180,29 @@ def diagnostica(
     #    netta che esista: si sa il file, si sa l'errore, e si sa chi lo ripara.
     #    E se un test e' fallito **per** quel file, riparare qui ripara anche
     #    quello: la causa da correggere e' una sola.
-    rotti = [f for f in (snapshot.get("files") or [])
-             if f.get("syntax_error") or f.get("last_error")]
+    #
+    #    `last_error` NON vale come «non compila». E' il campo che raccoglie
+    #    qualunque operazione fallita su quel percorso: un file che non esiste,
+    #    un `old_string` che non combacia, una scrittura respinta dalla guardia
+    #    anti-erosione. Confondere le due cose diceva all'agente
+    #
+    #        «il file `.github/workflows/ci.yml` contiene un errore:
+    #         File non trovato. Leggilo, correggi SOLO quell'errore»
+    #
+    #    per un file che non esisteva — e per un YAML, che non si compila. Su
+    #    un ventaglio di tre task l'autocorrezione ha rimandato tre agenti a
+    #    riparare errori di sintassi inesistenti in `.gitignore`, in un file
+    #    di workflow e in un modulo che compilava: venticinque turni a testa,
+    #    nove run, zero lavoro consegnato.
+    #
+    #    La sintassi rotta e' un fatto e sta in `syntax_error`. Il resto sono
+    #    altri fatti, con altri rimedi, e li trattano i controlli qui sotto.
+    rotti = [f for f in (snapshot.get("files") or []) if f.get("syntax_error")]
     miei = set(_file_del_task(task))
     rotti_miei = [f for f in rotti if not miei or f.get("path") in miei] or rotti
     if rotti_miei:
         f = rotti_miei[0]
-        errore = str(f.get("syntax_error") or f.get("last_error") or "")
+        errore = str(f.get("syntax_error") or "")
         return Diagnosi(
             livello=CORREGGI if bilancio.puo_correggere() else RINUNCIA,
             motivo=f"«{f.get('path')}» non compila",
@@ -199,6 +215,58 @@ def diagnostica(
                 "giusto."
             ),
             prove=[f"{f.get('path')}: {errore[:160]}"],
+        )
+
+    # 1bis. Un'operazione su file fallita. Non e' sintassi rotta: e' il
+    #    percorso sbagliato, il testo da sostituire che non c'e', una
+    #    scrittura respinta. Ognuno ha un rimedio diverso, e dirlo per nome
+    #    vale piu' di mandare l'agente a cercare un errore di compilazione
+    #    che non esiste.
+    falliti = [f for f in (snapshot.get("files") or [])
+               if f.get("last_error") and not f.get("syntax_error")]
+    falliti_miei = [f for f in falliti
+                    if not miei or f.get("path") in miei] or falliti
+    if falliti_miei:
+        f = falliti_miei[0]
+        percorso = str(f.get("path") or "")
+        errore = str(f.get("last_error") or "")
+        basso = errore.lower()
+
+        # L'ordine conta: «old_string non trovato» contiene «non trovato», e
+        # messo dopo verrebbe scambiato per un file che non esiste — mandando
+        # l'agente a creare un file che c'e' gia'.
+        if "old_string" in basso:
+            rimedio = (
+                f"La modifica a `{percorso}` non e' entrata: {errore[:200]}\n"
+                "Il messaggio dell'errore dice gia' quale blocco c'e' nel "
+                "file e in cosa differisce: ricopia quelle righe cosi' come "
+                "sono. Non serve rileggere tutto il file."
+            )
+            motivo = f"modifica non applicata a «{percorso}»"
+        elif ("non trovato" in basso or "not found" in basso
+              or "no such file" in basso):
+            rimedio = (
+                f"Il percorso `{percorso}` non esiste. Non c'e' niente da "
+                "correggere li' dentro.\n"
+                "Se il file va creato, crealo con `write_file`. Se invece "
+                "credevi esistesse, il percorso e' sbagliato: cercalo con "
+                "`glob` o `search_code` prima di riprovare."
+            )
+            motivo = f"«{percorso}» non esiste"
+        else:
+            rimedio = (
+                f"L'operazione su `{percorso}` e' fallita: {errore[:250]}\n"
+                "Leggi il messaggio, capisci quale delle due cose non "
+                "combacia — il percorso o il contenuto — e correggi quella."
+            )
+            motivo = f"operazione fallita su «{percorso}»"
+
+        return Diagnosi(
+            livello=CORREGGI if bilancio.puo_correggere() else RINUNCIA,
+            motivo=motivo,
+            ruolo="coder",
+            istruzione=rimedio,
+            prove=[f"{percorso}: {errore[:160]}"],
         )
 
     # 2. Un guasto che non parla del lavoro: un comando scaduto, un file

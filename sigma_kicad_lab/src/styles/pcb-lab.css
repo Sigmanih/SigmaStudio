@@ -1,0 +1,333 @@
+/* =============================================================================
+   PCB Lab — tema Sigma Studio Dark (Fase 1)
+   Token CSS + layout tab + componenti (toolbar, canvas, statusbar, overlay,
+   tooltip) + classe .layer-hidden con transizione opacity 150ms.
+   ============================================================================= */
+
+:root {
+  /* --- Token PCB Lab --- */
+  --pcb-bg: #0a1628;
+  --pcb-surface: #0f172a;
+  --pcb-accent: #00d4ff;
+  --pcb-text-primary: #e2e8f0;
+  --pcb-text-secondary: #94a3b8;
+  --pcb-pad-top: #00d4ff;
+  --pcb-pad-bottom: #f59e0b;
+  --pcb-grid-line: rgba(148, 163, 184, 0.15);
+  --pcb-silkscreen: #e2e8f0;
+  --pcb-courtyard: rgba(148, 163, 184, 0.3);
+  --pcb-error: #ef4444;
+  --pcb-border: #334155;
+
+  /* --- Tipografia --- */
+  --pcb-font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* =============================================================================
+   Tab root — layout a tre righe (toolbar / canvas / statusbar)
+   ============================================================================= */
+.pcb-lab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: var(--pcb-bg);
+  color: var(--pcb-text-primary);
+  font-family: var(--pcb-font-family);
+  overflow: hidden;
+}
+
+.pcb-lab__canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.pcb-lab__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--pcb-text-secondary);
+  font-size: 14px;
+}
+
+/* =============================================================================
+   Toolbar superiore
+   ============================================================================= */
+.pcb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  background: var(--pcb-surface);
+  border-bottom: 1px solid var(--pcb-border);
+  min-height: 48px;
+  flex-wrap: wrap;
+}
+
+.pcb-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pcb-toolbar__select {
+  background: var(--pcb-bg);
+  color: var(--pcb-text-primary);
+  border: 1px solid var(--pcb-border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.pcb-toolbar__select:focus {
+  outline: none;
+  border-color: var(--pcb-accent);
+}
+
+.pcb-toolbar__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--pcb-text-primary);
+  border: 1px solid var(--pcb-border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.pcb-toolbar__btn:hover {
+  background: rgba(0, 212, 255, 0.08);
+  border-color: var(--pcb-accent);
+}
+
+.pcb-toolbar__btn--primary {
+  background: var(--pcb-accent);
+  color: #0a1628;
+  font-weight: 600;
+  border-color: var(--pcb-accent);
+}
+
+.pcb-toolbar__btn--primary:hover {
+  background: #33ddff;
+}
+
+.pcb-toolbar__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Layer toggles */
+.pcb-layer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.pcb-layer-toggle input {
+  accent-color: var(--pcb-accent);
+}
+
+.pcb-layer-toggle--on {
+  background: rgba(0, 212, 255, 0.1);
+  border-color: var(--pcb-accent);
+  color: var(--pcb-text-primary);
+}
+
+.pcb-layer-toggle--off {
+  background: transparent;
+  border-color: var(--pcb-border);
+  color: var(--pcb-text-secondary);
+}
+
+/* Grid control */
+.pcb-grid-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pcb-grid-control__select {
+  background: var(--pcb-bg);
+  color: var(--pcb-text-primary);
+  border: 1px solid var(--pcb-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+/* =============================================================================
+   Canvas SVG + layer hidden
+   ============================================================================= */
+.pcb-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+  background: var(--pcb-bg);
+}
+
+/* Classe applicata ai layer off — transizione opacity 150ms poi display:none */
+.layer-hidden {
+  display: none !important;
+  transition: opacity 150ms ease;
+}
+
+.pcb-layer {
+  transition: opacity 150ms ease;
+}
+
+/* =============================================================================
+   Status bar (32px, bg #0f172a, testo #94a3b8, font-size 12px)
+   Layout flex space-between gap 24px; responsive <768px in due righe
+   ============================================================================= */
+.pcb-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  height: 32px;
+  padding: 0 16px;
+  background: var(--pcb-surface);
+  border-top: 1px solid var(--pcb-border);
+  color: var(--pcb-text-secondary);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.pcb-statusbar__field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.pcb-statusbar__label {
+  color: var(--pcb-text-secondary);
+  font-weight: 500;
+}
+
+.pcb-statusbar__value {
+  color: var(--pcb-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .pcb-statusbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 32px;
+    padding: 4px 12px;
+    gap: 8px 16px;
+  }
+}
+
+/* =============================================================================
+   ErrorOverlay — overlay centrale per errori e stato vuoto
+   bg semi-trasparente #0f172a/95%, border #334155, radius 8px
+   ============================================================================= */
+.pcb-error-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.95);
+  z-index: 10;
+}
+
+.pcb-error-overlay__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px 48px;
+  background: var(--pcb-surface);
+  border: 1px solid var(--pcb-border);
+  border-radius: 8px;
+  max-width: 420px;
+}
+
+.pcb-error-overlay__title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--pcb-text-primary);
+}
+
+.pcb-error-overlay__desc {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: var(--pcb-text-secondary);
+  line-height: 1.5;
+}
+
+.pcb-error-overlay__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--pcb-accent);
+  color: #0a1628;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.pcb-error-overlay__btn:hover {
+  background: #33ddff;
+}
+
+/* =============================================================================
+   SelectionTooltip — hover su footprint
+   bg #1e293b, border #00d4ff, radius 6px; clamp nel viewport canvas
+   ============================================================================= */
+.pcb-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: #1e293b;
+  border: 1px solid var(--pcb-accent);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--pcb-text-primary);
+  z-index: 20;
+  max-width: 240px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.pcb-tooltip__ref {
+  font-weight: 700;
+  color: var(--pcb-accent);
+  font-size: 13px;
+}
+
+.pcb-tooltip__value {
+  color: var(--pcb-text-primary);
+}
+
+.pcb-tooltip__pin {
+  color: var(--pcb-text-secondary);
+  margin-top: 4px;
+}

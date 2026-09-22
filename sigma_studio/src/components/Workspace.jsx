@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, Settings, Sliders, Menu, Award } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, Settings, Sliders, Menu, Award, CircuitBoard } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import SkillsHub from './SkillsHub';
 import StudioEditor from './Workspace/StudioEditor';
@@ -38,6 +38,7 @@ const FileIcon = ({ type }) => {
     case 'benchmark_lab': case 'benchmark': return <Award size={16} />;
     case 'training_lab': return <Brain size={16} />;
     case 'hardware_lab': return <Zap size={16} />;
+    case 'kicad_lab': case 'pcb_lab': return <CircuitBoard size={16} />;
     case 'model_hub': return <DownloadCloud size={16} />;
     case 'account': case 'settings': return <Settings size={16} />;
     case 'creative_studio': return <Palette size={16} />;
@@ -201,6 +202,24 @@ export default function Workspace({
     if (tab.type === 'chat') {
       return null;
     }
+    if (tab.type === 'kicad_lab' || tab.type === 'pcb_lab') {
+      // Quarto e ultimo gradino perche' una scheda sia raggiungibile: la voce
+      // in Sidebar.jsx la richiede, registry.js sa quale cartella aprire,
+      // marketplace_installed.json dice che il modulo c'e' — ma senza questo
+      // ramo il tipo non viene smistato e si finisce nel messaggio
+      // "Content type ... not implemented in preview".
+      const isPcbLabInstalled = modulesState.sigma_kicad_lab === true;
+      const LazyPcbLab = getLazyModule('kicad_lab');
+      if (!isPcbLabInstalled || !LazyPcbLab) {
+        return <ModuleNotInstalled tabType="kicad_lab" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento PCB Lab...</div>}>
+          <LazyPcbLab addToast={() => {}} openTab={openTab} activeTabId={activeTabId} />
+        </React.Suspense>
+      );
+    }
+
     if (tab.type === 'research_lab') {
       const isResearchInstalled = modulesState.sigma_research_lab === true;
       const LazyResearch = getLazyModule('research_lab');

@@ -152,6 +152,13 @@ def _build_agent_identity_header(user_name: str = None, user_title: str = None) 
 - Inizia SEMPRE la tua risposta direttamente con il saluto e il contenuto informativo utile per {name_str}. Non ripetere mai regole interne, istruzioni del prompt o riflessioni preliminari all'inizio del messaggio.
 - Ogni spiegazione deve essere completa, dettagliata e conclusa con precisione fino all'ultimo punto senza interruzioni.
 - Ogni frase o cortesia finale di chiusura (es. "Fammi sapere se desideri altre modifiche su Sigma Studio!") DEVE ESSERE SCRITTA ESPLICITAMENTE nel testo del messaggio finale in chat, affinché la versione visualizzata e quella parlata siano identiche al 100%.
+- **Quando serve uno strumento, queste regole NON valgono per quel turno.** Emetti il blocco
+  dello strumento con al massimo una frase di contesto davanti: niente saluto, niente
+  spiegazione completa, niente cortesia di chiusura. Saluto, spiegazione e chiusura vanno
+  nella risposta che scrivi DOPO, quando hai in mano il risultato.
+  Senza questa precedenza le due istruzioni si contraddicono: il modello scrive il saluto,
+  annuncia che sta per consultare, e finisce il turno senza chiamare niente — l'utente vede
+  una frase che promette una risposta che non arriva.
 """
 
 

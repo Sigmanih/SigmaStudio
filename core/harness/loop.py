@@ -41,6 +41,7 @@ from core.harness.ledger import (
 from core.harness.policy import ToolPolicy, canonical, filter_tool_docs
 from core.harness import delivery, review, worktree
 from core.harness.cicli import RilevatoreCicli, comando_bloccato_in_ciclo
+from core.think_channel import RouterPensiero
 from core.harness.compaction import compact_history_with_memory
 from core.harness.roles import GENERIC_MODEL_ALIASES
 from core.harness.tool_schema import (
@@ -1807,7 +1808,43 @@ def _execute_admin_tool_impl(
     elif tool_name in ("delete", "delete_file", "remove_file", "rm"):
         raw_path = _path_of(params) or params.get("raw", "")
         full_path = resolve_workspace_path(raw_path, workspace_root, active_cwd=active_cwd)
+
+        # Cancellare un file e' ridurlo a zero caratteri, quindi passa dalla
+        # stessa guardia di `write_file` e con la stessa soglia. Senza, la
+        # protezione contro i troncamenti si aggira in un passo solo: un
+        # agente a cui `write_file` viene rifiutato perche' la nuova versione
+        # e' troppo corta cancella il file e riscrive.
+        #
+        # E' successo davvero. Un run ha perso 428 righe cosi': write_file
+        # rifiutato, delete accettato, e il write_file successivo bloccato
+        # dalla guardia anti-ripetizione. File distrutto, niente con cui
+        # rifarlo, e nessun backup.
+        if os.path.isfile(full_path) and not params.get("allow_truncate"):
+            try:
+                precedente = Path(full_path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                precedente = ""
+            massimo = (dimensioni_viste or {}).get(full_path, 0)
+            if would_truncate(precedente, "", high_water=massimo):
+                righe = len(precedente.splitlines())
+                return {
+                    "tool": "delete",
+                    "path": raw_path,
+                    "full_path": full_path,
+                    "success": False,
+                    "error": (
+                        f"Rifiutato: '{raw_path}' contiene {righe} righe e "
+                        "cancellarlo perderebbe quel lavoro. "
+                        "Se volevi cambiarne il contenuto usa edit_file, che "
+                        "modifica senza distruggere. "
+                        "Se la cancellazione e' davvero cio' che vuoi, ripeti "
+                        'la chiamata aggiungendo "allow_truncate": true.'
+                    ),
+                }
+
         res = delete_fs_entry(full_path, root=workspace_root)
+        if res.get("success") and dimensioni_viste is not None:
+            dimensioni_viste.pop(full_path, None)
         return {"tool": "delete", "path": raw_path, "full_path": full_path, **res}
 
     elif tool_name in ("list_dir", "list_directory", "ls"):
@@ -2074,6 +2111,20 @@ def _execute_admin_tool_impl(
             "understanding": capito,
             "criteria": grezzi,
         }
+
+    # I tool EDA vivono in `eda_tools.py`: qui c'e' solo la delega. Aggiungerli
+    # alla catena qui sopra avrebbe allungato di duecento righe un file che ne
+    # ha gia' quattromila, e il disegno di un circuito non ha niente a che
+    # vedere con la gestione del workspace.
+    from core.harness import eda_tools
+    esito_eda = eda_tools.esegui(tool_name, params)
+    if esito_eda is not None:
+        return esito_eda
+
+    from core.harness import kicad_tools
+    esito_kicad = kicad_tools.esegui(tool_name, params)
+    if esito_kicad is not None:
+        return esito_kicad
 
     return {"tool": tool_name, "success": False, "error": f"Tool sconosciuto: {tool_name}"}
 
@@ -2483,6 +2534,7 @@ def _stream_agent_turn_impl(
         # Le chiamate strutturate di questo turno, se il provider le produce.
         native_calls: List[Dict[str, Any]] = []
         in_think_block = False
+        router_pensiero = RouterPensiero()
         in_tool_block = False
         has_notified_tool = False
         turn_tokens = 0
@@ -2624,27 +2676,32 @@ def _stream_agent_turn_impl(
                 total_generated_tokens += 1
                 accumulated_response.append(token)
 
-                # Filter thinking tags
-                if any(tag in token for tag in ("<think>", "<thought>", "<|channel>thought", "<|thought|>")):
-                    in_think_block = True
-                    cleaned = re.sub(r"<(?:think|thought)>|<\|channel\>thought|<\|thought\|>", "", token)
-                    if cleaned:
-                        yield {"type": "thought", "token": cleaned}
+                # Ragionamento e risposta li separa `core/think_channel.py`, lo
+                # stesso modulo che usa la chat. Qui c'erano tre difetti che
+                # in modalita' sviluppo si vedevano tutti:
+                #
+                # - il confronto era **per singolo token**, quindi un tag
+                #   spezzato fra due token non veniva visto affatto;
+                # - un tag *nominato* dentro il ragionamento — e un agente che
+                #   diagnostica un output rotto li nomina di continuo — veniva
+                #   preso per un comando, e il resto del ragionamento finiva
+                #   nella risposta;
+                # - la via d'uscita dal blocco era una stringa italiana
+                #   (`"\n\nCiao"`, `"\n\n**Sigma"`): una risposta che non
+                #   cominciava col saluto giusto restava invisibile.
+                pezzi = router_pensiero.feed(token)
+                if not pezzi:
                     continue
-                elif any(tag in token for tag in ("</think>", "</thought>", "<channel|>", "</|thought|>")):
-                    in_think_block = False
-                    cleaned = re.sub(r"</(?:think|thought)>|<channel\|>|</\|thought\|>", "", token)
-                    if cleaned:
-                        yield {"type": "token", "token": cleaned}
-                    continue
-
-                if in_think_block:
-                    if "```tool:" in token or "```xml" in token or "\n\nCiao" in token or "\n\n**Sigma" in token:
-                        in_think_block = False
-                        yield {"type": "token", "token": token}
+                parte_risposta = []
+                for canale, testo in pezzi:
+                    if canale == "thinking":
+                        yield {"type": "thought", "token": testo}
                     else:
-                        yield {"type": "thought", "token": token}
+                        parte_risposta.append(testo)
+                if not parte_risposta:
                     continue
+                token = "".join(parte_risposta)
+                in_think_block = router_pensiero.in_pensiero
 
                 # Detect if entering or inside a structured tool block (```tool: or XML tags)
                 current_text = "".join(accumulated_response)
@@ -2681,6 +2738,16 @@ def _stream_agent_turn_impl(
                 safe, pending_out = _split_emittable(pending_out)
                 if safe:
                     yield {"type": "token", "token": safe}
+
+            # Il router trattiene la coda del buffer finche' non sa se e' un
+            # tag o solo un minore: senza questo svuotamento gli ultimi
+            # caratteri del turno andrebbero persi, e sono proprio quelli che
+            # chiudono la frase.
+            for canale_finale, testo_finale in router_pensiero.flush():
+                yield {
+                    "type": "thought" if canale_finale == "thinking" else "token",
+                    "token": testo_finale,
+                }
 
             # Flush whatever survived the hold-back at end of stream.
             if pending_out and not in_tool_block:

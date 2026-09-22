@@ -38,22 +38,12 @@ export default function RustTelemetryPanel({ compact = false }) {
 
   const isMountedRef = useRef(true);
 
-  const handleCompact = useCallback(async () => {
-    setIsCompacting(true);
-    try {
-      await fetch('/api/engine/rust/compact', { method: 'POST' });
-    } catch {
-      // fallback
-    } finally {
-      setTimeout(() => {
-        if (isMountedRef.current) {
-          setIsCompacting(false);
-          fetchMetrics();
-        }
-      }, 350);
-    }
-  }, [fetchMetrics]);
-
+  // `fetchMetrics` sta PRIMA di chi la elenca fra le dipendenze, e deve
+  // restarci: l'array di dipendenze di useCallback viene valutato durante
+  // il render, non quando l'hook parte. Dichiarata dopo, il render moriva
+  // con «Cannot access 'fetchMetrics' before initialization» — e nel
+  // bundle minificato il nome e' una lettera sola, quindi lo stack trace
+  // non diceva niente e la scheda Hardware Lab restava bianca.
   const fetchMetrics = useCallback(async (isManual = false) => {
     if (isManual) setIsRefreshing(true);
     try {
@@ -81,6 +71,22 @@ export default function RustTelemetryPanel({ compact = false }) {
       }
     }
   }, []);
+
+  const handleCompact = useCallback(async () => {
+    setIsCompacting(true);
+    try {
+      await fetch('/api/engine/rust/compact', { method: 'POST' });
+    } catch {
+      // fallback
+    } finally {
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          setIsCompacting(false);
+          fetchMetrics();
+        }
+      }, 350);
+    }
+  }, [fetchMetrics]);
 
   useEffect(() => {
     isMountedRef.current = true;

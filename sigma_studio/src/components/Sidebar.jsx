@@ -4,7 +4,7 @@ import {
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
   Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2,
-  Share2, Plus, Search, HardDrive, Copy, UserCheck, Award
+  Share2, Plus, Search, HardDrive, Copy, UserCheck, Award, CircuitBoard
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -353,6 +353,10 @@ export default function Sidebar({
   const isDomoticaInstalled = modulesState.sigma_domotica === true;
   const isCreativeInstalled = modulesState.sigma_creative_lab === true;
   const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
+  // PCB Lab e Monitor Hardware sono moduli diversi: il primo progetta
+  // circuiti stampati con KiCad, il secondo osserva come gli agenti
+  // usano la macchina. Nomi e icone vanno tenuti distinti.
+  const isPcbLabInstalled = modulesState.sigma_kicad_lab === true;
   const isModelHubInstalled = modulesState.sigma_model_hub === true;
   const isResearchInstalled = modulesState.sigma_research_lab === true;
   const isTrainingInstalled = modulesState.sigma_training_lab === true;
@@ -1050,6 +1054,17 @@ export default function Sidebar({
                       badgeColor="rgba(0,242,254,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('hardware_lab')}
                       onClick={() => openTab({ name: 'Monitor Hardware' }, 'hardware_lab')} 
+                    />
+                  )}
+
+                  {isPcbLabInstalled && (
+                    <SidebarItem
+                      icon={CircuitBoard}
+                      label="PCB Lab"
+                      badge="KICAD"
+                      badgeColor="rgba(13,110,253,0.25)"
+                      active={activeTabId != null && (activeTabId.startsWith('kicad_lab') || activeTabId.startsWith('pcb_lab'))}
+                      onClick={() => openTab({ name: 'PCB Lab' }, 'kicad_lab')}
                     />
                   )}
 

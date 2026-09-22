@@ -1,0 +1,22 @@
+{
+  "queue_id": "chat_e_agenti_v2",
+  "goal": "Due correzioni circoscritte, ognuna in un file gia' individuato e con le righe indicate. Il giro precedente e' fallito nove volte su nove perche' la diagnosi di autocorrezione chiamava «non compila» qualunque operazione su file andata storta, e rimandava gli agenti a correggere errori di sintassi in file che non esistevano. Quella causa e' chiusa.",
+  "items": [
+    {
+      "id": "v2_errore_tool_nascosto",
+      "title": "Nel pannello della chat mostra l'ERRORE del tool fallito, non il messaggio generico",
+      "contesto": "Segnalato dall'utente con cinque righe identiche: 'write_file / Eseguito write_file / Dettagli / ✗'. Cinque scritture fallite e nessun modo di sapere perche' senza aprire 'Dettagli' una per una. Il file e' sigma_studio/src/components/Chat/ui/ChatToolActionItem.jsx. Alla riga 46 l'errore viene gia' estratto: `const error = action.error || action.result?.error || ''`. Alla riga 47 c'e' `isSuccess`. Alla riga 208 la riga di testo mostra `{action.message || error || tool}`: un `message` generico come 'Eseguito write_file' VINCE sull'errore vero, che finisce solo nel tooltip della crocetta alla riga 368.",
+      "da_fare": "1) Apri sigma_studio/src/components/Chat/ui/ChatToolActionItem.jsx e vai alla riga 208. 2) Sul ramo fallito l'ordine deve essere `error || action.message || tool`; su quello riuscito resta `action.message || tool`. Usa `isSuccess`, che e' gia' calcolato due righe sopra. 3) L'errore va mostrato su UNA riga sola, troncato con ellissi via CSS (`textOverflow: 'ellipsis'`, `whiteSpace: 'nowrap'`, `overflow: 'hidden'`): cinque righe rosse lunghe sono illeggibili quanto cinque righe vuote. Il testo intero resta in 'Dettagli'. 4) Cerca con `search_code` se lo schema `message || error` compare altrove nei componenti della chat, e correggilo dove lo trovi.",
+      "attenzione": "`tools/check_js_syntax.mjs` ESISTE GIA' ed e' il controllo di sintassi del progetto: usalo, non riscriverlo e non crearne un altro con un nome diverso. Nel tentativo precedente un agente si e' scritto `tools/verifica_sintassi.mjs` da zero e ha perso il run su quello. Il file che modifichi sta dentro un modulo: dopo la modifica va ripubblicato dal pannello PUBBLICA MODULI, ma questo NON fa parte del task.",
+      "verify": "node tools/check_js_syntax.mjs sigma_studio/src/components/Chat/ui/ChatToolActionItem.jsx"
+    },
+    {
+      "id": "v2_seconda_pipeline_chat",
+      "title": "Togli da _clean_all_tags i due stadi che il router copre gia'",
+      "contesto": "core/chat/response_parser.py, funzione `_clean_all_tags`: una pipeline a 7 stadi che cerca il ragionamento con euristiche. Serviva quando il router sbagliava e il ragionamento finiva nel canale della risposta. Da oggi il router e' strutturale e corretto (core/think_channel.py, gia' fatto e con la sua suite): il testo che arriva a `_clean_all_tags` contiene SOLO il canale della risposta. Lo stadio 1 estrae il ragionamento dai tag XML e lo stadio 6 toglieva i tag generici — il 6 e' gia' stato ristretto alla prosa, il 1 e' rimasto e ora duplica il router. Gli stadi 0, 3, 4 e 5 (il blocco 'Here's a thinking process', il marcatore 'done thinking.', l'elenco puntato, l'autoanalisi in inglese) coprono forme SENZA tag, che il router non puo' vedere: quelli restano.",
+      "da_fare": "1) Leggi core/chat/response_parser.py e trova `_clean_all_tags`. 2) Togli lo stadio 1 (estrazione da `_TAG_PATTERNS['thinking']`): il router lo fa gia', e farlo due volte puo' solo togliere risposta vera. 3) Lascia intatti gli stadi 0, 3, 4, 5, 6 e 7. 4) In tests/test_canale_ragionamento.py aggiungi una classe con due casi NEGATIVI: una risposta che comincia con un elenco puntato ('- primo punto\\n- secondo punto') e una che spiega qualcosa in inglese, e pretendi che NESSUNA delle due venga toccata da `_clean_all_tags`.",
+      "attenzione": "Non toccare core/think_channel.py: e' appena stato corretto e ha 28 test verdi. Se togliendo lo stadio 1 un test esistente fallisce, guarda se difendeva il comportamento vecchio del router: in quel caso va aggiornato, ma scrivilo nel riassunto invece di cambiarlo in silenzio.",
+      "verify": "python -m pytest tests/test_canale_ragionamento.py tests/test_chat_ledger_and_gate.py -q"
+    }
+  ]
+}

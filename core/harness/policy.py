@@ -67,6 +67,55 @@ ALIASES: Dict[str, str] = {
     "finish_task": "complete_goal",
     "task_complete": "complete_goal",
     "complete_goal": "complete_goal",
+    # KiCad — progettazione della scheda
+    "kicad_status": "kicad_status", "kicad_open": "kicad_open",
+    "kicad_board_read": "kicad_board_read", "kicad_list_parts": "kicad_list_parts",
+    "kicad_pads": "kicad_pads", "kicad_nets": "kicad_nets",
+    "kicad_trace_width": "kicad_trace_width",
+    "kicad_board_evaluate": "kicad_board_evaluate",
+    "kicad_placement_optimize": "kicad_placement_optimize",
+    "kicad_placement_apply": "kicad_placement_apply",
+    "kicad_add_track": "kicad_add_track", "kicad_add_route": "kicad_add_route",
+    "kicad_add_via": "kicad_add_via",
+    "kicad_add_footprint": "kicad_add_footprint",
+    "kicad_remove_footprint": "kicad_remove_footprint",
+    "kicad_undo": "kicad_undo",
+    "kicad_drc": "kicad_drc", "kicad_erc": "kicad_erc",
+    "kicad_export_gerbers": "kicad_export_gerbers",
+    "kicad_export_bom": "kicad_export_bom", "kicad_render": "kicad_render",
+    # pcbnew bridge: creazione e ispezione diretta via API pcbnew
+    "kicad_pcbnew_status": "kicad_pcbnew_status",
+    "kicad_libraries": "kicad_libraries",
+    "kicad_search_footprint": "kicad_search_footprint",
+    "kicad_new_board": "kicad_new_board",
+    "kicad_add_part": "kicad_add_part",
+    "kicad_read_board_full": "kicad_read_board_full",
+    "instrada": "kicad_add_route", "verifica_pcb": "kicad_drc",
+    # EDA — disegno del circuito
+    "eda_status": "eda_status",
+    "eda_search_part": "eda_search_part",
+    "cerca_componente": "eda_search_part",
+    "eda_place_part": "eda_place_part",
+    "piazza_componente": "eda_place_part",
+    "eda_list_parts": "eda_list_parts",
+    "eda_pins": "eda_pins",
+    "eda_connect": "eda_connect",
+    "collega": "eda_connect",
+    "eda_wire": "eda_wire",
+    "pista": "eda_wire",
+    "eda_note": "eda_note",
+    "eda_verify": "eda_verify",
+    "verifica_circuito": "eda_verify",
+    "eda_capture": "eda_capture",
+    "eda_save": "eda_save",
+    "eda_pcb_drc": "eda_pcb_drc",
+    "eda_pcb_unrouted": "eda_pcb_unrouted",
+    "eda_pcb_route_net": "eda_pcb_route_net",
+    "eda_pcb_route_all": "eda_pcb_route_all",
+    "eda_pcb_add_via": "eda_pcb_add_via",
+    "eda_pcb_outline": "eda_pcb_outline",
+    "eda_pcb_mounting_holes": "eda_pcb_mounting_holes",
+    "eda_export_gerbers": "eda_export_gerbers",
     # coda di lavoro
     "queue_add": "queue_add",
     "add_to_queue": "queue_add",
@@ -79,10 +128,43 @@ ALIASES: Dict[str, str] = {
 #: altri run faranno. Chi puo' pianificare puo' anche depositare il piano.
 CONTROL_TOOLS: Set[str] = {"spec", "pipeline", "complete_goal", "queue_add"}
 
+#: I tool EDA che guardano il progetto senza toccarlo. `eda_verify` sta qui ed
+#: e' il piu' importante: la prova di un collegamento deve poter essere chiesta
+#: anche da chi non ha il permesso di scrivere.
+EDA_READ_TOOLS: Set[str] = {
+    "eda_status", "eda_search_part", "eda_list_parts", "eda_pins",
+    "eda_verify", "eda_capture", "eda_pcb_drc", "eda_pcb_unrouted",
+    "eda_export_gerbers",
+}
+EDA_WRITE_TOOLS: Set[str] = {
+    "eda_place_part", "eda_connect", "eda_wire", "eda_note", "eda_save",
+    "eda_pcb_route_net", "eda_pcb_route_all", "eda_pcb_add_via",
+    "eda_pcb_outline", "eda_pcb_mounting_holes",
+}
+
+#: KiCad: guardare la scheda non e' toccarla. `kicad_drc` sta fra le letture
+#: perche' la prova che un layout regge deve poterla chiedere anche chi non ha
+#: il permesso di scrivere — e' cosi' che un revisore controlla.
+KICAD_READ_TOOLS: Set[str] = {
+    "kicad_status", "kicad_open", "kicad_board_read", "kicad_list_parts",
+    "kicad_pads", "kicad_nets", "kicad_trace_width", "kicad_board_evaluate",
+    "kicad_placement_optimize", "kicad_drc", "kicad_erc",
+    # pcbnew bridge: letture che non toccano i file di progetto
+    "kicad_pcbnew_status", "kicad_libraries", "kicad_search_footprint",
+    "kicad_read_board_full",
+}
+KICAD_WRITE_TOOLS: Set[str] = {
+    "kicad_placement_apply", "kicad_add_track", "kicad_add_route",
+    "kicad_add_via", "kicad_add_footprint", "kicad_remove_footprint",
+    "kicad_undo", "kicad_export_gerbers", "kicad_export_bom", "kicad_render",
+    # pcbnew bridge: questi due scrivono file di progetto
+    "kicad_new_board", "kicad_add_part",
+}
+
 READ_ONLY_TOOLS: Set[str] = {
     "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol",
     "screenshot", "pipeline", "queue_add", "complete_goal"
-}
+} | EDA_READ_TOOLS | KICAD_READ_TOOLS
 
 PLAN_ONLY_TOOLS: Set[str] = {
     "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol",

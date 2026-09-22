@@ -119,6 +119,17 @@ collatz_pipeline.json
 
 # Virtual Environment
 .venv/
+# Il kernel Rust NON sta in questo repository.
+#
+# Vive in un repository privato suo — `projects/sigma_engine_rust` ha il
+# proprio `.git` e il proprio remote — e quando sara' pronto verra'
+# distribuito solo compilato. Qui dentro non deve finire ne' il sorgente
+# ne' il puntatore al commit: un gitlink senza `.gitmodules` dice a
+# chiunque cloni che esiste qualcosa che non potra' mai prendere.
+#
+# Le regole piu' fini qui sotto valgono per le altre cartelle di progetto.
+projects/sigma_engine_rust/
+
 # Rust build targets and heavy assets in projects
 projects/**/target/
 projects/**/*.gguf
@@ -244,3 +255,58 @@ viz/peaks_*.json
 Ruoli/
 ruoli/
 manifesti/
+
+# MCP locale (percorsi specifici della macchina)
+.mcp.json
+projects/hardware/Ailo_pcb/Ailo_pcb_bom.csv
+projects/hardware/Ailo_pcb/Ailo_pcb_drc.json
+projects/hardware/Ailo_pcb/Ailo_pcb_erc.json
+projects/hardware/Ailo_pcb/Ailo_pcb_netlist.xml
+projects/hardware/Ailo_pcb/Ailo_pcb_render_bottom.png
+projects/hardware/Ailo_pcb/Ailo_pcb_render_top.png
+projects/hardware/Ailo_pcb/Ailo_pcb.kicad_pcb
+projects/hardware/Ailo_pcb/Ailo_pcb.kicad_prl
+projects/hardware/Ailo_pcb/Ailo_pcb.kicad_pro
+projects/hardware/Ailo_pcb/Ailo_pcb.kicad_sch
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-B_Courtyard.gbr
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-B_Cu.gbl
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-B_Mask.gbs
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-B_Silkscreen.gbo
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-Edge_Cuts.gm1
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-F_Courtyard.gbr
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-F_Cu.gtl
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-F_Mask.gts
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-F_Silkscreen.gto
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-job.gbrjob
+projects/hardware/Ailo_pcb/gerbers/Ailo_pcb-Margin.gbr
+projects/sigma_power_v01/sigma_power_v01_drc.json
+projects/sigma_power_v01/sigma_power_v01_render_bottom.png
+projects/sigma_power_v01/sigma_power_v01_render_top.png
+projects/sigma_power_v01/sigma_power_v01.kicad_pcb
+projects/sigma_power_v01/sigma_power_v01.kicad_prl
+projects/sigma_power_v01/gerbers/sigma_power_v01-B_Adhesive.gba
+projects/sigma_power_v01/gerbers/sigma_power_v01-B_Courtyard.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-B_Cu.gbl
+projects/sigma_power_v01/gerbers/sigma_power_v01-B_Fab.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-B_Mask.gbs
+projects/sigma_power_v01/gerbers/sigma_power_v01-B_Paste.gbp
+projects/sigma_power_v01/gerbers/sigma_power_v01-B_Silkscreen.gbo
+projects/sigma_power_v01/gerbers/sigma_power_v01-Edge_Cuts.gm1
+projects/sigma_power_v01/gerbers/sigma_power_v01-F_Adhesive.gta
+projects/sigma_power_v01/gerbers/sigma_power_v01-F_Courtyard.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-F_Cu.gtl
+projects/sigma_power_v01/gerbers/sigma_power_v01-F_Fab.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-F_Mask.gts
+projects/sigma_power_v01/gerbers/sigma_power_v01-F_Paste.gtp
+projects/sigma_power_v01/gerbers/sigma_power_v01-F_Silkscreen.gto
+projects/sigma_power_v01/gerbers/sigma_power_v01-job.gbrjob
+projects/sigma_power_v01/gerbers/sigma_power_v01-Margin.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-User_1.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-User_2.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-User_3.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-User_4.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-User_Comments.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-User_Drawings.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-User_Eco1.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01-User_Eco2.gbr
+projects/sigma_power_v01/gerbers/sigma_power_v01.drl

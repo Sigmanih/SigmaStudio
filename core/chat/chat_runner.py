@@ -13,6 +13,7 @@ import datetime
 import shutil
 import time
 
+from core.think_channel import RouterPensiero
 from core.logger import get_logger
 from core.ai_providers import (
     load_ai_config, resolve_provider_config,
@@ -171,61 +172,12 @@ def _lookup_radix_prefix_cache(messages):
         return 0, 0, 0.0, [], None
 
 
-class _ThinkTagRouter:
-    """Split a token stream into answer text and reasoning text on the fly.
-
-    Cleanly routes `<think>...</think>`, `<|channel>thought...<channel|>`, etc.
-    blocks to the thinking channel, holding back only partial tag prefixes like `<th` until resolved.
-    Does not rely on language-specific heuristics or greetings.
-    """
-
-    def __init__(self):
-        self._buffer = ""
-        self._in_thinking = False
-        self._started_token = False
-
-    @staticmethod
-    def _is_close_tag(tag: str) -> bool:
-        t = tag.lower()
-        return t.startswith("</") or "channel|" in t or "/thought" in t or t.startswith("<response") or t.startswith("<output") or t.startswith("<answer")
-
-    def feed(self, text: str) -> list[tuple[str, str]]:
-        """Return [(channel, text), …] where channel is 'token' or 'thinking'."""
-        self._buffer += text
-        out = []
-
-        while True:
-            match = _THINK_TAG_RE.search(self._buffer)
-            if not match:
-                break
-            before = self._buffer[:match.start()]
-            if before:
-                out.append(("thinking" if self._in_thinking else "token", before))
-            self._in_thinking = not self._is_close_tag(match.group())
-            if not self._in_thinking:
-                self._started_token = True
-            self._buffer = self._buffer[match.end():]
-
-        # Hold back trailing '<' that might be part of an incoming tag (up to 18 chars for <|channel>thought)
-        cut = self._buffer.rfind("<")
-        if cut != -1 and len(self._buffer) - cut <= 18:
-            emit, self._buffer = self._buffer[:cut], self._buffer[cut:]
-        else:
-            emit, self._buffer = self._buffer, ""
-
-        if emit:
-            out.append(("thinking" if self._in_thinking else "token", emit))
-
-        return out
-
-    def flush(self) -> list[tuple[str, str]]:
-        """Emit whatever is left once the stream is over."""
-        if not self._buffer:
-            return []
-        channel = "thinking" if self._in_thinking else "token"
-        out = [(channel, self._buffer)]
-        self._buffer = ""
-        return out
+#: La separazione fra pensiero e risposta vive in un modulo solo, condiviso con
+#: il ciclo dell'agente: erano due implementazioni diverse della stessa regola,
+#: e divergevano. `core/think_channel.py` spiega il difetto che ha chiuso —
+#: la chat che ragionava e non rispondeva — e perche' la regola e' strutturale
+#: e non linguistica.
+_ThinkTagRouter = RouterPensiero
 
 
 def _sse_send(handler, payload: dict) -> bool:
@@ -607,8 +559,9 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     if _prefill_injected:
         # Ollama continues generation from any partial assistant message
         messages = list(messages) + [{"role": "assistant", "content": "<think>\n"}]
-        # Prime the router so it starts in thinking state immediately
-        router._in_thinking = True
+        # Il modello continua dentro il blocco e non emette nessun tag di
+        # apertura: il router deve partire gia' in stato di pensiero.
+        router.inizia_nel_pensiero()
 
     def _push(payload: dict) -> None:
         """Send one event, and stop the generation if nobody received it."""
@@ -661,6 +614,10 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 _msgs, ai_cfg, model, provider, endpoint, api_url, api_key,
                 temperature, max_tokens, top_p, timeout,
                 params=sampling, cancel=cancel,
+                # Il profilo decide se il modello deve ragionare. Senza questo
+                # il template non lo sapeva e Qwen3 ragionava comunque, ma
+                # senza tag: il monologo usciva come risposta.
+                thinking=wants_reasoning,
             ):
                 if cancel is not None and cancel.cancelled:
                     return False
@@ -772,6 +729,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     # The model asks for a tool by writing a fenced block; it is run here and the
     # outcome handed back so the answer can continue with real data. A tool that
     # acts on the world stops the turn and waits for the operator instead.
+    strumenti_eseguiti = False
     if not error_msg:
         try:
             from core.mcp.agent_loop import (MAX_TOOL_ROUNDS, execute_calls,
@@ -837,6 +795,10 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 if not outcomes:
                     break
 
+                # Un turno che ha eseguito uno strumento DEVE produrre una
+                # risposta: il risultato serve all'utente, non al modello.
+                strumenti_eseguiti = True
+
                 next_messages = list(messages) + [
                     {"role": "assistant", "content": full_text},
                     {"role": "user", "content": format_results_for_model(outcomes)},
@@ -852,7 +814,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 full_text = ""
                 router = _ThinkTagRouter()
                 if _prefill_injected:
-                    router._in_thinking = True
+                    router.inizia_nel_pensiero()
                 if not _run_model_turn(next_messages):
                     break
         except Exception as exc:
@@ -888,6 +850,35 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         # "done thinking." markers, English self-analysis preambles).
         # La domanda serve a non scambiare per ragionamento l'inglese
         # che l'utente ha chiesto.
+        # Uno strumento eseguito e nessuna risposta visibile e' il guasto
+        # segnalato dall'utente: nella chat compariva la pastiglia
+        # «Eseguito consulta_progetto ✓» e poi piu' niente.
+        #
+        # Il risultato dello strumento serve a LUI, non al modello: consegnare
+        # un messaggio vuoto significa aver fatto il lavoro e buttarlo via. Qui
+        # si chiede di completare, una volta sola, con il risultato gia' in
+        # mano. Se anche questo giro non produce niente, si va avanti: meglio
+        # una risposta breve che un ciclo.
+        if strumenti_eseguiti and not full_text.strip():
+            log.info("[Chat] strumento eseguito senza risposta: chiedo di completare")
+            _push({"model_status": "✨ Compongo la risposta con i dati raccolti..."})
+            coalescer.flush()
+            tool_filter.flush()
+            tool_filter.reset()
+            router = _ThinkTagRouter()
+            if _prefill_injected:
+                router.inizia_nel_pensiero()
+            sollecito = list(messages) + [
+                {"role": "user", "content": (
+                    "Hai eseguito gli strumenti e hai i risultati. Adesso scrivi "
+                    "la risposta per l'utente: niente altri blocchi di strumento, "
+                    "solo il testo. Se i risultati non bastano, dillo in una riga."
+                )},
+            ]
+            _run_model_turn(sollecito)
+            coalescer.flush()
+            tool_filter.flush()
+
         clean_text, extracted_thinking = _clean_all_tags(full_text, message)
         thinking_out = "\n\n".join(t for t in (full_thinking, extracted_thinking) if t and t.strip())
 
@@ -1317,7 +1308,7 @@ def handle_chat(self):
 
         full_prompt = f"""{identity_header}
 
-{system_prompt}{mcp_tools_catalogue}{scheda_blocco}{project_structure}
+{system_prompt}{scheda_blocco}{project_structure}
 {today}
 
 ## ISTRUZIONI CREAZIONE E SALVATAGGIO FILE SU DISCO
@@ -1333,7 +1324,7 @@ Contenuto completo...
    - I file appartengono direttamente al nodo dell'Argomento (es. `data/analisi_1/teoria.md`, `data/analisi_1/grafico.html`).
    - MAI creare un sottoargomento con lo stesso nome dell'argomento padre (es. NON creare mai `data/analisi_1/01_analisi_1`).
    - Sottoargomenti distinti sono permessi SOLO se suddividono un argomento in sotto-concetti specifici e separati (es. `data/analisi_1/insiemi_numerici/spiegazione.md`).
-"""
+{mcp_tools_catalogue}"""
 
         # Extract and sanitize past chat history context
         raw_history = req.get("history") or req.get("context", {}).get("history", []) or req.get("messages", [])
@@ -1452,7 +1443,23 @@ Contenuto completo...
                 fixed_tokens = estimate_tokens(full_prompt, tokenizer) + estimate_tokens(final_user_turn, tokenizer)
 
             # Step 3: trim MCP catalogue if still overflowing
+            #
+            # Togliere il catalogo NON e' neutro: il modello continua a sapere
+            # che `consulta_progetto` esiste — glielo dice la scheda del
+            # progetto — ma perde il FORMATO con cui si chiama. Il risultato
+            # osservato e' un turno che annuncia «lasciami consultare la
+            # documentazione» e finisce li', senza emettere niente.
+            #
+            # Resta l'ultima risorsa prima di tagliare il messaggio
+            # dell'utente, ma da oggi lascia una traccia: una degradazione
+            # silenziosa di questo tipo si diagnostica solo per caso.
             if fixed_tokens > max_prompt_budget and mcp_tools_catalogue:
+                log.warning(
+                    "[Chat] catalogo strumenti rimosso dal prompt per far entrare "
+                    "il contesto (%d token su un tetto di %d): il modello sapra' "
+                    "i nomi degli strumenti ma non come chiamarli.",
+                    fixed_tokens, max_prompt_budget,
+                )
                 mcp_tools_catalogue = ""
                 full_prompt = f"{identity_header}\n\n{system_prompt}\n{today}\n"
                 messages[0]["content"] = full_prompt

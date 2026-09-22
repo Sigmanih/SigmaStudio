@@ -1,0 +1,56 @@
+{
+  "queue_id": "sigma_studio_migliorie",
+  "goal": "Sei correzioni, in ordine di leva. Chi scarica Sigma Studio usa SigmaEngine, il motore Python: il kernel Rust e' il motore nuovo e non entra in questa coda. Le prime quattro voci servono perche' la squadra riesca a chiudere i task — oggi nove run su nove hanno consumato tutti i turni senza consegnare. Le ultime due sono quello che l'utente tocca e la fiducia nella suite. Riferimento completo: PIANO_TASK.md nella radice.",
+  "items": [
+    {
+      "id": "s1_spezzare_il_task_grande",
+      "title": "Quando un agente ha speso meta' dei turni senza scrivere, proponigli la forma gia' pronta per spezzare il task",
+      "contesto": "Nove run su nove hanno consumato TUTTI i turni disponibili, con due esiti ricorrenti: «nessuna modifica prodotta entro i turni disponibili» e «lavoro prodotto ma non dimostrato». Il tool `queue_add` con il campo `replaces` esiste, e' documentato in core/harness/fanout.py attorno alla riga 150 dentro `_prompt_voce`, e NESSUN agente lo ha mai usato. Il motivo probabile: la via d'uscita sta in fondo a un prompt lungo, dopo l'obiettivo e le avvertenze, e chiede di comporre a mano un JSON con quattro campi annidati. Il ciclo sa gia' fare una cosa simile: `_recovery_directive` in core/harness/loop.py interviene quando l'agente esplora senza scrivere e gli impone l'azione.",
+      "da_fare": "1) In core/harness/loop.py trova dove si contano i turni improduttivi e dove `force_action_turn` viene acceso. 2) Aggiungi un secondo intervento, separato: quando l'agente ha superato la META' dei turni disponibili (`current_turn > max_turns // 2`) E il ledger non registra nessuna scrittura, emetti un messaggio che gli propone il blocco `queue_add` GIA' COMPILATO con il queue_id e l'item_id correnti, lasciando da riempire solo `items`. 3) Il messaggio deve dire in una riga perche' conviene: spezzare al dodicesimo turno vale piu' che arrivare al venticinquesimo senza aver dimostrato niente. 4) Deve comparire UNA VOLTA SOLA per run, non a ogni turno: un promemoria ripetuto diventa rumore e l'agente lo salta.",
+      "attenzione": "Il ciclo sa gia' se la coda esiste: il prompt del ventaglio riceve `queue_id`, ma la chat libera no. Se `queue_id` non c'e', il messaggio NON va emesso — proporre di spezzare una voce di una coda che non esiste manda l'agente a sbattere. Non toccare `_recovery_directive`: e' un meccanismo diverso, con i suoi test.",
+      "verify": "python -m pytest tests/test_fanout.py tests/test_lavoro_arrivato.py -q"
+    },
+    {
+      "id": "s2_test_lenti_marcati",
+      "title": "Marca i test che caricano un modello vero, cosi' la corsa veloce resta veloce",
+      "contesto": "La suite completa non chiude in tempi utili: almeno un test carica un GGUF vero tramite llama-server, e nell'output compaiono le righe di caricamento del modello ('model has unused tensor blk.64...'). Un secondo rallentamento — `server_health` che camminava trentamila file di build — e' gia' stato corretto oggi. Senza una marcatura, chi lavora non puo' avere un riscontro rapido e smette di eseguire la suite: e' il modo piu' diretto di perdere la rete di sicurezza.",
+      "da_fare": "1) Trova quali test caricano davvero un modello: esegui `python -m pytest tests --collect-only -q` per l'elenco, poi `python -m pytest tests -q --durations=20` e guarda i piu' lenti (se la corsa non chiude, usa `-x` e restringi per file). 2) Marca quei test con `@pytest.mark.lento` e dichiara il marker in pytest.ini con una descrizione. 3) In pytest.ini imposta `addopts = -m 'not lento'` cosi' la corsa predefinita e' quella veloce. 4) Documenta in una riga del README, nella sezione dei test, come si esegue anche la parte lenta: `pytest -m lento`.",
+      "attenzione": "Non cancellare ne' disabilitare nessun test: marcarli e' diverso da toglierli, e un test lento resta una prova valida. Misura la durata della corsa veloce PRIMA e DOPO e riportala nel riassunto: senza il numero non si sa se e' servito.",
+      "verify": "python -m pytest tests -q --collect-only > /dev/null && python -m pytest tests -q"
+    },
+    {
+      "id": "s3_budget_risposta",
+      "title": "Il ragionamento non deve mangiare il budget della risposta",
+      "contesto": "Osservato dal vivo: `finish_reason: \"length\"` con la risposta tagliata a meta' frase. `max_tokens` e' il tetto dell'OUTPUT, e per un modello che ragiona copre ragionamento PIU' risposta: con 4096 token e un ragionamento da 3500, alla risposta ne restano 596. La riserva che esiste in core/chat/chat_runner.py attorno alla riga 1428 — `reserve_for_answer` dentro `history_budget` — protegge il CONTESTO IN INGRESSO, che e' un'altra cosa. Da oggi il percorso sa se il modello ragionera': `thinking=wants_reasoning` arriva fino al template (vedi tests/test_canale_ragionamento.py, classe TestIlProfiloArrivaAlModello).",
+      "da_fare": "1) In core/chat/chat_runner.py, dove `prov_max_tokens` viene risolto (attorno alle righe 1500-1510), alza il tetto quando `wants_reasoning` e' vero: il ragionamento va considerato un costo aggiuntivo, non parte della risposta. Scegli il fattore guardando quanto ragiona davvero il modello in uso e scrivi nel codice perche' hai scelto quel numero. 2) Il tetto non deve mai superare la finestra di contesto disponibile meno il prompt: se lo supererebbe, resta al massimo possibile e lo dice nel log. 3) Aggiungi in tests/test_canale_ragionamento.py una classe che verifica il punto 1 e il punto 2 con due casi: profilo che ragiona e profilo che non ragiona.",
+      "attenzione": "L'avviso di troncamento esiste gia' e arriva all'interfaccia (core/chat/chat_runner.py riga 691, sigma_studio/src/components/Chat/core/useChatStreaming.js riga 574): NON toccarlo, serve ancora. Non cambiare core/think_channel.py.",
+      "verify": "python -m pytest tests/test_canale_ragionamento.py tests/test_effective_context.py -q"
+    },
+    {
+      "id": "s4_consuntivo_del_ventaglio",
+      "title": "Un resoconto complessivo del ventaglio, non cinquanta resoconti singoli",
+      "contesto": "`core/harness/resoconto.py` produce `run_report`, che e' per singolo run. Un lavoro da cinquanta voci produce cinquanta resoconti e nessuna vista d'insieme: chi guarda non ha modo di sapere cosa e' stato fatto nel complesso senza aprirli uno per uno. E' il punto 3 di STATO_HARNESS.md §8, ancora aperto.",
+      "da_fare": "1) Leggi core/harness/resoconto.py e core/harness/fanout.py per capire dove finisce ogni run e dove la coda tiene lo stato. 2) Aggiungi in resoconto.py una funzione che, data una coda, produce il consuntivo complessivo DAI FATTI: quante voci chiuse e quante no, quali file toccati in totale, quali verifiche eseguite e con che esito, e per le voci fallite il motivo dell'ultimo tentativo. 3) Come il resoconto di run, ogni riga deve venire da qualcosa che e' successo: una voce senza verifica riuscita si legge «il lavoro non e' dimostrato», non «fatto». 4) Il ventaglio lo emette come ultimo evento SSE, tipo `fanout_report`.",
+      "attenzione": "Non far scrivere il consuntivo al modello: un modello sa scrivere «ho verificato tutto» senza aver eseguito niente, e su questo progetto lo ha gia' fatto. I fatti stanno nella coda e nei ledger delle sessioni sotto var/dev_sessions.",
+      "verify": "python -m pytest tests/test_resoconto.py tests/test_fanout.py -q"
+    },
+    {
+      "id": "s5_dipendenze_fra_worktree",
+      "title": "Una voce che dipende da un'altra deve vedere il lavoro della prima anche senza consegna",
+      "contesto": "Punto 4 di STATO_HARNESS.md §8, ancora aperto: le dipendenze della coda non attraversano i worktree. Ogni lavoratore lavora nel proprio albero isolato, quindi una voce che dipende da un'altra vede il lavoro della prima SOLO dopo la consegna. Finche' `deliver` e' spento — che e' il modo in cui si lavora quando si vuole rivedere prima di pubblicare — le dipendenze non funzionano affatto, e `depends_on` diventa metadata morta.",
+      "da_fare": "1) Leggi core/harness/workqueue.py (come sono espresse le dipendenze) e core/harness/worktree.py (come nasce l'albero di un lavoratore). 2) Quando una voce dichiara `depends_on` e le voci da cui dipende sono `done`, il worktree del lavoratore deve PARTIRE dal lavoro di quelle voci, non da `main`: il branch da cui si dirama e' quello dell'ultima dipendenza chiusa. 3) Se le dipendenze chiuse sono piu' di una e i loro branch divergono, NON tentare una fusione automatica: la voce resta `blocked` e il motivo lo dice. 4) Scrivi un test che monta una coda con A e B dove B dipende da A, esegue A con `deliver` spento, e verifica che il worktree di B contenga il file scritto da A.",
+      "attenzione": "L'isolamento e' una delle quattro reti di sicurezza: il punto NON e' toglierlo, e' farlo partire dal posto giusto. Due lavoratori su voci indipendenti devono continuare a non vedersi — se questo test smette di valere, la correzione e' sbagliata.",
+      "verify": "python -m pytest tests/test_workqueue.py tests/test_isolamento_opzionale.py tests/test_fanout.py -q",
+      "depends_on": ["s4_consuntivo_del_ventaglio"]
+    },
+    {
+      "id": "s6_ci_minima",
+      "title": "Una CI che esegue la suite veloce e il controllo del kernel Rust",
+      "contesto": "Non c'e' nessun controllo automatico su `main`. Con la suite che torna veloce (voce s2) un workflow costa pochi minuti e vale molto: oggi l'unico modo di sapere che qualcosa si e' rotto e' che qualcuno esegua pytest a mano. Il kernel Rust vive in projects/sigma_engine_rust, che ha un repository proprio: `cargo check --workspace --all-targets` e `cargo test --workspace` girano puliti in pochi secondi.",
+      "da_fare": "1) Guarda cosa c'e' gia' in .github: se esiste un workflow, estendilo invece di crearne un altro. 2) Aggiungi un job che installa le dipendenze Python ed esegue la suite veloce (`python -m pytest tests -q`). 3) Aggiungi un job separato che, SE la cartella projects/sigma_engine_rust esiste, esegue `cargo check --workspace --all-targets` e `cargo test --workspace`; se non esiste, il job si salta senza fallire. 4) Il workflow parte su push e su pull request verso main.",
+      "attenzione": "Il kernel Rust e' un repository annidato senza remote: su una macchina di CI quella cartella sara' VUOTA. Per questo il job deve saltarsi da solo invece di fallire — un controllo che fallisce sempre viene disattivato dopo tre giorni, ed e' peggio di non averlo.",
+      "verify": "python -m pytest tests -q",
+      "depends_on": ["s2_test_lenti_marcati"]
+    }
+  ]
+}

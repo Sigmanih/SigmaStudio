@@ -43,6 +43,12 @@ const TAB_TO_FOLDER = {
   developer_studio: 'sigma_developer_lab',
   network_lab:     'sigma_network_lab',
 
+  // PCB Lab. Da non confondere con hardware_lab, che e' la telemetria:
+  // questo progetta circuiti stampati. Senza questa riga il modulo si
+  // installa, compare nel catalogo e apre una scheda vuota.
+  kicad_lab:       'sigma_kicad_lab',
+  pcb_lab:         'sigma_kicad_lab',
+
   // Knowledge & MCP
   knowledge:       'sigma_knowledge',
   // 'mcp_hub' non sta qui: e' una scheda del kernel, resa da McpHubTab, e non

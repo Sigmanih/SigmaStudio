@@ -284,6 +284,11 @@ class ExternalMCPServer(BaseMCPServer):
         self.server_id = spec.get("id") or uuid.uuid4().hex[:8]
         self.transport_kind = spec.get("transport", "stdio")
         self.default_safety = SAFE if spec.get("read_only") else SENSITIVE
+        # Tool annotations are hints the server makes about itself, not a
+        # security boundary: nothing stops a hostile server labelling a
+        # destructive tool read-only. They refine the safety class only for a
+        # server the operator has explicitly vouched for.
+        self.trust_annotations = bool(spec.get("trust_annotations"))
 
         super().__init__(
             name=spec.get("name") or f"MCP {self.server_id}",
@@ -353,6 +358,31 @@ class ExternalMCPServer(BaseMCPServer):
                 log.error("Server MCP '%s': %s", self.name, exc, exc_info=True)
                 return {"connected": False, "error": self._connect_error}
 
+    def _tool_safety(self, tool: Dict[str, Any]) -> str:
+        """The safety class for one remote tool.
+
+        Without `trust_annotations` every tool inherits the server's class, the
+        way this client has always behaved. That one class per server stops
+        working as servers grow: a hundred-tool server leaves the operator
+        approving a hundred reads, or marked `read_only` and waving through
+        every write. Where a server labels its tools, the labels can tell those
+        apart.
+
+        The refinement is one-directional. It grants SAFE only on an explicit
+        `readOnlyHint`, `destructiveHint` pins a tool to SENSITIVE whatever else
+        it claims, and anything unlabelled keeps the server's class.
+        """
+        if self.default_safety == SAFE or not self.trust_annotations:
+            return self.default_safety
+        annotations = tool.get("annotations")
+        if not isinstance(annotations, dict):
+            return self.default_safety
+        if annotations.get("destructiveHint") is True:
+            return SENSITIVE
+        if annotations.get("readOnlyHint") is True:
+            return SAFE
+        return self.default_safety
+
     def _import_tools(self) -> None:
         """Mirror the remote tool list as local registrations."""
         self._tools.clear()
@@ -368,9 +398,14 @@ class ExternalMCPServer(BaseMCPServer):
                 description=tool.get("description", ""),
                 input_schema=tool.get("inputSchema") or {"type": "object", "properties": {}},
                 handler=self._make_handler(name),
-                safety=self.default_safety,
+                safety=self._tool_safety(tool),
                 category="external",
             )
+            # Kept so the MCP tab can show why a tool was classed as it was,
+            # rather than presenting the verdict with no evidence.
+            annotations = tool.get("annotations")
+            if isinstance(annotations, dict):
+                self._tools[name]["annotations"] = dict(annotations)
 
         try:
             resources = self._transport.request("resources/list", timeout=HANDSHAKE_TIMEOUT)
@@ -422,5 +457,9 @@ class ExternalMCPServer(BaseMCPServer):
             "error": self._connect_error,
             "tools": len(self._tools),
             "read_only": self.default_safety == SAFE,
+            "trust_annotations": self.trust_annotations,
+            "sensitive_tools": sum(
+                1 for meta in self._tools.values() if meta.get("safety") == SENSITIVE
+            ),
             "connected_at": self._connected_at,
         }

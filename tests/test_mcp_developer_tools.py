@@ -468,3 +468,55 @@ class TestBridge:
         assert is_local_tool("read_file")
         assert is_local_tool("terminal")
         assert not is_local_tool("deps_audit")
+
+
+class TestIlContoNonCamminaTuttoIlDisco:
+    """`server_health` camminava l'albero intero, una volta per gruppo.
+
+    Senza potare nulla: `.git`, `node_modules`, `.venv` e soprattutto
+    `projects/*/target/`, che dopo una compilazione release di Rust arriva da
+    solo a oltre trentamila file. Quattro passate complete su quella mole
+    facevano passare il tool da istantaneo a minuti, e la suite di test
+    sembrava bloccata: si fermava sempre sullo stesso test.
+
+    Un tool di salute lento non viene usato, e un agente che lo chiama ci
+    perde il turno.
+    """
+
+    def test_le_cartelle_di_build_non_vengono_attraversate(self):
+        from core.modules.sigma_developer_lab.mcp_tools.health_server import (
+            CARTELLE_DA_SALTARE,
+        )
+
+        for cartella in ("target", "node_modules", ".git", ".venv", "__pycache__"):
+            assert cartella in CARTELLE_DA_SALTARE, cartella
+
+    def test_una_sola_passata_per_tutti_i_gruppi(self, tmp_path):
+        from core.modules.sigma_developer_lab.mcp_tools.health_server import (
+            _conta_per_gruppo,
+        )
+
+        (tmp_path / "a.py").write_text("x", encoding="utf-8")
+        (tmp_path / "b.js").write_text("x", encoding="utf-8")
+        rumore = tmp_path / "target" / "debug"
+        rumore.mkdir(parents=True)
+        (rumore / "c.py").write_text("x", encoding="utf-8")
+
+        conteggi = _conta_per_gruppo(
+            tmp_path, {"python": ["*.py"], "javascript": ["*.js"]})
+        assert conteggi == {"python": 1, "javascript": 1}, (
+            "il file dentro target/ non deve essere contato")
+
+    def test_il_rapporto_resta_rapido(self):
+        """Il test che avrebbe visto il blocco prima della suite intera."""
+        import time
+
+        from core.modules.sigma_developer_lab.mcp_tools.health_server import (
+            HealthMCPServer,
+        )
+
+        t0 = time.perf_counter()
+        esito = HealthMCPServer().call_tool("server_health", {"check_http": False})
+        durata = time.perf_counter() - t0
+        assert esito["isError"] is False
+        assert durata < 20.0, f"server_health ha impiegato {durata:.1f}s"

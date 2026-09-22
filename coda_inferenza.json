@@ -1,0 +1,75 @@
+{
+  "queue_id": "kernel_inferenza",
+  "goal": "Far fare inferenza vera al kernel Rust. Oggi e' un proxy: ci sono tutti i pezzi INTORNO all'inferenza (dequantizzazione Q4_K/Q8_0 con AVX2, tokenizer BPE, sampler, grammatica, KV-cache paginata, scheduler con prelazione, speculative decoding) e manca il centro — nessuna funzione prende i pesi e i token e produce i logits. Le voci qui sotto costruiscono quel centro, in ordine, e solo alla fine riaccendono le ottimizzazioni: accelerare qualcosa che non esiste non ha un criterio di successo. ATTENZIONE OPERATIVA: il worktree isolato NON contiene projects/sigma_engine_rust (e' un repository a se' ed e' escluso da .gitignore), quindi questa coda va eseguita con l'isolamento SPENTO, altrimenti ogni voce fallisce con 'percorso non trovato'.",
+  "items": [
+    {
+      "id": "i0_decisione_architettura",
+      "title": "Misura e proponi: forward pass proprio in Rust oppure binding a llama.cpp",
+      "contesto": "E' la decisione che condiziona tutte le voci successive, e va presa con i numeri, non a intuito. Due strade. (A) Scrivere il forward pass in Rust: controllo totale, i guardrail vivono nel kernel compilato, ma sono mesi di lavoro per raggiungere llama.cpp su correttezza e velocita'. (B) Caricare il modello tramite l'API C di llama.cpp e tenere sopra lo scheduler, la KV-cache, la telemetria e i guardrail gia' scritti: inferenza vera in giorni, e i guardrail — che sono l'obiettivo dichiarato — atterrano subito. Il resto del kernel (memoria gerarchica, prelazione, speculative) resta utile in entrambi i casi.",
+      "da_fare": "1) Misura il percorso attuale: Sigma Studio usa llama-server con Qwen3 27B Q4_K_S. Prendi TTFT e token al secondo su tre prompt di lunghezza diversa (breve, medio, lungo) e scrivili in un file di misura sotto projects/sigma_engine_rust/benchmarks/. 2) Stima il lavoro della strada (A): elenca le operazioni mancanti guardando cosa il modello richiede davvero — leggi crates/sigma-model/src/dequant.rs per capire cosa c'e' gia'. 3) Verifica se llama.cpp espone una libreria linkabile nella build che il progetto usa gia' (store/engine_runtime/): se c'e' un .dll/.so/.lib, la strada (B) e' a portata. 4) Scrivi in projects/sigma_engine_rust/DECISIONE_INFERENZA.md le due strade, i numeri misurati, il costo stimato di ciascuna e una raccomandazione motivata. NON scegliere da solo: la decisione e' dell'utente.",
+      "attenzione": "Questo task NON scrive codice di inferenza. Produce misure e un documento. Se ti accorgi di star scrivendo un forward pass, ti sei allargato: fermati e chiudi con il documento.",
+      "verify": "python -c \"import pathlib,sys; p=pathlib.Path('projects/sigma_engine_rust/DECISIONE_INFERENZA.md'); t=p.read_text(encoding='utf-8') if p.exists() else ''; sys.exit(0 if len(t)>1200 and 'llama.cpp' in t and 'token al secondo' in t.lower() else 1)\""
+    },
+    {
+      "id": "i1_caricamento_pesi",
+      "title": "Leggi un GGUF vero: header, metadati e tensori, senza copiarli in RAM",
+      "contesto": "crates/sigma-memory/src/lib.rs ha gia' ModelMemoryMap con parse_gguf_header, e crates/sigma-model/src/dequant.rs sa dequantizzare Q4_K e Q8_0 con AVX2. Manca il pezzo in mezzo: dato un GGUF, sapere QUALI tensori ci sono, di che forma, a che offset, e poter prendere una fetta di byte di ognuno senza copiarla. Senza questo non c'e' niente da far passare attraverso i layer.",
+      "da_fare": "1) Leggi crates/sigma-memory/src/lib.rs (ModelMemoryMap) e crates/sigma-memory/src/tensor_view.rs per vedere cosa esiste. 2) Estendi il parsing del GGUF fino all'elenco completo dei tensori: nome, tipo di quantizzazione, dimensioni, offset nel file. 3) Esponi una funzione che, dato un nome di tensore, restituisce una vista sui byte mappati (nessuna copia). 4) Scrivi i test usando un GGUF vero che sta gia' sul disco in D:/ModelliAI: verifica che il numero di tensori e i nomi dei primi cinque corrispondano a quelli che llama.cpp riporta per lo stesso file.",
+      "attenzione": "Non dequantizzare qui: questo task si ferma alla vista sui byte. Se il file non c'e' o non e' leggibile, il test deve SALTARE con un messaggio chiaro, non fallire: su un'altra macchina quel modello non esiste.",
+      "verify": "cd projects/sigma_engine_rust && cargo test -p sigma-memory --lib -q"
+    },
+    {
+      "id": "i2_forward_pass_cpu",
+      "title": "Il centro che manca: un forward pass CPU che produce logits veri",
+      "contesto": "Non esiste nessuna `fn forward`, nessun matmul, nessuna attention applicata, nessun ciclo sui layer. Tutto il resto del kernel aspetta questa funzione. L'obiettivo di questa voce e' la CORRETTEZZA, non la velocita': un forward pass lento ma giusto e' un kernel che funziona, uno veloce e sbagliato non e' niente.",
+      "da_fare": "1) Crea crates/sigma-model/src/forward.rs. 2) Implementa, per l'architettura Qwen3, il ciclo minimo: embedding lookup, e per ogni layer RMSNorm, proiezioni Q/K/V, RoPE, attention (puoi usare crates/sigma-model/src/simd_attention.rs se combacia), proiezione di output, RMSNorm, feed-forward SwiGLU, residui; infine la norma finale e la proiezione sul vocabolario. 3) Usa f32 ovunque: niente ottimizzazioni, niente SIMD, niente parallelismo in questa voce. 4) La KV-cache usa quella che c'e' gia' in sigma-memory, non una nuova.",
+      "attenzione": "La prova di correttezza NON e' che il codice giri: e' che i logits COINCIDANO con quelli di llama.cpp sullo stesso modello e sullo stesso prompt, entro una tolleranza che dichiari nel test. Prendi i logits di riferimento da llama-server (espone /completion con n_probs) e confrontali. Un forward pass che gira e produce numeri plausibili ma sbagliati e' il guasto peggiore: nessuno se ne accorge finche' le risposte non hanno senso.",
+      "verify": "cd projects/sigma_engine_rust && cargo test -p sigma-model --lib forward -q",
+      "depends_on": ["i1_caricamento_pesi"]
+    },
+    {
+      "id": "i3_collega_il_forward_alla_rotta",
+      "title": "Collega il forward pass a /v1/chat/completions, al posto del 503",
+      "contesto": "Oggi crates/sigma-network/src/lib.rs, quando nessun worker upstream risponde, restituisce 503 dicendo che non puo' generare — una scelta voluta: prima sintetizzava testo finto e lo presentava come risposta. Con il forward pass disponibile, quel ramo diventa il percorso vero: tokenizza, esegue i layer, campiona con il SamplerEngine che esiste gia', e restituisce i token decodificati.",
+      "da_fare": "1) Nel ramo senza upstream, sostituisci il 503 con: tokenizzazione del prompt, ciclo di generazione (prefill piu' decode incrementale usando la KV-cache), campionamento con SamplerEngine e i parametri della richiesta, decodifica con il Tokenizer. 2) TTFT e token al secondo vanno MISURATI con il cronometro e messi nella risposta: i campi ci sono gia' e oggi valgono null. 3) Lo streaming SSE deve emettere i token man mano che escono, non tutti alla fine. 4) Se il modello non e' caricato, il 503 resta: e' ancora la risposta giusta.",
+      "attenzione": "Non reintrodurre nessuna costante di prestazione: c'e' un test in sigma-bench che fallisce se tornano (`nessun_numero_di_prestazione_e_scritto_nel_sorgente`). Il percorso sintetico dietro SIGMA_FAKE_COMPLETIONS resta com'e', per le prove.",
+      "verify": "cd projects/sigma_engine_rust && cargo test -p sigma-network -p sigma-bench -q",
+      "depends_on": ["i2_forward_pass_cpu"]
+    },
+    {
+      "id": "i4_misura_prima_di_ottimizzare",
+      "title": "Un banco che misura t/s e TTFT del kernel contro llama.cpp, sullo stesso modello",
+      "contesto": "Da qui in poi ogni ottimizzazione ha bisogno di un numero prima e di un numero dopo. crates/sigma-bench oggi misura solo cio' che puo' misurare da solo (l'overhead del campionatore, la latenza dei tool) e dichiara esplicitamente cosa NON ha misurato: quella sezione `non_misurate` esiste per essere svuotata da questa voce.",
+      "da_fare": "1) Estendi sigma-bench con un confronto che esegue DAVVERO entrambi i lati sullo stesso modello e sullo stesso prompt: il kernel e llama-server. 2) Misura TTFT, token al secondo in decodifica, e throughput end-to-end. 3) Ripeti su tre lunghezze di prompt e riporta mediana e dispersione, non un valore solo: una misura singola su un modello locale non e' ripetibile. 4) Sposta le righe da `non_misurate` a `misurate` solo quando le prendi davvero.",
+      "attenzione": "Un confronto o esegue entrambi i lati o non e' un confronto. Se llama-server non e' raggiungibile, la riga resta in `non_misurate` dicendo cosa manca: non inventare il valore dell'altro lato.",
+      "verify": "cd projects/sigma_engine_rust && cargo test -p sigma-bench -q",
+      "depends_on": ["i3_collega_il_forward_alla_rotta"]
+    },
+    {
+      "id": "i5_riaccendi_le_ottimizzazioni",
+      "title": "Fai passare il forward pass per le ottimizzazioni gia' scritte, una alla volta, con il numero prima e dopo",
+      "contesto": "Il kernel ha gia' scritte, e testate in isolamento, parecchie ottimizzazioni che nessun token ha mai attraversato: simd_attention, flash_decoding, speculative_sampling, speculative_tree, pipelined_speculation, continuous_slots, work_stealing, core_affinity, preemption. Finora giravano su dati finti. Adesso c'e' un forward pass vero da farci passare.",
+      "da_fare": "1) Per OGNI ottimizzazione, nell'ordine: misura con il banco della voce i4, collegala al forward pass, rimisura, e scrivi le due cifre nel commit. 2) Se una non migliora, dillo e lasciala scollegata: un'ottimizzazione che non accelera niente e' codice da mantenere in cambio di nulla. 3) Comincia da simd_attention e flash_decoding, che agiscono sul percorso caldo; lo speculative decoding per ultimo, perche' richiede un modello draft e cambia la forma del ciclo.",
+      "attenzione": "Una alla volta, con la misura in mezzo. Collegarne tre insieme e poi misurare non dice quale ha funzionato, ed e' il modo piu' rapido di tenersi addosso quelle inutili. Se il guadagno e' sotto il 5%, trattalo come rumore finche' non lo ripeti tre volte.",
+      "verify": "cd projects/sigma_engine_rust && cargo test --workspace -q",
+      "depends_on": ["i4_misura_prima_di_ottimizzare"]
+    },
+    {
+      "id": "i6_guardrail_nel_kernel",
+      "title": "I guardrail dove non si possono aggirare: dentro il kernel compilato",
+      "contesto": "L'obiettivo dichiarato: Sigma deve essere giusto, un gran lavoratore, moralmente corretto — e l'unico posto dove un limite non si riscrive e' il kernel compilato. Un prompt si sovrascrive, un file Python si edita, un manifesto si cancella. Questa voce ha senso SOLO dopo che i token passano davvero dal kernel: finche' e' un proxy, i guardrail stanno sul lato che si puo' aggirare.",
+      "da_fare": "1) Scrivi in projects/sigma_engine_rust/GUARDRAIL.md quali limiti devono valere, in italiano e in modo verificabile: cosa il motore non deve generare, cosa non deve eseguire, cosa deve rifiutare anche se il prompt lo chiede. 2) Implementali nel percorso di generazione, dove i token passano: un limite applicato al prompt si aggira col prompt successivo, uno applicato ai token in uscita no. 3) Ogni limite deve avere un test che dimostra che regge anche con un prompt che cerca esplicitamente di aggirarlo. 4) Il rifiuto deve dire PERCHE' e restare leggibile: un limite che blocca in silenzio sembra un guasto.",
+      "attenzione": "Non ricopiare una lista generica di divieti: scrivi quelli che servono a questo prodotto e a chi lo usera'. E ricordati che i guardrail li leggera' anche chi cerca di aggirarli: nel documento va cosa vale, non come e' implementato.",
+      "verify": "cd projects/sigma_engine_rust && cargo test -p sigma-model -p sigma-network -q",
+      "depends_on": ["i3_collega_il_forward_alla_rotta"]
+    },
+    {
+      "id": "i7_worktree_con_il_kernel",
+      "title": "Rendi eseguibili dal ventaglio i task sul kernel",
+      "contesto": "Oggi nessuna voce che tocchi il kernel puo' essere eseguita da un lavoratore isolato: il worktree creato con `git worktree add` non contiene projects/sigma_engine_rust, perche' e' un repository a se' ed e' escluso da .gitignore. L'agente esegue `cd projects/sigma_engine_rust` in un albero dove quella cartella non esiste, legge 'percorso non trovato', e riprova: e' il ciclo osservato su ac1 e su cargo test. La guardia anti-ciclo ora lo ferma, ma fermarlo non lo rende eseguibile.",
+      "da_fare": "1) Leggi core/harness/worktree.py per vedere come nasce l'albero di un lavoratore. 2) Dopo la creazione del worktree, se la voce dichiara di lavorare sul kernel, clona il repository del kernel dentro il worktree dal suo remote (C:/Users/Sigma/SigmaKernel.git) al commit corrente. 3) Se il clone non riesce, la voce NON deve partire: deve fallire subito dicendo perche'. Far partire un agente in un albero senza i file che il task nomina e' il modo piu' sicuro di bruciargli tutti i turni. 4) Scrivi un test che crea un worktree per una voce marcata come 'kernel' e verifica che projects/sigma_engine_rust/Cargo.toml ci sia.",
+      "attenzione": "Il kernel dentro il worktree e' una COPIA: il lavoro fatto li' va poi spinto sul suo repository, non applicato all'albero principale come gli altri file. Se non sai come chiudere quel passaggio, fermati dopo il punto 3 e scrivilo nel riassunto invece di inventare una consegna.",
+      "verify": "python -m pytest tests/test_isolamento_opzionale.py tests/test_fanout.py -q"
+    }
+  ]
+}

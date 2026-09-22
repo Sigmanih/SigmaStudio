@@ -564,13 +564,28 @@ def parse_thinking_and_content(raw_text: str, provider_thinking: str = None) -> 
     thinking = provider_thinking or ""
     content = str(raw_text).strip()
     
-    # 1. XML <think>...</think> tags
-    think_match = re.search(r'<think>(.*?)</think>', content, re.DOTALL | re.IGNORECASE)
-    if think_match:
-        extracted = think_match.group(1).strip()
-        thinking = f"{thinking}\n{extracted}".strip() if thinking else extracted
-        content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL | re.IGNORECASE).strip()
-        
+    # 1. I tag di ragionamento: li separa `core/think_channel.py`, lo stesso
+    #    modulo che usano la chat in streaming e il ciclo dell'agente.
+    #
+    #    Qui c'era la QUARTA implementazione della stessa regola, con il
+    #    difetto che avevano tutte: `re.search(r'<think>(.*?)</think>')` prende
+    #    la prima chiusura che trova, ovunque sia. Quando il modello ragiona
+    #    *sui* tag — e lo fa ogni volta che gli si chiede di diagnosticare un
+    #    output rotto — quel `</think>` citato a meta' frase tagliava il blocco
+    #    li', e il resto del ragionamento finiva nella risposta.
+    #
+    #    Questo percorso non passa dallo streaming: `assistant_orchestrator` e
+    #    `execute_loop` chiamano `call_ai_model`, non il router. Finche' la
+    #    regola e' rimasta duplicata qui, la correzione fatta dall'altra parte
+    #    non li copriva.
+    from core.think_channel import separa
+
+    risposta, ragionamento = separa(content)
+    if ragionamento.strip():
+        thinking = (f"{thinking}\n{ragionamento.strip()}".strip()
+                    if thinking else ragionamento.strip())
+        content = risposta.strip()
+
     # 2. Heuristic reasoning headers (Analyze User Input, Identify Intent, Persona Check, Draft, etc.)
     reasoning_keywords = [
         'Analyze User Input', 'Identify Key Concepts', 'Structure the Response',
@@ -1136,7 +1151,8 @@ def call_anthropic(
 
 def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, api_key,
                          temperature, max_tokens, top_p, request_timeout,
-                         params=None, cancel=None, tools=None, tool_choice=None):
+                         params=None, cancel=None, tools=None, tool_choice=None,
+                         thinking=None):
     """
     Unified generator yielding chunks of tokens.
 
@@ -1156,6 +1172,15 @@ def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, a
             messages=messages, temperature=temperature,
             max_tokens=max_tokens, model_name=model,
             params=params, cancel=cancel,
+            # `thinking` esisteva gia' fino in fondo — `generate_stream` lo
+            # accetta e il backend lo traduce in
+            # `chat_template_kwargs.enable_thinking` per llama-server — ma
+            # nessun chiamante lo passava. Risultato: il template Qwen3
+            # restava in modalita' ragionamento anche per i profili che
+            # chiedono una risposta diretta, e il modello ragionava **senza
+            # tag**: quel monologo finiva nella bolla della risposta e
+            # mangiava il budget di token prima di arrivare alla risposta.
+            thinking=thinking,
         )
 
     route_provider = provider

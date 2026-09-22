@@ -5,6 +5,9 @@ from core.mcp.client import ExternalMCPServer
 from core.mcp.mcp_hub import mcp_hub, MCPHub
 
 __all__ = [
+    "MCPHub",
+    "mcp_hub",
+
     "BaseMCPServer",
     "SAFE",
     "SENSITIVE",

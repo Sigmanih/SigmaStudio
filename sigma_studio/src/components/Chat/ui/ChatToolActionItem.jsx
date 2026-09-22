@@ -200,12 +200,12 @@ export default function ChatToolActionItem({
             </div>
           ) : (
             <span style={{
-              color: '#adbac7',
+              color: isSuccess ? '#adbac7' : '#ff7b72',
               textOverflow: 'ellipsis',
               overflow: 'hidden',
               whiteSpace: 'nowrap'
             }}>
-              {action.message || error || tool}
+              {isSuccess ? (action.message || tool) : (error || action.message || tool)}
             </span>
           )}
         </div>

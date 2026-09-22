@@ -415,6 +415,24 @@ def richiesta_ammette_inglese(domanda: str) -> bool:
 _FRAZIONE_MINIMA_SUPERSTITE = 0.25
 
 
+#: Un recinto di codice o un frammento fra backtick: li' dentro un tag e'
+#: contenuto, non un involucro da togliere.
+_PEZZI_DI_CODICE = re.compile(r"```[\s\S]*?```|`[^`\n]*`")
+_TAG_GENERICO = re.compile(r"</?[a-zA-Z_][a-zA-Z0-9_]*>")
+
+
+def _pulisci_tag_fuori_dal_codice(testo: str) -> str:
+    """Toglie i tag XML dalla prosa, lasciando intatto il codice."""
+    fuori = []
+    ultimo = 0
+    for pezzo in _PEZZI_DI_CODICE.finditer(testo):
+        fuori.append(_TAG_GENERICO.sub("", testo[ultimo:pezzo.start()]))
+        fuori.append(pezzo.group())
+        ultimo = pezzo.end()
+    fuori.append(_TAG_GENERICO.sub("", testo[ultimo:]))
+    return "".join(fuori)
+
+
 def _clean_all_tags(content: str, domanda: str = "") -> tuple[str, str | None]:
     """Remove all container/thinking tags and extract thinking text.
 
@@ -442,14 +460,17 @@ def _clean_all_tags(content: str, domanda: str = "") -> tuple[str, str | None]:
     if process_thinking:
         extracted = process_thinking
 
-    # 1 \u2014 Extract thinking from XML tags
-    if not extracted:
-        for pattern in _TAG_PATTERNS["thinking"]:
-            match = re.search(pattern, remaining, re.DOTALL | re.IGNORECASE)
-            if match:
-                extracted = match.group(1).strip()
-                remaining = re.sub(pattern, "", remaining, flags=re.DOTALL | re.IGNORECASE).strip()
-                break
+    # Lo stadio 1 \u2014 estrazione del ragionamento dai tag XML \u2014 non c'e' piu'.
+    #
+    # Lo faceva gia' `core/think_channel.py`, e ora TUTTI i chiamanti ci
+    # passano: la chat in streaming, il ciclo dell'agente e \u2014 da oggi \u2014 anche
+    # `parse_thinking_and_content`, che serve `assistant_orchestrator` e
+    # `execute_loop`. Farlo due volte puo' solo togliere risposta vera, perche'
+    # questa passata lavora su un testo in cui i tag rimasti sono contenuto.
+    #
+    # Gli stadi che restano coprono le forme SENZA tag, che nessun router puo'
+    # vedere: il blocco "Here's a thinking process", il marcatore "done
+    # thinking.", i monologhi a elenco e l'autoanalisi in inglese.
 
     # 2 \u2014 Remove container tags
     for pattern in _TAG_PATTERNS["container"]:
@@ -489,8 +510,23 @@ def _clean_all_tags(content: str, domanda: str = "") -> tuple[str, str | None]:
         if extracted and len(remaining) < len(prima_di_lingua) * _FRAZIONE_MINIMA_SUPERSTITE:
             remaining, extracted = prima_di_lingua, None
 
-    # 6 \u2014 Generic XML tag cleanup
-    remaining = re.sub(r"</?[a-zA-Z_][a-zA-Z0-9_]*>", "", remaining).strip()
+    # 6 \u2014 Generic XML tag cleanup, ma NON dentro il codice.
+    #
+    # Questa riga cancellava ogni tag da tutta la risposta, recinti
+    # compresi. Per un assistente che scrive codice e' distruttivo, e si
+    # vedeva:
+    #
+    #   "Il tag `</think>` chiude"        ->  "Il tag `` chiude"
+    #   un recinto ```html``` con <div>   ->  il div sparito, resta il testo
+    #   "Usa `<Button>` dentro `<Form>`"  ->  "Usa `` dentro ``"
+    #
+    # Un esempio HTML o JSX non poteva arrivare all'utente, e una
+    # spiegazione che nominava un tag lasciava due backtick vuoti: gli
+    # stessi che rompevano il markdown da li' in poi.
+    #
+    # La pulizia serve ancora per i tag di contenitore che alcuni modelli
+    # mettono attorno alla risposta, quindi resta \u2014 ma solo sulla prosa.
+    remaining = _pulisci_tag_fuori_dal_codice(remaining).strip()
 
     # 7 \u2014 Excessive blank lines
     remaining = re.sub(r"\n{3,}", "\n\n", remaining)

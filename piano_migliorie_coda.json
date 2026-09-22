@@ -1,14 +1,14 @@
 {
   "queue_id": "migliorie_kernel_2026_09",
-  "goal": "Esecuzione autonoma della Tranche AC1 del micro-kernel Rust: Asynchronous Speculative Drafting Pipeline & Double-Buffered Logit Streaming.",
+  "goal": "Esecuzione autonoma del Task AC3 del micro-kernel Rust: Multi-Tier Priority Preemption Engine.",
   "items": [
     {
-      "id": "ac1_speculative_pipelining",
-      "title": "Asynchronous Speculative Drafting Pipeline con Double-Buffered Logits nel Micro-Kernel Rust",
-      "contesto": "Nello Speculative Sampling corrente (speculative_sampling.rs e speculative_tree.rs), la generazione dei draft token e la verifica target avvengono in modo strettamente sequenziale: Draft(K) -> Wait -> TargetVerify(K) -> Rollback/Accept. Questo lascia i core assegnati al draft model inattivi durante la verifica target, e viceversa, sprecando fino al 40% del tempo di calcolo complessivo. Con il double-buffering asincrono, mentre il modello target valida il batch di token dello step N, il draft worker genera in background sul suo core dedicato i token speculativi per lo step N+1.",
-      "da_fare": "1) Crea il file `crates/sigma-model/src/pipelined_speculation.rs` con la struttura `PipelinedSpeculationEngine`. 2) Implementa un meccanismo di double-buffering atomico (`DoubleBuffer<Vec<f32>>` o ping-pong swap) per ospitare i logit/probabilità dello step corrente e di quello successivo senza allocazioni heap nel ciclo caldo. 3) Implementa la coordinazione asincrona o lock-free tra `DraftStage` e `VerifyStage`: mentre Verify convalida lo step N, Draft calcola lo step N+1. In caso di rejection e rollback allo step N, il buffer speculativo di N+1 viene invalidato istantaneamente e riallineato con il token di correzione emesso dal target. 4) Esporta la nuova pipeline e i tipi in `crates/sigma-model/src/lib.rs`. 5) Scrivi test unitari esaustivi in `pipelined_speculation.rs` che verifichino: corretto swap dei buffer senza memory leak, gestione del rollback con invalidazione del draft anticipato, e calcolo dello speedup cumulativo.",
-      "attenzione": "Rispetta rigorosamente AGENTS.md: commenti in italiano che spiegano il perché, percorsi con std::path/pathlib, nessun unwrapping non gestito nel percorso critico, compatibilità assoluta sia con Windows 11 sia con Raspberry Pi 5 (aarch64). Non toccare le cartelle protette data/, config/, store/ e non aggiungere dipendenze a Cargo.toml.",
-      "verify": "cd projects/sigma_engine_rust && cargo test -p sigma-model --lib pipelined_speculation && cargo test --workspace",
+      "id": "ac3_priority_preemption",
+      "title": "Multi-Tier Priority Preemption Engine nel Micro-Kernel Rust",
+      "contesto": "Nel Continuous Batching Scheduler, i task critici di sistema (es. circuit breaker, comandi di stop utente, interventi di emergenza) non possono attendere che i task lunghi di generazione a bassa priorità completino tutti i loro token (fino a 2048). Serve un meccanismo di prelazione preemptive-resume che salvi istantaneamente lo snapshot del contesto del task preempted e lo ripristini appena il task critico ha terminato.",
+      "da_fare": "1) Crea il file `crates/sigma-scheduler/src/preemption.rs` implementando la struct `PreemptionEngine`. 2) Definisci lo stato `PreemptedTaskContext` con task_id, priority, token generati finora e puntatori alle pagine KV allocate. 3) Implementa i metodi `preempt_task(&self, victim_slot_id: usize) -> Result<PreemptedTaskContext, String>` e `resume_task(&self, context: PreemptedTaskContext) -> Result<usize, String>`. 4) In `PreemptionEngine`, gestisci la priority queue dei task sospesi con garanzia di ripresa FIFO a parità di priorità (nessuno starvation). 5) Esporta in `crates/sigma-scheduler/src/lib.rs`. 6) Scrivi test unitari esaustivi in `preemption.rs` che verifichino: prelazione corretta del task con priorità più bassa, salvataggio/ripristino dello stato del contesto senza perdita di token, e assenza di starvation.",
+      "attenzione": "Rispetta le convenzioni AGENTS.md: commenti in italiano che spiegano il perché, nessun unwrap() non protetto nel percorso critico, compatibilità Windows 11 e Raspberry Pi 5 aarch64, zero dipendenze aggiunte al Cargo.toml.",
+      "verify": "cd projects/sigma_engine_rust && cargo test -p sigma-scheduler --lib preemption && cargo test --workspace",
       "depends_on": []
     }
   ]

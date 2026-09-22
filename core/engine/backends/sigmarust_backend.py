@@ -765,7 +765,16 @@ class SigmaRustBackend(InferenceBackend):
             log.debug("[SigmaRustBackend] Impossibile delegare a backend alternativo: %s", b_exc)
 
         # 3. Streaming nativo ad altissima velocità via IPC micro-kernel (Named Pipe o Unix Socket)
-        if self._client and self._client.is_ipc_connected:
+        #
+        # `self._client` non e' mai esistito: la classe crea `_ipc_client`
+        # tramite `_get_ipc_client()`, come fanno gia' gli altri due punti che
+        # usano l'IPC. Il nome sbagliato sollevava AttributeError *prima* del
+        # try qui sotto, quindi l'eccezione usciva dal generatore e il fallback
+        # HTTP del passo 4 non veniva mai raggiunto: ogni generazione del
+        # kernel Rust moriva, e il ciclo dell'agente bruciava tutti i suoi
+        # turni sullo stesso errore senza produrre un token.
+        client = self._get_ipc_client()
+        if client and client.is_ipc_connected:
             ipc_payload = {
                 "op": "generate_stream",
                 "request_id": f"req_{int(time.time()*1000)}",
@@ -775,7 +784,7 @@ class SigmaRustBackend(InferenceBackend):
                 "max_tokens": params.max_tokens if params else max_tokens,
             }
             try:
-                stream_iter = self._client.stream_tokens_ipc(ipc_payload, cancel=cancel)
+                stream_iter = client.stream_tokens_ipc(ipc_payload, cancel=cancel)
                 has_yielded = False
                 for token_chunk in stream_iter:
                     has_yielded = True
