@@ -5,7 +5,7 @@ guida un lavoro grande da dentro Sigma Studio.
 
 | | |
 |:---|:---|
-| Test verdi | **1784** |
+| Test verdi | **2511 raccolti** — tre moduli non si raccolgono, vedi §14 |
 | Build frontend | verde (~0,9 s) |
 | `npm run lint:undef` | 0 riferimenti non definiti |
 | Punti dell'audit tecnico | 11 / 11 chiusi |
@@ -714,3 +714,221 @@ I tag espliciti — `<think>`, `...done thinking` — non hanno rete e non ne ha
 bisogno: lì non c'è niente da indovinare, il modello ha detto lui dov'era il
 ragionamento. La rete serve solo alle euristiche che tirano a indovinare, ed è
 una distinzione che vale ovunque ce ne siano.
+
+---
+
+## 14. La ricerca che trovava sé stessa · 23 settembre 2026
+
+Un run del Developer Studio ha consumato **30 turni su 30 senza scrivere una riga**:
+pipeline a tre voci, la prima chiusa, la seconda mai cominciata. Zero errori dei
+tool, zero rifiuti, dodici ricerche. L’agente non sbagliava: non trovava, e le
+tre cause erano tutte fuori di lui.
+
+### Misure, non impressioni
+
+| Fatto | Prima | Adesso |
+|:---|:---|:---|
+| `def stream_admin_agent_turn` | 8 corrispondenze, **7 dentro `var/`**, 3 erano il log di quella stessa ricerca | 1, in `core/harness/loop.py` |
+| `def _esegui_voce` | 5 risultati, 4 in copie morte nei worktree di run finiti | 1, in `core/harness/fanout.py` |
+| `queue_id` | 50 risultati (tetto), i primi nei file di coda della radice: `workqueue.py` mai raggiunto | il tetto non si consuma piu’ fuori dal codice |
+| Finestre lette di `loop.py` (4212 righe) | 1-1200 e 2400-2899, e la firma cercata stava alla **riga 2132** | lo stato nomina il buco: «manca 1201-2399» |
+| Rifiuto della rilettura | «chiedila con un offset esplicito» | porta la chiamata pronta: `"offset": 1201, "limit": 800` |
+| Turni improduttivi | mai contati: ogni successo li azzerava, il recupero non e’ mai entrato in scena | una ricerca ripetuta non conta come progresso |
+| Turni consumati | invisibili al modello | «Turni: 19 di 30 — nessuna scrittura, la meta’ era il turno 15» |
+| Spezzare la voce | `queue_add` documentato in fondo al prompt, mai usato da nessuno | forma pronta a meta’ turni, una volta sola per run |
+
+### Le tre cause, e cosa e’ cambiato
+
+1. **La ricerca trovava sé stessa.** Sessioni salvate, worktree dei run finiti e
+   indice semantico stanno dentro la cartella cercata: 4657 file in `var/`, di cui
+   4 copie integre di `loop.py`. Il contatore delle corrispondenze cresceva di uno
+   a ogni tentativo — 6, 7, 8 — perche’ la ricerca leggeva se’ stessa. Ora
+   `SEARCH_IGNORE_RUNTIME_DIRS` tiene `var`, `store` e `logs` fuori dall’albero
+   (un percorso chiesto esplicitamente resta visitabile) e `SEARCH_FIRST_DIRS`
+   decide l’ordine di visita: prima il codice, poi le note.
+2. **Un file letto a pezzi non e’ un file letto.** Il ledger sapeva dire «lo letto
+   righe 1-1200, 2400-2899 di 4212» e non lo diceva a nessuno. Ora lo dice, e
+   nomina cioé che manca; una finestra mai vista non viene piu’ rifiutata come una
+   rilettura, e lo stadio `gap` del recupero impedisce di ripetere «scrivi ORA» a
+   chi deve soltanto leggere.
+3. **Il ciclo non sapeva cosa gli mancava.** Vedeva cioé che l’agente aveva
+   fatto, mai cioé che non aveva: nessun turno, nessun conto alla rovescia,
+   nessuna via d’uscita pronta. Ora i turni sono nello stato, la via d’uscita
+   arriva compilata, e `queue_id`/`item_id` sono parametri del ciclo invece che
+   testo dentro il prompt (era questa la ragione per cui la voce di coda
+   `s1_spezzare_il_task_grande` non era implementabile nei file che dichiarava).
+
+### Come si prova
+
+```
+python -m pytest tests/test_ricerca_stato_di_runtime.py tests/test_finestre_di_lettura.py tests/test_mappa_dei_file.py tests/test_meta_dei_turni.py -q
+python tools/controlla_ricerca_stato.py     # ultima riga: SIGMA-CHECK
+```
+
+Il controllo dichiara quanti elementi ha esaminato: se esamina zero, non vale.
+
+### Il debito che resta
+
+Tre moduli di test **non si raccolgono** in questo ambiente — `tests/test_local_ca.py`
+e `tests/test_sigma_network.py` chiedono `cryptography`, `tests/test_pdf_support.py`
+chiede `fitz` — e `pytest tests/` si ferma in collection. I «1784 test verdi» di
+questo documento non erano riproducibili qui: il numero vero, senza quei tre, e’
+**2511 raccolti in 1,89 s**. Fincheé la suite non esce con un totale che si puo’
+confrontare, la CI del §4.2 misurerebbe il vuoto.
+
+---
+
+## 15. L hub MCP raggiungibile da fuori · 23 settembre 2026
+
+I tool che scrivono file nel Developer Studio **non erano tool MCP**: erano
+`LOCAL_TOOLS` del ciclo, e l hub non li vedeva. Un agente esterno — un IDE,
+un assistente collegato — non poteva scrivere con le stesse garanzie degli
+agenti locali (backup, controllo di sintassi, diagnostica, registro) e finiva
+per usare la shell: e il caso dei dieci estratti in `tools/*_src.txt`, tutti in
+UTF-16 e invisibili al ledger.
+
+Adesso ci sono due trasporti stdio, entrambi processi figli avviati dal client:
+
+| comando | cosa espone |
+|:---|:---|
+| `python -m core.modules.sigma_developer_lab.mcp_tools.fs_stdio` | la porta minima: i cinque tool dei file (`read_file_window`, `edit_file_exact`, `write_file`, `append_file`, `read_write_journal`), **con** la policy e l assenso. E `hub_stdio` con il filtro fisso su `Developer Files`, non un server a se |
+| `python -m core.modules.sigma_developer_lab.mcp_tools.hub_stdio` | **tutti** i tool accesi dell hub, filtrati dalla sua policy |
+
+**La policy vale anche per chi arriva da fuori.** L elenco passa da
+`get_aggregated_tools(only_enabled=True)` e ogni chiamata da `execute_tool`: un
+tool spento nella scheda MCP e spento anche qui, un server disattivato non
+compare, e un tool SENSITIVE passa dallo stesso cancello di assenso degli agenti
+interni. Si spegne come ogni altro server: quando e spento, il processo figlio
+non vede piu nulla.
+
+**Cosa funziona qui oggi** (misurato): `Developer Files` (4), `Developer Tests`
+(4), `Semantic Code Search` (4), `Developer Git` (10), `Developer Dependencies`,
+`Developer Health`, `Developer Supervisor`. `Developer Lint` si elenca ma
+rifiuta con il motivo: manca `ruff` in questo ambiente.
+
+**Come si collega** (impostazioni MCP del client, con i percorsi di questa
+macchina):
+
+```json
+{
+  "mcpServers": {
+    "sigma-studio": {
+      "command": "C:/Users/Sigma/Desktop/Sigma_Studio/.venv/Scripts/python.exe",
+      "args": ["-m", "core.modules.sigma_developer_lab.mcp_tools.hub_stdio"],
+      "cwd": "C:/Users/Sigma/Desktop/Sigma_Studio",
+      "env": {
+        "SIGMA_WORKSPACE_ROOT": "C:/Users/Sigma/Desktop/Sigma_Studio",
+        "SIGMA_MCP_ONLY": "Developer Files,Developer Tests,Semantic Code Search,Developer Git"
+      }
+    }
+  }
+}
+```
+
+`SIGMA_MCP_ONLY` non e un dettaglio: senza, il client si porta in contesto una
+sessantina di tool a ogni turno. Con il filtro, diciannove.
+
+**Come si prova**: `python -m pytest tests/test_mcp_fs_server.py
+tests/test_mcp_hub_stdio.py -q` — 23 test, compresi il rifiuto di un percorso
+fuori dalla radice, il troncamento involontario, la sparizione di un tool
+disattivato e la purezza del canale (su stdout solo messaggi JSON-RPC: una riga
+di log li dentro e un messaggio che il client non sa leggere, e succedeva).
+
+---
+
+## 16. L'assenso che attraversa i processi, e la mappa che sa di essere vecchia · 23 settembre 2026
+
+**L'assenso sui tool sensibili non funzionava per chi arriva da fuori.** Due
+difetti in uno. Il primo: le richieste in attesa vivevano in un dizionario in
+memoria, e chi deve approvarle — l'app — è un processo diverso, quindi un
+client collegato via stdio non poteva essere approvato da nessuno: o la
+modalità automatica era accesa e scriveva senza chiedere, o restava muto e
+ripiegava sulla shell. Il secondo, peggiore: l'identificativo della richiesta
+tornava al richiedente e `take_approval` non chiedeva *chi* lo stesse
+prendendo. Cioè il client poteva auto-approvarsi riprovando con
+l'identificativo che la richiesta stessa gli aveva appena consegnato: un
+cancello che si apre dall'interno non è un cancello.
+
+Adesso: una richiesta che nasce fuori dall'app vive in un file in
+`var/mcp/approvals/` (un JSON per richiesta, scrittura atomica), l'app la vede
+in `/api/mcp/pending`, l'umano decide, **l'app esegue** e scrive l'esito dove
+chi aspetta lo legge. La regola è una: **chi chiede non approva**, mai —
+`take_approval(request_id, client=...)` non restituisce niente a un chiamante
+esterno, qualunque identificativo mostri. Due tool di servizio, sempre presenti
+anche sotto `SIGMA_MCP_ONLY`, danno al client il ciclo completo:
+`approval_status` (cosa attende) e `await_approval` (aspetta il verdetto e
+restituisce l'esito, con timeout dichiarato).
+
+Verificato da `tests/test_assenso_client_esterno.py` (14 test), compreso il
+giro fra **due processi veri**: il figlio chiede, il padre vede la richiesta
+sul disco, approva, esegue, e il figlio riceve l'esito attraverso il file.
+
+**Il diario delle scritture adesso dice chi.** Ogni riga porta `chi` (da
+`SIGMA_MCP_CLIENT`, o `sigma-studio` per l'app) e `pid`, ha un lettore
+(`read_write_journal`, SAFE, filtrabile per percorso ed esito) e gira pagina
+oltre 2 MB tenendo una sola pagina di storia: un file che cresce senza fine non
+è una traccia, è un disco che si riempie.
+
+**L'indice semantico sa di essere vecchio.** `index_status` rispondeva «esiste,
+creato il …» e nient'altro: dopo una scrittura `semantic_search` continuava a
+servire la mappa di prima, e un agente che scriveva e poi cercava lavorava su
+una mappa sbagliata senza saperlo. Ora conta i file **cambiati**, **nuovi** e
+**spariti** (con un tetto di 2 secondi per la passeggiata, e lo dichiara se si
+ferma), e ogni risultato di ricerca che viene da un file modificato dopo la
+costruzione porta `stale: true` addosso. Difetto trovato mentre lo
+costruivo: l'indice indicizzava **se stesso** (`index.json` è un `.json` nella
+radice), quindi si contava come file nuovo e si dichiarava sempre vecchio.
+
+Misurato su questo repository: indice costruito il **16 settembre**, 2380
+documenti, **106 file cambiati**, **127 nuovi**, **944 spariti**, scansione
+parziale dopo 713 candidati in 2 secondi. Cioè: per una settimana la ricerca
+semantica ha risposto da una mappa di sette giorni prima.
+
+**Il ragionamento non finisce più nella risposta.** `_clean_all_tags` aveva
+perso lo stadio che estrae i blocchi `<think>` espliciti, con la motivazione
+scritta in un commento — «ci passano tutti da `core/think_channel.py`» — che
+non era vera: `assistant_orchestrator` e `execute_loop` chiamano quella
+funzione senza passarci, e per loro il ragionamento del modello finiva nella
+bolla della risposta. Lo stadio è tornato, ma appoggiato a `think_channel.separa`
+invece che a una regex scritta lì: la sua regola è strutturale (un tag
+comanda solo se apre la riga) e idempotente, quindi non morde una risposta
+legittima. E la stessa regola ha corretto un difetto preesistente trovato dal
+test nuovo: lo stadio generico cancellava un tag *nominato* dentro una frase,
+riscrivendo la risposta («non ha emesso  e il testo si è rotto»).
+
+### I numeri
+
+| Prova | Esito |
+|:---|:---|
+| `pytest tests/` | **2616 passed, 3 failed, 4 skipped, 223 s** |
+| `test_assenso_client_esterno.py` | 14 (compreso il giro a due processi) |
+| `test_mcp_fs_server.py` | 21 (diario, rotazione, lettore) |
+| `test_indice_fresco.py` | 7 |
+| i tre rossi che restano | `cryptography` mancante, GBNF non compilabile qui, `test_scheda_progetto` |
+
+### 16.1 La porta minima aveva il cancello aperto · 23 settembre 2026
+
+`fs_stdio` non passava dalla governance: chiamava `DeveloperFsMCPServer`
+direttamente (`server.handle_json_rpc`), quindi nessuna policy, nessun assenso sui
+tre tool di scrittura - che sono SENSITIVE - e una docstring che prometteva il
+contrario. La traccia nel diario restava; il permesso no. Un client esterno
+scritto bene poteva scrivere nel workspace senza che un umano vedesse mai la
+richiesta.
+
+**Come e stato chiuso.** Non duplicando il cancello dentro `fs_stdio` - sarebbero
+diventate due regole da tenere allineate, e la seconda diverge sempre - ma
+facendone un **alias**: `hub_stdio` con il filtro fissato su `Developer Files`.
+Stessi cinque tool dei file, stessa policy, stesso assenso, una sola
+implementazione. Il costo e che il filtro limita l elenco, non l avvio: l hub
+costruisce i suoi server comunque (indice compreso). Renderlo pigro e il lavoro
+della voce s7 della coda.
+
+Il ciclo del protocollo e lo scambio di `sys.stdout` li prepara `hub_stdio`, e
+`fs_stdio` lo importa dentro `main` **prima** di qualunque altra cosa: due moduli
+che si scambiano `sys.stdout` a vicenda si rubano il canale, e il secondo a
+partire scriverebbe i messaggi su stderr, dove il client non li legge.
+
+**La prova** e `tests/test_mcp_fs_server.py::test_in_manuale_non_scrive_perche_il_cancello_c_e`:
+con la modalita automatica spenta, una scrittura da quella porta non avviene, la
+richiesta resta in attesa e la risposta dice di chiamare `await_approval`. Prima
+di questa correzione quel test sarebbe rosso, perche la scrittura avveniva.

@@ -31,20 +31,36 @@ di andare veloci senza accorgersi tardi di aver rotto qualcosa.
 
 Quattro difetti, tutti osservati oggi su run veri.
 
-### 1.1 · Il task troppo grande non viene spezzato · **alto**
+### 1.1 · Il task troppo grande non viene spezzato · **fatto**
 
 Nove run su nove hanno consumato **tutti** i turni disponibili. Due esiti
 ricorrenti: «nessuna modifica prodotta entro i turni disponibili» e «lavoro
 prodotto ma non dimostrato».
 
 `queue_add` con `replaces` esiste ed è documentato nel prompt del ventaglio —
-e nessun agente lo ha usato. Il motivo probabile è che la via d'uscita è
-descritta in fondo a un prompt lungo, dopo l'obiettivo e le avvertenze, e
-chiede di comporre a mano un JSON con quattro campi annidati.
+e nessun agente lo ha usato. Il motivo probabile è che la via d’uscita è
+descritta in fondo a un prompt lungo, dopo l’obiettivo e le avvertenze, e chiede
+di comporre a mano un JSON con quattro campi annidati.
 
-Va reso imboccabile: quando un agente ha speso metà dei turni senza scrivere
-niente, il ciclo deve **dirglielo e proporgli la forma già pronta** da
-riempire, come fa il turno di recupero con la scrittura forzata.
+Fatto il 23 settembre: a metà dei turni senza una sola scrittura il ciclo propone
+la forma pronta (`_proposta_di_spezzatura` in `core/harness/loop.py`), **una volta
+sola per run**, con `queue_id` e `item_id` già compilati; senza coda propone di
+aggiornare la pipeline. Perché la condizione «solo se c’è la coda» fosse
+esprimibile, `queue_id` e `item_id` sono diventati **parametri della firma** del
+ciclo, e `core/harness/fanout.py` li passa: prima viaggiavano solo dentro il testo
+del prompt, e il ciclo non sapeva di essere in una coda. I turni consumati sono ora
+scritti nello stato del lavoro, e una ricerca ripetuta non azzera più il contatore
+dei turni improduttivi — era quella la ragione per cui il recupero non entrava mai
+in scena.
+
+> **La premessa era sbagliata, ed è la seconda volta.** La voce diceva «il ciclo
+> sa già se la coda esiste». Vero per il *testo* del prompt, falso per il
+> *codice*: `fanout.py` passava `queue_id` a `_prompt_voce`, non a
+> `stream_admin_agent_turn`. Un agente che cerca la risposta nei file dichiarati
+> non può trovarla, e non può nemmeno dire di non averla trovata: il perimetro
+> assegnato non contiene la riga che gli serve. Vale la regola di fondo: prima di
+> scrivere in un task «questo dato arriva sempre così», si cercano **tutti** i
+> chiamanti — e se la correzione tocca un secondo file, quel file entra nel task.
 
 ### 1.2 · La sandbox si può finalmente accendere · **alto**
 
@@ -67,6 +83,61 @@ stato fatto nel complesso senza aprirli uno per uno.
 Una voce che dipende da un'altra vede il lavoro della prima solo dopo la
 consegna. Finché `deliver` è spento — che è il modo in cui si lavora quando si
 vuole rivedere prima — le dipendenze non funzionano affatto.
+
+---
+
+## Blocco 1b — Perché la squadra cercava e non trovava · **fatto**
+
+Tre difetti, misurati sul run del 23 settembre che ha consumato 30 turni su 30
+senza scrivere una riga: modello Qwen3.8-27B, pipeline a tre voci, voce 2 mai
+cominciata, **zero scritture, zero errori dei tool**. L’agente non sbagliava: non
+trovava. Le tre cause erano tutte fuori di lui.
+
+### 1b.1 · La ricerca trovava sé stessa
+
+`def stream_admin_agent_turn` dava **8 corrispondenze, 7 dentro `var/`**, di cui
+tre erano il log di quella stessa ricerca scritto un turno prima: il contatore
+cresceva di uno a ogni tentativo (6 → 7 → 8) perché la ricerca trovava sempre un
+po’ di sé. `def _esegui_voce` dava 5 risultati, 4 in copie morte nei worktree di
+run finiti. E `queue_id` esauriva il tetto dei 50 risultati sui file di coda
+scritti a mano nella radice, senza arrivare mai a `core/harness/workqueue.py`.
+
+Fatto: `SEARCH_IGNORE_RUNTIME_DIRS` in `core/harness/fs_manager.py` — `var`,
+`store`, `logs` non entrano nell’albero cercato, mentre un percorso chiesto
+esplicitamente resta visitabile — più `SEARCH_FIRST_DIRS` e
+`_voci_da_esaminare()`, che visitano prima `core/`, `tests/`, `tools/`, `sigma_studio/`,
+`projects/` e i file della radice per ultimi: il tetto non lo decide più l’ordine
+del filesystem. Il controllo che lo misura è `tools/controlla_ricerca_stato.py`,
+che dichiara quanti elementi ha esaminato.
+
+### 1b.2 · Un file letto a pezzi non è un file letto
+
+L’agente ha letto `core/harness/loop.py` (4212 righe) nelle finestre 1-1200 e
+2400-2899 e ha cercato per dieci turni una firma che stava alla **riga 2132**:
+dentro il buco. Il ledger sapeva dire «lo letto righe 1-1200, 2400-2899 di 4212»,
+ma nessuno nominava ciò che mancava, e il rifiuto della rilettura diceva «chiedila
+con un offset esplicito» lasciando il conto a chi non aveva in testa nemmeno la
+lunghezza del file. La stessa frase, ripetuta, ha bruciato cinque turni su
+`gguf_converter.py` e quattro su `pcb-lab.css`.
+
+Fatto: `FileRecord.missing_ranges()` e `coverage_note()` che dice **anche il buco**
+(`manca 1201-2399`), `DevSessionLedger.gap_windows()` che restituisce la finestra
+pronta, e in `core/harness/loop.py` il rifiuto che porta la chiamata da emettere
+("offset": 1201) o dichiara che il file è stato visto tutto. Durante il turno di
+recupero una finestra mai vista non viene più rifiutata come una rilettura, e lo
+stadio `gap` del recupero impedisce al ciclo di ripetere «scrivi ORA» a chi deve
+soltanto leggere il pezzo mancante. Il messaggio `has_more` dice quante righe
+restano.
+
+### 1b.3 · La mappa dei simboli non arrivava a chi lavora
+
+Il motore esisteva (`core/harness/symbol_index.py`, tool `find_symbol`) ma non era
+fra i tool del ruolo Coder e non entrava nello stato per i file citati
+nell’obiettivo: per un file di 4212 righe la prima finestra era una scelta cieca.
+
+Fatto: `outline_of_file()`, `find_symbol` fra i tool del Coder e nel prompt, e
+`_mappa_dei_file_citati()` che mette l’indice (nome + riga, con memo su mtime e
+taglia) nello stato finché quel file non è stato letto per intero.
 
 ---
 
@@ -165,6 +236,47 @@ workflow che esegue pytest e `cargo check` costa poco e vale molto.
 
 ---
 
+### 4.3 · Tre moduli di test non si raccolgono · **basso, ma blocca la CI**
+
+`tests/test_local_ca.py` e `tests/test_sigma_network.py` chiedono `cryptography`,
+`tests/test_pdf_support.py` chiede `fitz`. In questo ambiente **tre moduli non si
+raccolgono affatto** e `pytest tests/` si ferma in collection: i «1784 test
+verdi» di `STATO_HARNESS.md` non sono riproducibili qui, e senza un numero che si
+può confrontare la CI del 4.2 non serve a niente. Due strade, entrambe brevi:
+installare le due dipendenze, oppure marcare i tre moduli con
+`pytest.importorskip` così la suite esce con un totale dichiarato invece di
+fermarsi.
+
+**Risolto il 23 settembre**: i tre moduli ora dichiarano la dipendenza con
+`pytest.importorskip` **prima** degli import (e dopo `from __future__`, che deve
+restare la prima istruzione: scavalcarlo rende il file non parsabile), quindi la
+suite parte e l esito si legge. Misurato: **2574 test raccolti, zero errori di
+collection**, corsa completa **2568 passed / 4 failed / 1 skipped in 273 s**.
+
+E una misura che corregge un ipotesi della voce `s2`: **non ci sono test
+patologicamente lenti**. I piu pesanti sono `test_inference_wave1` (13,5 s),
+`test_inference_wave2` (8,9 s), `test_model_hub_scores` (5,2 s),
+`test_protocol_bench` (4,1 s), `test_llama_runtime` (3,2 s) e `test_gguf_compatibility`
+(2,0 s): in tutto ~40 s su 273, il 15%. La suite e lunga perche e **larga**
+(2574 test, ~106 ms l uno) e perche ogni file importa uno stack pesante; marcare
+i lenti guadagnerebbe un decimo del tempo, mentre il sottoinsieme per area ne
+guadagna il 90% - ed e gia la regola di `AGENTS.md`.
+
+(Prima di questa correzione, il conteggio era: **2511 test raccolti**
+(«2511 tests collected in 1.89s»), contro i 1784 dichiarati da `STATO_HARNESS.md`.
+
+Baseline di questa macchina, misurata il 23 settembre sulla suite completa:
+**2506 passed, 4 failed, 1 skipped, 140 subtests in 179 s**. I quattro fallimenti noti non
+toccano il lavoro di oggi, e per la CI vanno o corretti o dichiarati: `test_network_ssl_config`
+(manca `cryptography`), `test_provider_tools::test_la_grammatica_e_compilabile`
+(`compile_for_llama_cpp` in `core/engine/grammars.py` non compila in questo ambiente),
+`test_risposta_bilingue` (un `<think>` esplicito non viene tolto da `_clean_all_tags` in
+`core/ai_providers.py`), `test_scheda_progetto` (un ruolo di `Ruoli/` che la scheda non
+dovrebbe nominare). Un numero di partenza conosciuto e’ cio’ che rende utile un cancello.
+
+
+---
+
 ## La regola per scrivere i task, imparata sbagliando
 
 Il ventaglio di oggi ha chiuso **una voce su due**. Quella riuscita —
@@ -214,3 +326,11 @@ router condiviso, e solo allora lo stadio 1 è diventato davvero ridondante.
 | La quarta implementazione della separazione | `parse_thinking_and_content` delega al router |
 | Lo stadio 1 di `_clean_all_tags` | tolto, ora che ogni chiamante passa dal router |
 | L'errore del tool nel pannello | fatto dal ventaglio, voce chiusa al terzo tentativo |
+| La via d’uscita per spezzare un task | proposta pronta a metà turni, `queue_id` come parametro del ciclo |
+| La ricerca che trovava sé stessa | `var/`, `store`, `logs` fuori dall’albero cercato, ordine di visita scelto |
+| Le finestre di lettura | lo stato nomina il buco, il rifiuto porta la chiamata pronta |
+| La mappa dei simboli | `find_symbol` nel ruolo Coder, indice dei file citati nello stato |
+| I turni nello stato | «19 di 30, nessuna scrittura, la metà era il turno 15» |
+| La ripetizione non è progresso | una ricerca identica non azzera più i turni improduttivi |
+| L’auto-loop dell’interfaccia | manda la differenza, non la stessa stringa identica |
+| `max_turns` | esposto dalla richiesta, non più 30 fisso lato server |
