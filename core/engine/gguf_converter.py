@@ -1835,7 +1835,15 @@ class GgufConverter:
                 "per singolo tensore. Installa la build del motore dal Model Hub."
             )
 
-        from llama_cpp import llama_cpp as C
+        try:
+            from llama_cpp import llama_cpp as C
+        except Exception as exc:
+            raise RuntimeError(
+                "Nessun quantizzatore disponibile: manca sia la build del motore "
+                "(llama-quantize) sia il pacchetto Python 'llama-cpp-python'. "
+                "Installa uno dei due per procedere con la quantizzazione. "
+                "Dettaglio import: " + str(exc)
+            ) from exc
 
         ftype = getattr(C, "LLAMA_FTYPE_MOSTLY_" + quant_type, None)
         if ftype is None:

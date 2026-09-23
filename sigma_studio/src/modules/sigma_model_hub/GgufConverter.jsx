@@ -98,6 +98,14 @@ export default function GgufConverter({ isLight, addToast, initialModel, jobs = 
   const startConversion = async () => {
     setBusy(true);
     setStartError(null);
+    // Se il tooling non e' pronto, il click non deve restare muto: avvia
+    // l'installazione e poi riprova la conversione. Prima di tutto questo
+    // il bottone era disabilitato e l'utente vedeva un tasto che non rispondeva.
+    if (!tooling?.ready) {
+      await installTooling();
+      setBusy(false);
+      return;
+    }
     try {
       const res = await fetch('/api/models/convert/start', {
         method: 'POST',
@@ -638,18 +646,18 @@ export default function GgufConverter({ isLight, addToast, initialModel, jobs = 
         {/* PRIMARY CONVERT BUTTON */}
         <button
           onClick={startConversion}
-          disabled={busy || !selected || !tooling?.ready || !!activeJob || !!model?.compatibility?.blocked_by?.length}
+          disabled={busy || !selected || !!activeJob || !!model?.compatibility?.blocked_by?.length}
           style={{
             alignSelf: 'flex-start', padding: '9px 20px', borderRadius: '10px',
             border: 'none',
-            background: (busy || !tooling?.ready || !!activeJob)
+            background: (busy || !!activeJob)
               ? 'rgba(107,114,128,0.2)'
               : 'linear-gradient(135deg, #10b981, #059669)',
-            color: (busy || !tooling?.ready || !!activeJob) ? textMuted : '#ffffff',
+            color: (busy || !!activeJob) ? textMuted : '#ffffff',
             fontSize: '0.78rem', fontWeight: 900,
-            cursor: (busy || !tooling?.ready || !!activeJob) ? 'not-allowed' : 'pointer',
+            cursor: (busy || !!activeJob) ? 'not-allowed' : 'pointer',
             display: 'inline-flex', alignItems: 'center', gap: '6px',
-            boxShadow: (busy || !tooling?.ready || !!activeJob) ? 'none' : '0 2px 14px rgba(16, 185, 129, 0.35)',
+            boxShadow: (busy || !!activeJob) ? 'none' : '0 2px 14px rgba(16, 185, 129, 0.35)',
             transition: 'all 0.15s ease'
           }}
         >
