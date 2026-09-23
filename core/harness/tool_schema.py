@@ -298,6 +298,93 @@ def schemas_for(allowed: Optional[Any] = None) -> List[Dict[str, Any]]:
     return [s for s in TOOL_SCHEMAS if s["function"]["name"] in nomi]
 
 
+def ripara_corpo_json(corpo: str) -> Optional[str]:
+    """Il corpo reso JSON valido, o None quando ripararlo vuol dire indovinare.
+
+    Le due rotture che contano davvero, contate sui fallimenti veri del 24
+    settembre 2026 (46 corpi di `write_file` e 15 di `edit_file` su 826
+    comandi): una virgoletta doppia dentro il testo, non protetta, e un a capo
+    vero dentro una stringa dove serve la sequenza di escape. Nessuna delle due
+    chiede di indovinare: si cammina il corpo sapendo se si e' dentro o fuori da
+    una stringa. Una virgoletta e' di chiusura quando cio' che segue (spazi a
+    parte) e' una virgola, un due punti, una graffa o la fine; ogni altra
+    virgoletta incontrata dentro una stringa era testo, e si protegge.
+
+    I corpi troncati si chiudono: la stringa aperta e le graffe non chiuse. Le
+    virgole finali si tolgono, perche' nel JSON non ci stanno.
+
+    Restituisce None quando non cambia niente: se il corpo era gia' valido il
+    parseggio sarebbe riuscito, quindi un corpo identico a se stesso e' rotto
+    per un motivo che non si ripara qui.
+    """
+    testo = (corpo or "").strip()
+    if not testo.startswith("{"):
+        return None
+
+    fuori: List[str] = []
+    dentro = False
+    escape = False
+    graffe = 0
+    quadre = 0
+    for i, c in enumerate(testo):
+        if escape:
+            fuori.append(c)
+            escape = False
+            continue
+        if c == "\\":
+            fuori.append(c)
+            escape = True
+            continue
+        if c in "\r\n" or (ord(c) < 32 and c != "\t"):
+            fuori.append("\\n" if dentro else " ")
+            continue
+        if c == "\t":
+            fuori.append("\\t" if dentro else " ")
+            continue
+        if c == '"':
+            if not dentro:
+                dentro = True
+                fuori.append(c)
+                continue
+            # Chiusura o virgoletta di testo? Si guarda cosa viene dopo.
+            j = i + 1
+            while j < len(testo) and testo[j] in " \t\r\n":
+                j += 1
+            prossimo = testo[j] if j < len(testo) else ""
+            if prossimo in (",", ":", "}", "]", ""):
+                dentro = False
+                fuori.append(c)
+            else:
+                fuori.append('\\"')
+            continue
+        if not dentro:
+            if c == "{":
+                graffe += 1
+            elif c == "}":
+                if graffe == 0:
+                    continue
+                graffe -= 1
+            elif c == "[":
+                quadre += 1
+            elif c == "]":
+                if quadre == 0:
+                    continue
+                quadre -= 1
+            elif c == ",":
+                j = i + 1
+                while j < len(testo) and testo[j] in " \t\r\n":
+                    j += 1
+                if j < len(testo) and testo[j] in "}]":
+                    continue
+        fuori.append(c)
+
+    riparato = "".join(fuori)
+    if dentro:
+        riparato += '"'
+    riparato += "}" * graffe + "]" * quadre
+    return riparato if riparato != testo else None
+
+
 def tool_calls_to_invocations(tool_calls: Any) -> List[Dict[str, Any]]:
     """Traduce le `tool_calls` native nella forma interna del ciclo.
 
@@ -324,11 +411,24 @@ def tool_calls_to_invocations(tool_calls: Any) -> List[Dict[str, Any]]:
                 if not isinstance(params, dict):
                     raise ValueError("gli argomenti non sono un oggetto")
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                # Anche un provider nativo puo' troncare gli argomenti. Si
-                # segnala come chiamata malformata, che il ciclo sa gia'
-                # gestire, invece di scartarla in silenzio.
-                log.warning("[ToolSchema] argomenti illeggibili per '%s': %s", nome, exc)
-                params = {"__malformed__": True, "raw": str(grezzi or "")}
+                # Prima si prova a riparare: le due rotture vere (una virgoletta
+                # non protetta, un a capo dentro una stringa) sono meccaniche, e
+                # un turno di ritentativo costa piu' di questa funzione. Solo se
+                # il corpo resta illeggibile si dichiara malformata, che il ciclo
+                # sa gia' gestire, invece di scartarla in silenzio.
+                letto = None
+                riparato = ripara_corpo_json(str(grezzi or ""))
+                if riparato:
+                    try:
+                        letto = json.loads(riparato)
+                    except (ValueError, json.JSONDecodeError):
+                        letto = None
+                if isinstance(letto, dict):
+                    log.info("[ToolSchema] argomenti riparati per '%s': %s", nome, exc)
+                    params = letto
+                else:
+                    log.warning("[ToolSchema] argomenti illeggibili per '%s': %s", nome, exc)
+                    params = {"__malformed__": True, "raw": str(grezzi or "")}
         invocazioni.append({
             "tool": nome.lower(),
             "params": params,

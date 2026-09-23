@@ -1084,13 +1084,20 @@ def call_openai_compatible_stream(
             # I conteggi del server sono l'unico modo di sapere quanto prefisso
             # e' stato riusato: senza, il riuso resta invisibile.
             payload["stream_options"] = {"include_usage": True}
+            # E il riuso va anche CHIESTO: llama.cpp lo fa se glielo si dice. In
+            # un ciclo di agente il prefisso di un turno e' quasi tutto quello
+            # del turno precedente, e ripagarlo e' 173 ms ogni 1000 token
+            # (misurato il 24 settembre 2026), cioe' quasi tutta l'attesa.
+            payload["cache_prompt"] = True
         resp = requests.post(api_url, json=payload, headers=headers, stream=True, timeout=int(timeout or 120))
         if resp.status_code == 400 and chiedi_i_numeri:
-            # Un server che non conosce `stream_options` rifiuta la richiesta
-            # intera: la misura non vale un run perso, quindi si richiede
-            # senza conteggi e si va avanti con quello che arriva.
-            log.info("Il server ha rifiutato `stream_options`: richiedo senza.")
+            # Un server che non conosce questi campi rifiuta la richiesta
+            # intera: la misura non vale un run perso, quindi si richiede senza
+            # e si va avanti con quello che arriva.
+            log.info("Il server ha rifiutato i campi locali (stream_options/cache_prompt): "
+                     "richiedo senza.")
             payload.pop("stream_options", None)
+            payload.pop("cache_prompt", None)
             resp = requests.post(api_url, json=payload, headers=headers,
                                  stream=True, timeout=int(timeout or 120))
         if resp.status_code != 200:

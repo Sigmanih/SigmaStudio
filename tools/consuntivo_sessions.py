@@ -28,6 +28,36 @@ from typing import Any, Dict, List, Optional
 RADICE = Path(__file__).resolve().parent.parent
 
 
+def _modello_normalizzato(nome: Any) -> str:
+    """Lo stesso modello scritto in quattro modi e' un modello solo.
+
+    Il 24 settembre 2026 il consuntivo mostrava `Qwen/Qwen3.8-27B-GGUF-Q4_K_S`,
+    `Qwen--Qwen3.8-27B-GGUF-Q4_K_S`, `Qwen3.8-27B-GGUF-Q4_K_S` e
+    `sigmanih/Qwen3.8-27B-GGUF-Q4_K` come quattro righe diverse: le stesse 43
+    sessioni divise in quattro gruppi, e nessun confronto fra modelli possibile.
+    """
+    testo = str(nome or "").strip().replace("\\", "/").replace("--", "/")
+    return testo.split("/")[-1] if testo else ""
+
+
+def _decode_tps(turni: List[Dict[str, Any]], ripiego: float) -> float:
+    """I token al secondo della DECODIFICA, dai turni, quando il dettaglio c'e'.
+
+    Il t/s del run divide i token generati per il tempo totale, che dentro ha
+    anche l'esecuzione dei tool e i prefill: dice quanto e' costato il lavoro,
+    non quanto va veloce il modello, e sulle sessioni salvate li faceva
+    sembrare sei volte piu' lenti del vero.
+    """
+    generati = sum(int(r.get("generated_tokens") or 0) for r in turni
+                   if isinstance(r, dict))
+    secondi = sum(
+        int(r.get("generated_tokens") or 0) / float(r["tps"])
+        for r in turni
+        if isinstance(r, dict) and r.get("tps")
+        and int(r.get("generated_tokens") or 0) > 0)
+    return round(generati / secondi, 1) if secondi > 0 else ripiego
+
+
 def carica_sessione(percorso: Path) -> Dict[str, Any]:
     """Una riga di consuntivo da un file di sessione, oppure l errore."""
     try:
@@ -45,7 +75,8 @@ def carica_sessione(percorso: Path) -> Dict[str, Any]:
     fine = dati.get("updated_at") or 0
     return {
         "session": dati.get("session_id"),
-        "model": str(dati.get("model") or metrica.get("model") or "").strip(),
+        "model": _modello_normalizzato(dati.get("model") or metrica.get("model")),
+        "provider": str(metrica.get("provider") or ""),
         "status": dati.get("status"),
         "turni": int(metrica.get("turns") or 0),
         "chiamate": int(metrica.get("tool_calls") or 0),
@@ -54,6 +85,8 @@ def carica_sessione(percorso: Path) -> Dict[str, Any]:
         "generati": int(metrica.get("generated_tokens") or 0),
         "contesto": int(metrica.get("prompt_tokens") or 0),
         "riusati": int(metrica.get("reuse_tokens") or 0),
+        "ttft_ms": metrica.get("ttft_ms"),
+        "decodifica": _decode_tps(metrica.get("turns_detail") or [], 0.0),
         "durata_s": round(fine - inizio, 1) if inizio and fine else 0.0,
         "scritti": len(scritti),
         "requisiti": len(requisiti),
@@ -72,6 +105,10 @@ def riassunto(elenco: List[Dict[str, Any]]) -> Dict[str, Any]:
     durata = sum(r["durata_s"] for r in elenco)
     generati = sum(r["generati"] for r in elenco)
     contesto = [r["contesto"] // max(1, r["turni"]) for r in elenco if r["contesto"]]
+    con_decodifica = [r for r in elenco if r["decodifica"]]
+    peso_decodifica = sum(r["generati"] for r in con_decodifica)
+    decodifica = (round(sum(r["decodifica"] * r["generati"] for r in con_decodifica)
+                        / peso_decodifica, 1) if peso_decodifica else 0.0)
     return {
         "sessioni": len(elenco),
         "turni_medi": round(statistics.mean([r["turni"] for r in elenco]), 1),
@@ -82,6 +119,7 @@ def riassunto(elenco: List[Dict[str, Any]]) -> Dict[str, Any]:
             100 * sum(r["fallimenti"] for r in elenco) / chiamate, 1) if chiamate else 0.0,
         "generati": generati,
         "tok_s": round(generati / durata, 1) if durata else 0.0,
+        "decodifica": decodifica,
         "durata_media_s": round(statistics.mean([r["durata_s"] for r in elenco])),
         "contesto_medio": round(statistics.mean(contesto)) if contesto else 0,
         "riusati": sum(r["riusati"] for r in elenco),
@@ -89,10 +127,10 @@ def riassunto(elenco: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _riga(nome: str, r: Dict[str, Any]) -> str:
-    return ("%-30s %4d | %5.1f (max %3d) | %4d%% | %5.1f%% | %9d | %5.1f | %5d s | %6d"
+    return ("%-30s %4d | %5.1f (max %3d) | %4d%% | %5.1f%% | %9d | %5.1f | %5.1f | %5d s | %6d"
             % (nome[:30], r["sessioni"], r["turni_medi"], r["turni_max"],
                r["senza_scritture_pct"], r["fallimenti_pct"], r["generati"],
-               r["tok_s"], r["durata_media_s"], r["contesto_medio"]))
+               r["tok_s"], r["decodifica"], r["durata_media_s"], r["contesto_medio"]))
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -118,9 +156,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             righe.append(voce)
 
-    print("%-30s %4s | %15s | %5s | %7s | %9s | %5s | %6s | %8s"
+    print("%-30s %4s | %15s | %5s | %7s | %9s | %5s | %5s | %6s | %8s"
           % ("", "sess", "turni", "vuote", "falliti", "token", "tok/s",
-             "durata", "contesto"))
+             "gen/s", "durata", "contesto"))
     print(_riga("TUTTE", riassunto(righe)))
 
     gruppi: Dict[str, List[Dict[str, Any]]] = defaultdict(list)

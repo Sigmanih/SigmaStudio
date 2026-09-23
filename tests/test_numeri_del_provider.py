@@ -114,6 +114,8 @@ class TestDoveSiChiedonoIConteggi(unittest.TestCase):
 
         payload = mock_post.call_args.kwargs["json"]
         self.assertEqual(payload.get("stream_options"), {"include_usage": True})
+        # Il riuso non basta aspettarlo: a llama.cpp va chiesto.
+        self.assertTrue(payload.get("cache_prompt"))
         conteggi = [e for e in eventi if e.get("counters")]
         self.assertEqual(len(conteggi), 1)
         self.assertEqual(conteggi[0]["prefix_reused_tokens"], 8000)
@@ -135,6 +137,7 @@ class TestDoveSiChiedonoIConteggi(unittest.TestCase):
         ))
         payload = mock_post.call_args.kwargs["json"]
         self.assertNotIn("stream_options", payload)
+        self.assertNotIn("cache_prompt", payload)
 
     @patch("core.ai_providers.requests.post")
     def test_un_server_che_rifiuta_i_conteggi_non_perde_il_run(self, mock_post):
@@ -157,6 +160,7 @@ class TestDoveSiChiedonoIConteggi(unittest.TestCase):
         self.assertEqual(mock_post.call_count, 2)
         secondo = mock_post.call_args.kwargs["json"]
         self.assertNotIn("stream_options", secondo)
+        self.assertNotIn("cache_prompt", secondo)
         self.assertEqual([e.get("token") for e in eventi if e.get("token")],
                          ["ciao"])
         # Senza conteggi non si inventa niente: nessun pezzo `counters`.

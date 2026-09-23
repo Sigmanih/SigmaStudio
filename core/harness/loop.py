@@ -537,6 +537,23 @@ STATE_TAIL_SUMMARISE = (
 )
 
 
+def _provider_attivo() -> str:
+    """Il provider che il motore userebbe, quando il chiamante non lo dichiara.
+
+    Il consuntivo lo registrava vuoto in 187 sessioni su 187, e senza quel campo
+    nessun confronto fra backend e' possibile: non si sa se un run e' andato
+    piano per il modello, per il backend o per il contesto. Il dato esiste gia'
+    nella configurazione, e chiederlo qui costa un import.
+    """
+    try:
+        from core.ai_providers import load_ai_config
+
+        return str((load_ai_config() or {}).get("active_provider") or "")
+    except Exception as exc:  # una configurazione illeggibile non ferma un run
+        log.debug("[Agent] provider attivo non leggibile: %s", exc)
+        return ""
+
+
 def _with_state_block(
     messages: List[Dict[str, str]],
     state_block: str,
@@ -1305,18 +1322,31 @@ def _unterminated_tool_call(text: str) -> Optional[Dict[str, Any]]:
     return {"tool": name, "params": params, "raw_block": text[last_m.start():]}
 
 
-def _drop_superseded_reads(messages: List[Dict[str, str]], path: str) -> None:
+def _drop_superseded_reads(messages: List[Dict[str, str]], path: str,
+                           togli: bool = True) -> int:
     """Removes earlier observations that showed the same file.
 
     Two readings of one file differ only in which window they show, and the
     older window is the one the model has already decided was insufficient.
-    Keeping both spends the context twice to say one thing, and on a long run
-    that is what pushes the useful half out of the window.
+    Keeping both spends the context twice to say one thing.
+
+    Ma c'e' un prezzo dall'altra parte, e si paga a ogni turno: togliere un
+    messaggio a META' conversazione cambia il prefisso da li' in poi, e il
+    server ripaga il prefill di tutto cio' che segue — 173 ms ogni 1000 token,
+    misurato il 24 settembre 2026. Tenere due letture costa una volta la
+    seconda; toglierle costa il prefill di tutto il resto a ogni turno. Per
+    questo `togli` esiste: chi chiama decide, e quando il contesto ha spazio si
+    tiene. Restituisce quante osservazioni ha tolto.
     """
+    if not togli:
+        return 0
     marker = f"Contenuto di '{path}'"
+    tolti = 0
     for i in range(len(messages) - 1, 1, -1):
         if marker in messages[i].get("content", ""):
             messages.pop(i)
+            tolti += 1
+    return tolti
 
 
 def _has_unclosed_tool_fence(text: str) -> bool:
@@ -1571,6 +1601,16 @@ def normalize_tool_params(raw_body: str, tool_name: str) -> Dict[str, Any]:
     salvato = _salva_corpo_prosa(raw_body, tool_name)
     if salvato is not None:
         return salvato
+
+    # Ultimo tentativo prima di dichiararla malformata: le due rotture vere
+    # sono meccaniche, e ripararle costa meno di un turno di ritentativo.
+    from core.harness.tool_schema import ripara_corpo_json
+
+    riparato = ripara_corpo_json(raw_body)
+    if riparato:
+        data = _loads_forgiving(riparato)
+        if isinstance(data, dict):
+            return data
 
     # A body that still looks like JSON (or like the prompt's own placeholder)
     # is a malformed call, not a bare path. Treating it as one produces
@@ -2887,7 +2927,7 @@ def _stream_agent_turn_impl(
         "prompt_tokens": 0,
         "reuse_tokens": 0,
         "model": str(model_name or ""),
-        "provider": str(provider or ""),
+        "provider": str(provider or "") or _provider_attivo(),
         "tool_calls": 0,
         "tool_failures": 0,
         "tool_refusals": 0,
@@ -4336,9 +4376,22 @@ def _stream_agent_turn_impl(
             session_wt.checkpoint(current_turn)
 
         full_messages.append({"role": "assistant", "content": _as_history(full_text)})
-        # A fresh view of a file supersedes every older view of it.
+        # A fresh view of a file supersedes every older view of it, ma togliere
+        # un'osservazione a meta' conversazione invalida il prefisso da li' in
+        # poi: il server ripaga il prefill di tutto cio' che segue, 173 ms ogni
+        # 1000 token (misurato il 24 settembre 2026). Si toglie quindi solo
+        # quando il contesto stringe davvero, e la scelta si vede nei numeri:
+        # `letture_tenute` dice quante osservazioni sono state lasciate stare.
+        caratteri_storia = sum(len(m.get("content") or "") for m in full_messages)
+        stringe = caratteri_storia > max_history_chars
         for read_path in reads_this_turn:
-            _drop_superseded_reads(full_messages, read_path)
+            tolti = _drop_superseded_reads(full_messages, read_path, togli=stringe)
+            if tolti:
+                riga_turno["letture_sostituite"] = (
+                    int(riga_turno.get("letture_sostituite") or 0) + tolti)
+            else:
+                riga_turno["letture_tenute"] = (
+                    int(riga_turno.get("letture_tenute") or 0) + 1)
         # The goal is restated with every observation. Without it the model
         # drifts into treating the latest tool output as the whole task —
         # "the user is asking me to explain this directory listing" — because
@@ -4414,10 +4467,23 @@ def _stream_agent_turn_impl(
     # i suoi conteggi: la quota dice quanto fidarsi del numero accanto.
     righe_turno = run_metrics.get("turns_detail") or []
     stimate = sum(1 for r in righe_turno if r.get("prompt_tokens_estimated"))
+    # Il t/s della decodifica, separato da quello effettivo del run.
+    # `tokens_per_second` divide i token generati per il tempo TOTALE, che
+    # dentro ci ha anche l'esecuzione dei tool e i prefill: e' il numero giusto
+    # per dire quanto e' costato il lavoro, ed e' sbagliato per dire quanto va
+    # veloce il modello (lo faceva sembrare sei volte piu' lento del vero).
+    token_decodificati = sum(int(r.get("generated_tokens") or 0) for r in righe_turno)
+    secondi_decodifica = sum(
+        int(r.get("generated_tokens") or 0) / float(r["tps"])
+        for r in righe_turno
+        if r.get("tps") and int(r.get("generated_tokens") or 0) > 0)
+    decode_tps = (round(token_decodificati / secondi_decodifica, 1)
+                  if secondi_decodifica > 0 else calc_tps)
     metriche = {
         "load_duration_ms": 1.28,
         "routing_time_ms": run_metrics.get("ttft_ms"),
         "tokens_per_second": calc_tps,
+        "decode_tokens_per_second": decode_tps,
         "token_count": total_generated_tokens,
         "elapsed_s": elapsed_total_s,
         "ttft_ms": run_metrics.get("ttft_ms"),
@@ -4434,6 +4500,7 @@ def _stream_agent_turn_impl(
         "meta": {
             "load_duration_ms": 1.28,
             "tokens_per_second": calc_tps,
+            "decode_tokens_per_second": decode_tps,
             "ttft_ms": run_metrics.get("ttft_ms"),
             "reuse_tokens": metriche["reuse_tokens"],
             "prefill_ms": metriche["prefill_ms"],

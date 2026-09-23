@@ -51,15 +51,20 @@ class TestINumeri:
     def test_la_media_di_un_gruppo(self):
         righe = [
             {"turni": 10, "chiamate": 10, "fallimenti": 1, "generati": 100,
-             "durata_s": 50.0, "scritti": 2, "contesto": 5000, "riusati": 0},
+             "durata_s": 50.0, "scritti": 2, "contesto": 5000, "riusati": 0,
+             "decodifica": 30.0},
             {"turni": 20, "chiamate": 10, "fallimenti": 3, "generati": 300,
-             "durata_s": 150.0, "scritti": 0, "contesto": 3000, "riusati": 0},
+             "durata_s": 150.0, "scritti": 0, "contesto": 3000, "riusati": 0,
+             "decodifica": 40.0},
         ]
         r = CONSUNTIVO.riassunto(righe)
         assert r["sessioni"] == 2
         assert r["turni_medi"] == 15.0 and r["turni_max"] == 20
         assert r["senza_scritture_pct"] == 50
         assert r["fallimenti_pct"] == 20.0
+        # La velocita' di decodifica si pesa sui token generati, non sulle
+        # sessioni: una sessione da trecento token non vale quanto una da cento.
+        assert r["decodifica"] == 37.5
         assert r["tok_s"] == 2.0
         # Il contesto e per turno: 5000/10 e 3000/20, media 325. Un totale
         # per sessione non dice quanto costa un turno, che e la domanda.
