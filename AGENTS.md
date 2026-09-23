@@ -68,12 +68,34 @@ Un lavoro non e' finito finche' un comando non lo dimostra. Usa quello che
 corrisponde a cio' che hai toccato:
 
 ```
-python -m pytest tests/ -q                    # kernel Python
-python -m pytest tests/test_<modulo>.py -q    # una sola area
+python -m pytest -m harness -q                # il ciclo dell'agente: turni, ledger, prove, coda
+python -m pytest -m mcp -q                    # hub MCP, assenso, assi, server di sviluppo
+python -m pytest -m chat -q                   # conversazione: prompt, storia, risposte
+python -m pytest -m motore -q                 # inferenza e modelli: engine, GGUF, hardware
+python -m pytest -m moduli -q                 # moduli: EDA, KiCad, pipeline, i18n
+python -m pytest -m base -q                   # il resto del kernel: percorsi, avvio, sistema
+python -m pytest tests/test_<file>.py -q      # un solo file, quando basta
 npm --prefix sigma_studio run lint:undef      # frontend: riferimenti non definiti (no-undef)
 npm --prefix sigma_studio run build           # frontend, prova piu forte
 python -c "import core.<modulo>"              # verifica minima di import
 ```
+
+I lotti sono sette e stanno in `tests/lotti.py`: ogni file di prova appartiene a
+esattamente uno, e `tests/test_lotti_della_suite.py` diventa rosso se qualcuno
+ne aggiunge uno senza lotto. **Non serve la suite intera a ogni modifica**: si
+esegue il lotto che si e' toccato, e i lotti vicini se la modifica li attraversa.
+La corsa completa (`python -m pytest -q`, 2633 prove) si fa alla fine di un
+gruppo di lavoro o quando la modifica e' critica. Le prove che caricano un
+modello vero sono marcate `lento` e restano fuori dalla corsa predefinita: si
+chiedono con `python -m pytest -m lento -q`, o tutte insieme con
+`python -m pytest -m "lento or not lento" -q` (attento: `-m ""` NON annulla
+`addopts`, seleziona zero prove).
+
+**Non eseguire la suite con il server acceso.** L'app gira sulla porta 8000 e
+parecchie prove la aprono o la interrogano (`test_eda_lab`, `test_sigma_network`,
+`test_visual_console_errors`, `test_inference_wave2`): la prima che passa non
+trova la porta libera, e a meta' lavoro la sessione muore — con l'hub MCP che va
+con lei. Il server si spegne prima, o si verifica con un import.
 
 Il server di sviluppo si avvia con `python sigma_server.py` sulla porta 8000.
 Non avviarlo per verificare una modifica al backend: un import basta ed e'

@@ -32,3 +32,34 @@ def registro_attivita_isolato(tmp_path_factory):
         yield cartella
     finally:
         attivita.paths.var_dir = originale
+
+
+def pytest_configure(config):
+    """Registra i lotti come marcatori, da un posto solo.
+
+    L'elenco dei lotti sta in `tests/lotti.py` e non si ripete qui: due copie
+    della stessa lista divergono sempre, e la seconda a divergere e' quella che
+    nessuno aggiorna. Registrandoli da li', `pytest -m harness` funziona senza
+    che nessuno debba ricordarsi di toccare due file.
+    """
+    from tests.lotti import LOTTI
+
+    config.addinivalue_line(
+        "markers", "lento: avvia un modello o un server vero (fuori dalla corsa veloce)")
+    for lotto in LOTTI:
+        config.addinivalue_line(
+            "markers", "%s: il lotto %s della suite" % (lotto, lotto))
+
+
+def pytest_collection_modifyitems(config, items):
+    """Ogni prova porta il lotto del suo file, e le lente portano `lento`."""
+    from tests.lotti import e_lento, lotto_di
+
+    for item in items:
+        percorso = getattr(item, "fspath", None) or getattr(item, "path", "")
+        lotto = lotto_di(percorso)
+        if lotto:
+            item.add_marker(getattr(pytest.mark, lotto))
+        if e_lento(item.nodeid):
+            item.add_marker(pytest.mark.lento)
+
