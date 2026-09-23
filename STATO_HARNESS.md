@@ -1020,3 +1020,96 @@ causa misurata).
 | `tests/test_numeri_del_provider.py` | 11 casi nuovi |
 | `tests/test_consuntivo_per_turno.py` | 5 casi nuovi (conteggio vero, telemetria, costo) |
 | `python tools/analisi_ttft.py` | 187 file, 156 sessioni, 9 turni, 0 problemi |
+
+## 18. Il prefisso si difende, e le misure dicono la verita · 24 settembre 2026
+
+Il piano era: ottimizzare flussi, velocita, attesa del primo token, correttezza
+delle risposte. La prima cosa fatta non e stata una modifica, ma un conto: sulle
+187 sessioni salvate il secondo numero, per ogni cosa toccata.
+
+### 18.1 Cosa dicono i numeri
+
+| Grandezza | Valore | Da dove |
+|:--|--:|:--|
+| Run che non scrivono nessun file | **33%** | `tools/consuntivo_sessions.py` |
+| Tool che falliscono | **16,7%** (260 su 826 comandi) | idem |
+| Turni per run | 18 medi, max 80 | idem |
+| Durata media di un run | 294 s | idem |
+| Attesa del primo token per turno | 4,4-7,5 s | dettaglio per turno |
+| Costo del prefill | **+173 ms ogni 1.000 token** (r=0,60) | `tools/analisi_ttft.py` |
+| Stato riscritto a ogni turno | 11.501 caratteri (~2.875 token) | `state_chars` |
+
+I comandi che falliscono piu spesso sono `npm --prefix frontend install` (18) e
+`npm --prefix frontend run build` (10): l agente nomina `frontend/` e `backend/`,
+cartelle che questo albero non ha. I motivi di fallimento piu frequenti sono
+`edit_file` (63), `complete_goal` (57), `write_file` (49), `read_file` (42), e
+dentro `write_file` **46 su 49 sono lo stesso errore**: il corpo non e un oggetto
+JSON valido. I `read_file` falliti invece sono **tutti** percorsi di worktree
+cancellati (`var/dev_worktrees/...`).
+
+### 18.2 Lo stato si divide in due
+
+Lo stato erano 11.501 caratteri a ogni turno, e dentro ci stavano cose che non
+cambiano mai. Ora sono due blocchi (`DevSessionLedger.render_stable_block` e
+`render_volatile_block`):
+
+* **stabile** — obiettivo, percorsi citati, cosa l agente ha capito, e le
+  cartelle che esistono davvero. Va **in testa al prompt**, dentro il system
+  prompt, una volta per run: e identico byte per byte a ogni turno, quindi la
+  cache del prefisso lo copre e si paga una volta.
+* **volatile** — contatori, criteri con il loro stato, file toccati e letti,
+  ultimi comandi, decisioni, memoria, errori. Va **in coda all ultimo
+  messaggio**, dove non invalida la cronologia che lo precede.
+
+Misurato sul ledger di una sessione vera (9 turni, 18 comandi, 10 file): 2.762
+caratteri stabili piu 7.098 volatili invece di 11.501 per turno, **1.100 token
+in meno a ogni turno e 33.000 su un run da trenta**. I tetti per sezione sono
+scesi con loro (comandi 4→2, API 15→8, file letti 12→6, decisioni e memoria 6→3,
+errori 3→2), e adesso la parte volatile non riesce quasi piu a sfondare il tetto
+di 9.000: il taglio resta come rete, e il test lo costruisce a mano.
+
+Il test che conta e in `tests/test_stato_diviso.py`: **la parte stabile non
+cambia quando il lavoro avanza**. Un blocco in testa che cambia — un contatore,
+un criterio che diventa soddisfatto — invalida tutto cio che segue, cioe la
+cronologia.
+
+### 18.3 Cosa si e riparato, e cosa non e piu una dichiarazione
+
+* **Il riuso del prefisso si chiede**: `cache_prompt` viaggia con le richieste
+  agli endpoint locali, e se un server rifiuta i campi locali si richiede senza
+  (un 400 non deve costare un run).
+* **I corpi malformati si riparano** (`ripara_corpo_json`): si cammina il testo
+  sapendo se si e dentro o fuori da una stringa, una virgoletta e di chiusura
+  solo se la segue una virgola, un due punti, una graffa o la fine, e i corpi
+  troncati si chiudono. Cio che non e riparabile resta malformato, e non si
+  inventa mai un campo.
+* **Il t/s non mente piu**: l evento `metrics` porta sia il t/s effettivo del run
+  (token generati su tempo totale) sia quello della decodifica (32,8 contro 11,0
+  sulle sessioni salvate).
+* **Il modello ha un nome solo**: `Qwen/...`, `Qwen--...`, `Qwen3.8-...` e
+  `sigmanih/...` erano quattro righe di consuntivo per le stesse 43 sessioni.
+  Ora e una riga, e dice quello che il nome nascondeva: **53% di run che non
+  scrivono un file**.
+* **Il provider non resta vuoto**: era `""` in 187 sessioni su 187, quindi
+  nessun confronto fra backend era possibile.
+
+### 18.4 La prova
+
+| Prova | Esito |
+|:--|:--|
+| `tests/test_stato_diviso.py` | 10 casi nuovi (uno fallisce se lo stabile si muove) |
+| `tests/test_corpo_json_riparato.py` | 9 casi nuovi, con i corpi veri dei fallimenti |
+| i test toccati insieme | 122 passati |
+| `tools/consuntivo_sessions.py` | 187 sessioni, 0 problemi, il 27B in una riga |
+
+### 18.5 Cosa resta aperto
+
+* **La ricostruzione dell indice**: l esclusione di `var/` e nel codice, ma le
+  944 voci morte escono solo da una ricostruzione completa, e la via MCP va in
+  timeout a 600 secondi. Serve un percorso da riga di comando.
+* **`trim_history` e la compattazione**: tolgono messaggi dal mezzo della
+  conversazione sotto pressione. E necessaria come valvola, ma vale la stessa
+  regola dell ultimo punto: si paga il prefill di tutto cio che segue.
+* **Il modello si sceglie coi numeri** (voce s10 della coda): l 12B scrive in
+  tutti i run e va a 54,9 token al secondo effettivi, il 27B scrive in meta.
+
