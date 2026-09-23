@@ -441,13 +441,23 @@ def stampa(turni: List[Dict[str, Any]], sessioni: List[Dict[str, Any]],
     print()
     print("Regola, per come la dicono questi numeri:")
     forte = (r is not None and r > 0.5
-             and dentro["positive"] >= dentro["negative"])
+             and dentro["positive"] >= dentro["negative"]
+             and dentro["sessioni"] >= 3)
     if forte:
         print("   dentro una sessione il prefill domina: %s ms di attesa in piu'"
               % _f(pend, 0))
         print("   per ogni 1000 token di contesto in piu' (r=%s, r^2=%.0f%%)."
               % (_f(r, 2), 100 * r * r))
         print("   Togliere token dal prompt si sente, e si sente subito.")
+    elif r is not None and dentro["sessioni"] < 3:
+        # Un coefficiente su una sessione sola e' un indizio, non una legge:
+        # dirlo e' l'unico modo di non farci costruire sopra una scommessa.
+        print("   dentro una sessione il prefill si sente (%s ms per 1000 token, "
+              "r=%s," % (_f(pend, 0), _f(r, 2)))
+        print("   r^2=%.0f%%), ma la regola poggia su %d sessione con il dettaglio"
+              % (100 * r * r, dentro["sessioni"]))
+        print("   per turno: e' un indizio, non una legge. Servono sessioni nuove")
+        print("   con `turns_detail` prima di riscrivere il contesto su questo.")
     elif r is not None:
         print("   dentro una sessione il legame c'e' ma e' debole (r=%s, "
               "r^2=%.0f%%):" % (_f(r, 2), 100 * r * r))
