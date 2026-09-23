@@ -2914,6 +2914,15 @@ def _stream_agent_turn_impl(
     native_mode = supports_native_tools(provider)
     if native_mode:
         base_system_prompt = adapt_prompt_for_native_tools(base_system_prompt)
+
+    # Lo stato STABILE entra qui, una volta sola. E' identico byte per byte a
+    # ogni turno, quindi non sposta il prefisso (la cache lo copre) e la sua
+    # parte di token si paga una volta per run invece che a ogni turno. Cio' che
+    # cambia — contatori, criteri, comandi, memoria — resta in coda all'ultimo
+    # messaggio, dove non invalida la cronologia che lo precede.
+    blocco_stabile = ledger.render_stable_block()
+    if blocco_stabile:
+        base_system_prompt = f"{base_system_prompt}\n\n{blocco_stabile}"
     native_announced = False
 
     # Un consuntivo che non dice *quale* turno costa non serve a decidere: la
@@ -3111,8 +3120,11 @@ def _stream_agent_turn_impl(
         # Lo stato e l unica parte del prompt che si riscrive a ogni turno: la
         # sua dimensione e la voce di costo che si puo abbassare senza toccare
         # il modello. Registrarla per turno rende l economia una misura.
+        # Lo stato volatile: contatori, criteri, file toccati e letti, comandi,
+        # memoria. La parte stabile (obiettivo, percorsi citati, cartelle vere)
+        # sta in testa al prompt e si paga una volta per run.
         stato_del_lavoro = (
-            ledger.render_state_block(current_turn, max_turns)
+            ledger.render_volatile_block(current_turn, max_turns)
             + _mappa_dei_file_citati(ledger, workspace_root)
         )
         render_messages = _with_state_block(

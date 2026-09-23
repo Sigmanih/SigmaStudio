@@ -67,7 +67,8 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "ricerca_stato_di_runtime", "roles_api", "role_engine",
         "role_registry", "role_scheduling", "ruolo_diagnosta", "run_review",
         "run_teardown", "selezione_dichiarata", "session_ledger",
-        "session_rollback", "stall_recovery", "structured_verification",
+        "session_rollback", "stall_recovery", "stato_diviso",
+        "structured_verification",
         "symbol_index", "tool_policy", "voce_senza_prova", "worktree",
     ),
     "mcp": (

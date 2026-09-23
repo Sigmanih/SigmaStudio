@@ -1125,12 +1125,89 @@ class DevSessionLedger:
             "\n**Dove sei:** questa e' la cartella di Sigma Studio, il programma che ti sta eseguendo. Modificarlo e' legittimo se l'obiettivo parla di *lui*. Se invece l'obiettivo e' un applicativo nuovo e separato, qui non ci va: la sua casa e' l'indirizzo di sviluppo (`data/progetti/`), e crearlo qui dentro significa mescolarlo al sorgente di Sigma Studio e ai suoi commit. In quel caso dillo e fermati, invece di scrivere."
         )
     def render_state_block(self, turn: int = 0, max_turns: int = 0) -> str:
-        """The state block re-emitted into every prompt, in place of old turns.
+        """Lo stato intero: la parte stabile e poi quella volatile.
 
-        `turn` e `max_turns`, quando arrivano, dicono anche quanto resta. Un
+        Il ciclo le usa SEPARATE ? la stabile in testa al prompt, una volta
+        per run, la volatile in coda all ultimo messaggio, a ogni turno ? ma
+        chi le vuole leggere tutte insieme, e i test che le interrogano,
+        passano di qui.
+        """
+        return "\n\n".join(p for p in (self.render_stable_block(),
+                                       self.render_volatile_block(turn, max_turns)) if p)
+
+    def _percorsi_veri(self) -> str:
+        """La mappa delle cartelle che ESISTONO, contro i nomi che non esistono.
+
+        I comandi che falliscono piu' spesso nei run registrati (28 su 826, al
+        24 settembre 2026) sono `npm --prefix frontend install` e `run build`:
+        l'agente nomina cartelle che questo progetto non ha — `frontend/`,
+        `backend/`, `projects/` — e ogni comando fallito costa un turno. Il posto
+        per dirlo e' la parte stabile dello stato, che si paga una volta per run.
+        """
+        from pathlib import Path
+
+        radice = Path(self.workspace_root or ".")
+        voci = (
+            ("core/", "il kernel Python: harness, chat, engine, mcp"),
+            ("sigma_studio/", "la SPA React (non `frontend/`)"),
+            ("sigma_studio/src/", "componenti, moduli e stili"),
+            ("tests/", "la suite di prova (pytest)"),
+            ("tools/", "gli strumenti da riga di comando"),
+        )
+        esistenti = [f"- `{p}` — {d}" for p, d in voci if (radice / p).exists()]
+        if not esistenti:
+            return ""
+        return ("**Le cartelle di questo progetto — usa questi nomi:**\n"
+                + "\n".join(esistenti)
+                + "\n(`frontend/`, `backend/` e `projects/` in questo albero non "
+                  "esistono: un comando che li nomina fallisce e costa un turno.)")
+
+    def render_stable_block(self) -> str:
+        """La parte dello stato che NON cambia fra un turno e l'altro.
+
+        Obiettivo, percorsi citati, cosa l'agente ha capito e le cartelle vere:
+        senza queste il turno non decide niente, e siccome sono identiche byte
+        per byte a ogni turno possono stare **in testa** al prompt. E' tutto il
+        punto: la cache del prefisso copre anche loro, quindi si pagano una volta
+        per run invece che a ogni turno.
+
+        I criteri di accettazione NON stanno qui: il loro `[OK]`/`[DA FARE]`
+        cambia quando un criterio viene soddisfatto, e un blocco in testa che
+        cambia invaliderebbe tutto cio' che viene dopo — cioe' la cronologia.
+        """
+        with self._lock:
+            parts: List[str] = []
+            avviso = self._avviso_sulla_radice()
+            if avviso:
+                parts.append(avviso.strip())
+            if self.goal:
+                parts.append(f"**Obiettivo:** {self.goal}")
+                if self.is_exploration_task():
+                    parts.append(
+                        "*(Modalità Analisi/Audit attiva: consulta i file con "
+                        "read_file o search_code prima di sintetizzare la risposta)*")
+            if self.goal_paths:
+                parts.append("**Percorsi citati nell'obiettivo — usa ESATTAMENTE "
+                             "questi, non inventarne altri:**")
+                parts.extend(f"- `{p}`" for p in self.goal_paths)
+            if self._intake:
+                parts.append(f"**Cosa hai capito che va fatto:** {self._intake}")
+            percorsi = self._percorsi_veri()
+            if percorsi:
+                parts.append(percorsi)
+            return "\n\n".join(p for p in parts if p)
+
+    def render_volatile_block(self, turn: int = 0, max_turns: int = 0) -> str:
+        """La parte che cambia a ogni turno: va in coda, mai in testa.
+
+        Contatori, criteri con il loro stato, file toccati e letti, ultimi
+        comandi, decisioni, memoria ed errori. Sta in coda all'ultimo messaggio
+        perche' cosi' tutto cio' che lo precede e' identico byte per byte al
+        turno scorso, e la cache del prefisso copre l'intera cronologia.
+
+        `turn` e `max_turns`, quando arrivano, dicono anche quanto resta: un
         modello che non sa di essere al ventesimo turno su trenta non puo
-        decidere di spezzare il lavoro: vede solo cio che ha fatto, mai il
-        tempo che gli e rimasto.
+        decidere di spezzare il lavoro.
         """
         with self._lock:
             parts: List[str] = ["## STATO DEL LAVORO (aggiornato automaticamente, non ripetere azioni gia svolte)"]
@@ -1151,25 +1228,6 @@ class DevSessionLedger:
                             " vuote."
                         )
                 parts.append(riga_turni)
-
-            avviso = self._avviso_sulla_radice()
-            if avviso:
-                parts.append(avviso)
-
-            if self.goal:
-                parts.append(f"\n**Obiettivo:** {self.goal}")
-                if self.is_exploration_task():
-                    parts.append("*(Modalità Analisi/Audit attiva: consulta i file con read_file o search_code prima di sintetizzare la risposta)*")
-
-            if self.goal_paths:
-                parts.append(
-                    "\n**Percorsi citati nell'obiettivo — usa ESATTAMENTE questi, "
-                    "non inventarne altri:**"
-                )
-                parts.extend(f"- `{p}`" for p in self.goal_paths)
-
-            if self._intake:
-                parts.append(f"\n**Cosa hai capito che va fatto:** {self._intake}")
 
             if self._requirements:
                 parts.append(
@@ -1218,19 +1276,19 @@ class DevSessionLedger:
                     "\n**API dei file gia letti — usa ESATTAMENTE questi nomi, "
                     "non inventarne altri:**"
                 )
-                for r in sorted(with_api, key=lambda x: -x.last_touch)[:15]:
+                for r in sorted(with_api, key=lambda x: -x.last_touch)[:8]:
                     parts.append(f"- `{r.path}`: {', '.join(r.symbols)}")
 
             if read_only:
                 parts.append("\n**File gia letti (non rileggerli senza motivo):**")
-                for r in sorted(read_only, key=lambda x: -x.last_touch)[:12]:
+                for r in sorted(read_only, key=lambda x: -x.last_touch)[:6]:
                     parts.append(f"- `{r.path}` — {r.coverage_note()}")
 
             if self._commands:
                 parts.append("\n**Comandi eseguiti:**")
                 # Le ultime quattro: un comando di dieci turni fa non dice piu'
                 # niente su cosa fare adesso, e occupa posto in ogni turno.
-                for c in self._commands[-4:]:
+                for c in self._commands[-2:]:
                     mark = "OK " if c["ok"] else "FALLITO"
                     line = f"- [{mark}] `{c['command']}`"
                     if not c["ok"] and c.get("error"):
@@ -1260,17 +1318,17 @@ class DevSessionLedger:
                 # Le decisioni vecchie sono memoria, e la memoria ha la sua
                 # sezione piu' sotto. Qui restano le ultime, che sono quelle
                 # che vincolano il passo successivo.
-                parts.extend(f"- {d}" for d in self._decisions[-6:])
+                parts.extend(f"- {d}" for d in self._decisions[-3:])
 
             if self._session_memory:
                 parts.append("\n**Memoria della sessione (decisioni e motivazioni storiche):**")
-                for m in self._session_memory[-6:]:
+                for m in self._session_memory[-3:]:
                     tr = f"[{m['turn_range']}] " if m.get("turn_range") else ""
                     parts.append(f"- {tr}{m.get('summary', '')}")
 
             if self._failures:
                 parts.append("\n**Errori recenti da non ripetere:**")
-                parts.extend(f"- {f}" for f in self._failures[-3:])
+                parts.extend(f"- {f}" for f in self._failures[-2:])
 
             testo = "\n".join(parts)
             if len(testo) > MAX_STATE_CHARS:
