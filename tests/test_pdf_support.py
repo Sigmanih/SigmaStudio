@@ -1,3 +1,10 @@
+
+# Una dipendenza opzionale assente non deve fermare la raccolta: senza questa
+# riga `pytest tests/` usciva con un errore di collection e **nessun** test
+# partiva. La lettura dei PDF usa `fitz` (PyMuPDF).
+import pytest
+
+pytest.importorskip("fitz")
 # ==============================================================================
 # tests/test_pdf_support.py — Test per estrazione PDF e conoscenza di Sigma Studio
 # ==============================================================================
@@ -11,7 +18,10 @@ from core.harness.fs_manager import read_file_content
 from core.harness.loop import execute_admin_tool
 from core.scheda_progetto import scheda, consulta, DOCUMENTI
 
-
+# Una dipendenza opzionale assente non deve fermare la raccolta: senza
+# questa riga `pytest tests/` usciva con un errore di collection e nessun
+# test partiva. La lettura dei PDF usa `fitz` (PyMuPDF).
+import pytest
 @pytest.fixture
 def pdf_di_test(tmp_path) -> Path:
     """Genera un file PDF reale con 2 pagine di contenuto strutturato."""

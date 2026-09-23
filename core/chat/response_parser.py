@@ -15,6 +15,8 @@ import re
 import json
 import logging
 
+from core.think_channel import separa
+
 log = logging.getLogger("sigma.response_parser")
 
 # ---------------------------------------------------------------------------
@@ -415,21 +417,30 @@ def richiesta_ammette_inglese(domanda: str) -> bool:
 _FRAZIONE_MINIMA_SUPERSTITE = 0.25
 
 
-#: Un recinto di codice o un frammento fra backtick: li' dentro un tag e'
-#: contenuto, non un involucro da togliere.
+#: Un tag generico si toglie solo se e' **da solo sulla sua riga**: e' la regola
+#: di `core/think_channel.py`, e serve qui per lo stesso motivo. Cancellare un
+#: tag nominato dentro una frase riscrive la risposta di chi l'ha scritta:
+#: «il modello non ha emesso </think> e il testo si e' rotto» diventava «non ha
+#: emesso  e il testo si e' rotto». Le strutture note — `<response>`, `<output>`,
+#: `<answer>` — le toglie lo stadio 2, che agisce anche a meta' riga: quelle sono
+#: involucri, e si sa che lo sono.
+_TAG_SOLO_SULLA_RIGA = re.compile(r"(?m)^[ \t]*</?[a-zA-Z_][a-zA-Z0-9_]*>[ \t]*\n?")
 _PEZZI_DI_CODICE = re.compile(r"```[\s\S]*?```|`[^`\n]*`")
-_TAG_GENERICO = re.compile(r"</?[a-zA-Z_][a-zA-Z0-9_]*>")
 
 
 def _pulisci_tag_fuori_dal_codice(testo: str) -> str:
-    """Toglie i tag XML dalla prosa, lasciando intatto il codice."""
+    """Toglie i tag XML dalla prosa, lasciando intatto il codice.
+
+    E lasciando intatto anche un tag *nominato* dentro una frase: si tolgono i
+    tag che occupano la loro riga, non le parole che parlano di un tag.
+    """
     fuori = []
     ultimo = 0
     for pezzo in _PEZZI_DI_CODICE.finditer(testo):
-        fuori.append(_TAG_GENERICO.sub("", testo[ultimo:pezzo.start()]))
+        fuori.append(_TAG_SOLO_SULLA_RIGA.sub("", testo[ultimo:pezzo.start()]))
         fuori.append(pezzo.group())
         ultimo = pezzo.end()
-    fuori.append(_TAG_GENERICO.sub("", testo[ultimo:]))
+    fuori.append(_TAG_SOLO_SULLA_RIGA.sub("", testo[ultimo:]))
     return "".join(fuori)
 
 
@@ -460,19 +471,25 @@ def _clean_all_tags(content: str, domanda: str = "") -> tuple[str, str | None]:
     if process_thinking:
         extracted = process_thinking
 
-    # Lo stadio 1 \u2014 estrazione del ragionamento dai tag XML \u2014 non c'e' piu'.
+    # 1 — Blocchi di ragionamento dichiarati dal modello, con la regola di
+    # `core/think_channel.py` e non con un'altra regex scritta qui.
     #
-    # Lo faceva gia' `core/think_channel.py`, e ora TUTTI i chiamanti ci
-    # passano: la chat in streaming, il ciclo dell'agente e \u2014 da oggi \u2014 anche
-    # `parse_thinking_and_content`, che serve `assistant_orchestrator` e
-    # `execute_loop`. Farlo due volte puo' solo togliere risposta vera, perche'
-    # questa passata lavora su un testo in cui i tag rimasti sono contenuto.
+    # Questo stadio c'era, era stato tolto perche' i chiamanti passavano tutti da
+    # think_channel, ed e' tornato perche' non era vero: `assistant_orchestrator` e
+    # `execute_loop` chiamano questa funzione senza passare di li', e per loro un
+    # `<think>...</think>` finiva nella risposta - l'utente leggeva il ragionamento
+    # del modello al posto della risposta.
     #
-    # Gli stadi che restano coprono le forme SENZA tag, che nessun router puo'
-    # vedere: il blocco "Here's a thinking process", il marcatore "done
-    # thinking.", i monologhi a elenco e l'autoanalisi in inglese.
+    # Rimetterlo e' sicuro *perche'* si appoggia a `separa`: la sua regola e'
+    # strutturale (un tag comanda solo se apre la riga) e idempotente, quindi su
+    # un testo gia' separato non trova niente da fare. La vecchia versione usava
+    # regex ingenue, ed e' quella che cancellava i tag *nominati* dentro una
+    # frase, due backtick vuoti e il markdown rotto da li' in poi.
+    remaining, ragionamento = separa(remaining)
+    if ragionamento:
+        extracted = f"{extracted}\n\n{ragionamento}" if extracted else ragionamento
 
-    # 2 \u2014 Remove container tags
+    # 2 — Remove container tags
     for pattern in _TAG_PATTERNS["container"]:
         remaining = re.sub(pattern, "", remaining, flags=re.IGNORECASE).strip()
 

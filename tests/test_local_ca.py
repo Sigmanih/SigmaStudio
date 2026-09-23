@@ -1,4 +1,11 @@
 """Verifica la PKI locale: la CA firma il certificato server e il browser puo' fidarsene."""
+
+# Una dipendenza opzionale assente non deve fermare la raccolta: senza questa
+# riga `pytest tests/` usciva con un errore di collection e **nessun** test
+# partiva. La CA locale usa `cryptography` per firmare i certificati.
+import pytest
+
+pytest.importorskip("cryptography")
 import datetime
 import ipaddress
 import socket
@@ -11,7 +18,10 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 from core import ssl_manager
 
-
+# Una dipendenza opzionale assente non deve fermare la raccolta: senza
+# questa riga `pytest tests/` usciva con un errore di collection e nessun
+# test partiva. La CA locale usa `cryptography` per firmare i certificati.
+import pytest
 class TestLocalCA(unittest.TestCase):
     def setUp(self):
         cert, key = ssl_manager.ensure_ssl_certificates()

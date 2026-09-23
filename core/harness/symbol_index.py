@@ -137,3 +137,44 @@ def find_symbol_definitions(
         "symbols": symbols[:limit],
         "message": f"Trovate {len(symbols)} definizioni per '{query}'."
     }
+
+
+def outline_of_file(file_path: str, limit: int = 40) -> Dict[str, Any]:
+    """La mappa di un file: cosa definisce, e a che riga.
+
+    Leggere un file di quattromila righe a finestre e un modo per non trovarlo:
+    il 23 settembre 2026 un agente ha letto `core/harness/loop.py` (4212 righe)
+    nelle finestre 1-1200 e 2400-2899, e ha cercato per dieci turni una funzione
+    che stava alla riga 2132. Una mappa di quaranta righe, con i nomi e i numeri
+    di riga, dice dove guardare prima di chiedere una finestra.
+    """
+    p = Path(file_path)
+    esito: Dict[str, Any] = {
+        "success": False, "path": str(p).replace("\\", "/"),
+        "symbols": [], "count": 0, "total_lines": 0,
+    }
+    if not p.is_file():
+        esito["error"] = f"File non trovato: {file_path}"
+        return esito
+    estensione = p.suffix.lower()
+    if estensione not in (".py", ".js", ".jsx", ".ts", ".tsx"):
+        esito["error"] = f"Mappa non disponibile per i file con estensione {estensione}."
+        return esito
+    try:
+        codice = p.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        esito["error"] = f"File non leggibile: {exc}"
+        return esito
+
+    if estensione == ".py":
+        simboli = _extract_py_symbols(codice, p.name)
+    else:
+        simboli = _extract_js_symbols(codice, p.name)
+    simboli.sort(key=lambda voce: int(voce.get("line") or 0))
+    esito.update({
+        "success": True,
+        "symbols": simboli[: max(1, int(limit))],
+        "count": len(simboli),
+        "total_lines": len(codice.splitlines()),
+    })
+    return esito

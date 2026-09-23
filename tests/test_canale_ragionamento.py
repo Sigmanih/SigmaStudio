@@ -398,11 +398,15 @@ class TestLaRegolaEUnaSolaOvunque(unittest.TestCase):
         self.assertFalse((pensiero or "").strip())
 
 
-class TestLaSecondaPassataNonTogliePiuIlRagionamento(unittest.TestCase):
-    """I due casi negativi scritti dall'agente, piu' quello che mancava.
+class TestLaSecondaPassataNonToccaLeRisposteLegittime(unittest.TestCase):
+    """Lo stadio 1 e' tornato, ma strutturale: qui si verifica che non morda.
 
-    Tolto lo stadio 1, `_clean_all_tags` non deve toccare una risposta
-    legittima che gli somiglia.
+    Era stato tolto perche' i chiamanti passavano tutti da `think_channel`, e non
+    era vero: `assistant_orchestrator` e `execute_loop` chiamano questa funzione
+    senza passarci, e per loro un `<think>` finiva dentro la risposta.
+    Tornato con la regola di `think_channel` invece che con una regex scritta
+    qui, non tocca piu' una risposta legittima che gli somiglia - che era il
+    motivo per cui era stato tolto.
     """
 
     def _pulito(self, testo):
@@ -423,7 +427,7 @@ class TestLaSecondaPassataNonTogliePiuIlRagionamento(unittest.TestCase):
         self.assertEqual(pulita, risposta)
         self.assertIsNone(pensiero)
 
-    def test_lo_stadio_uno_non_c_e_piu(self):
+    def test_lo_stadio_uno_non_usa_le_regex_ingenue(self):
         """Se torna, torna anche la doppia estrazione."""
         import inspect
 
@@ -431,3 +435,27 @@ class TestLaSecondaPassataNonTogliePiuIlRagionamento(unittest.TestCase):
 
         sorgente = inspect.getsource(_clean_all_tags)
         self.assertNotIn('_TAG_PATTERNS["thinking"]', sorgente)
+
+    def test_un_blocco_esplicito_viene_estratto(self):
+        """Il caso che l'utente vedeva: ragionamento nella bolla della risposta."""
+        grezzo = ("<think>Devo rispondere in italiano.</think>\n\n"
+                  "Sigma Studio unisce chat, modelli e strumenti.")
+        pulita, pensiero = self._pulito(grezzo)
+        self.assertNotIn("Devo rispondere", pulita)
+        self.assertIn("Sigma Studio unisce", pulita)
+        self.assertIn("Devo rispondere", pensiero or "")
+
+    def test_un_tag_nominato_dentro_una_frase_resta_testo(self):
+        """La lezione di `think_channel`: chi *parla* di un tag non ne subisce uno."""
+        risposta = ("Il modello ha dimenticato di emettere </think> e il testo "
+                    "si e rotto.")
+        pulita, pensiero = self._pulito(risposta)
+        self.assertEqual(pulita, risposta)
+        self.assertIsNone(pensiero)
+
+    def test_un_testo_gia_separato_non_cambia(self):
+        """Idempotenza: chi ha gia' separato non deve perdere altro."""
+        risposta = "Solo una risposta normale.\n\nCon due paragrafi."
+        pulita, pensiero = self._pulito(risposta)
+        self.assertEqual(pulita, risposta)
+        self.assertIsNone(pensiero)

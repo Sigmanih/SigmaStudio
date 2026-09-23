@@ -167,3 +167,55 @@ class TestLaProsaNonEUnaChiamata:
         l'intenzione c'e' ed e' esplicita."""
         chiamate = extract_tool_invocations('{"tool": "list_dir", "params": {"path": "core"}}')
         assert [(c["tool"], c["params"]["path"]) for c in chiamate] == [("list_dir", "core")]
+
+
+class TestIlRiepilogoRifiutatoOttoVolte:
+    """23 settembre 2026: un run ha emesso il proprio `complete_goal` otto volte
+    di fila, identico, e ogni volta il cancello ha risposto «il corpo non e un
+    oggetto JSON valido» mostrando l'esempio `{"path": "..."}` - cioe' dicendogli
+    di togliere `summary`, l'unico campo che doveva riempire.
+
+    Il corpo era scritto bene: aveva un a capo protetto e diciannove virgolette
+    su venticinque protette. Le altre sei no, e una virgoletta non protetta
+    dentro una stringa basta a invalidare tutto. Il modello, che non poteva
+    saperlo, ha riprovato uguale. Il run e' finito con i turni esauriti.
+
+    Si verifica: che l'esempio parli del campo giusto, che un corpo di prosa non
+    venga buttato via, che la maglia non si allarghi agli altri tool, e che il
+    nome con cui l'hub MCP chiama un tool valga anche qui.
+    """
+
+    def test_l_esempio_di_complete_goal_parla_di_summary(self):
+        esempio = _esempio_di_chiamata("complete_goal")
+        assert "summary" in esempio, esempio
+        assert '"path"' not in esempio, "l'esempio chiedeva un campo che non serve"
+
+    def test_il_corpo_di_prosa_non_si_butta(self):
+        from core.harness.loop import normalize_tool_params
+
+        corpo = '{"summary": "Ho verificato: sono ancora "DA FARE" i criteri 1 e 3."}'
+        esito = normalize_tool_params(corpo, "complete_goal")
+        assert esito.get("__malformed__") is not True, esito
+        assert "DA FARE" in esito.get("summary", ""), esito
+        assert len(esito.get("summary", "")) > 20
+
+    def test_la_maglia_non_si_allarga(self):
+        """La prosa si recupera per i riepiloghi, non per i file: li' un JSON
+        rotto e' un contenuto che l'agente deve riscrivere, non indovinare."""
+        from core.harness.loop import normalize_tool_params
+
+        rotto = '{"path": "x.py", "content": "a "b" c"}'
+        assert normalize_tool_params(rotto, "write_file").get("__malformed__") is True
+        assert normalize_tool_params('{"summary": "ok"}', "complete_goal") == {"summary": "ok"}
+
+    def test_il_messaggio_nomina_le_due_cause(self):
+        errore = _errore("complete_goal", '{"summary": "a "b" c"}')
+        assert "virgoletta" in errore, errore
+        assert BARRA + "n" in errore, errore
+
+    def test_il_nome_dell_hub_vale_anche_nel_ciclo(self):
+        from core.harness.policy import canonical
+
+        assert canonical("read_file_window") == "read_file"
+        assert canonical("edit_file_exact") == "edit_file"
+        assert canonical("read_file_slice") == "read_file"

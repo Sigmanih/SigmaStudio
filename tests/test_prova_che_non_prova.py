@@ -148,10 +148,18 @@ class TestChiPianificaLoSaSubito:
     def test_una_prova_vera_non_produce_rumore(self):
         assert self._avvisi(FORTE) == []
 
-    def test_una_voce_senza_prova_non_viene_segnalata_qui(self):
-        """Chi non dichiara la verifica la deve trovare da se': lo dice gia'
-        il prompt della voce, e ripeterlo qui sarebbe rumore."""
-        assert self._avvisi("") == []
+    def test_una_voce_senza_prova_viene_segnalata(self):
+        """Il contratto e cambiato il 23 settembre, ed e bene che si veda qui.
+
+        Prima non si segnalava, per non ripetere cio che il prompt della voce
+        gia dice. Non bastava: il cancello di completamento pretende una prova
+        **eseguita**, e sui run registrati quarantanove chiusure sono state
+        rifiutate per una prova che nessuno aveva dichiarato. Un avviso a chi
+        pianifica costa una riga; scoprirlo a valle costa un run.
+        """
+        avvisi = self._avvisi("")
+        assert avvisi and "non dichiara" in avvisi[0], avvisi
+        assert "come dimostrarla" in avvisi[0]
 
 
 class TestQuandoUnLavoroEsisteGia:
@@ -178,17 +186,23 @@ class TestQuandoUnLavoroEsisteGia:
                 workqueue.forget_queue("prova_doppioni")
                 esito = execute_admin_tool("queue_add", {
                     "queue_id": "prova_doppioni",
-                    "items": [{"id": "a", "title": "fai una cosa", "files": list(files)}],
+                    # La verifica c e, cosi questi test misurano il doppione e
+                    # non l avviso sulla prova mancante: una cosa per volta.
+                    "items": [{"id": "a", "title": "fai una cosa",
+                               "files": list(files),
+                               "verify": "python -m pytest tests/ -q"}],
                 }, t)
                 return esito.get("warnings") or []
 
     def test_un_file_nuovo_fra_fratelli_viene_segnalato(self):
         avvisi = self._avvisi(["backend/test.js"])
-        assert avvisi and "index.test.js" in avvisi[0]
+        # Non si guarda la prima riga: l elenco puo crescere, e un test che
+        # misura la posizione misura la cosa sbagliata.
+        assert any("index.test.js" in a for a in avvisi), avvisi
 
     def test_e_si_dice_cosa_farne(self):
         avvisi = self._avvisi(["backend/test.js"])
-        assert "Guardali prima" in avvisi[0]
+        assert any("Guardali prima" in a for a in avvisi), avvisi
 
     def test_modificare_un_file_che_esiste_non_e_lavoro_doppio(self):
         assert self._avvisi(["backend/index.test.js"]) == []

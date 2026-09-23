@@ -28,13 +28,44 @@ IGNORE_EXTENSIONS = {
 
 # Directories excluded from *content search* only (they may hold hundreds of GB of
 # weights, datasets and caches: walking them saturates RAM and freezes the server).
-SEARCH_IGNORE_DIRS = IGNORE_DIRS | {
+#
+# `SEARCH_IGNORE_RUNTIME_DIRS` e' la parte che non e' una questione di peso ma di
+# *cosa* si sta cercando: lo stato di runtime del programma che sta eseguendo la
+# ricerca: sessioni salvate, worktree dei run finiti, indice semantico, pesi.
+# Non sono il progetto, sono la contabilita' dell'agente, e cercarli restituisce
+# all'agente il verbale della propria ricerca.
+#
+# Misurato il 23 settembre 2026, su un run vero: dieci turni finali a cercare
+# `def stream_admin_agent_turn`, otto corrispondenze, **sette dentro `var/`**, di
+# cui tre erano il log di quella stessa ricerca, scritto un turno prima. Il
+# contatore cresceva di uno a ogni tentativo: la ricerca trovava se' stessa, e
+# l'unica risposta vera era l'ottava. `def _esegui_voce` dava cinque risultati:
+# quattro erano copie morte in worktree di run passati. E `queue_id` esauriva il
+# tetto dei cinquanta risultati sui file di coda scritti a mano nella radice,
+# senza arrivare mai alla definizione in `core/harness/workqueue.py`.
+#
+# Il divieto vale per la scansione dell'albero, non per chi sa gia' dove
+# guardare: un percorso chiesto esplicitamente dentro una di queste cartelle
+# viene visitato lo stesso, perche' il taglio avviene sulle sottocartelle
+# incontrate camminando, non sulla radice da cui si parte.
+SEARCH_IGNORE_RUNTIME_DIRS = {"var", "store", "logs"}
+
+SEARCH_IGNORE_DIRS = IGNORE_DIRS | SEARCH_IGNORE_RUNTIME_DIRS | {
     ".backups", ".sigma_backups", ".mypy_cache", ".ruff_cache", ".tox", ".turbo", ".parcel-cache",
     ".gradle", ".svelte-kit", ".nuxt", ".expo", ".terraform", ".ipynb_checkpoints",
     "site-packages", "coverage", "htmlcov", "out", "target",
     "models", "checkpoints", "backbones", "shards", "weights", "wandb",
     "hf_cache", "huggingface", "unsloth_compiled_cache"
 }
+
+#: Le cartelle da guardare per prime quando la ricerca parte dalla radice.
+#:
+#: Il tetto dei risultati si consuma nell'ordine di visita, e l'ordine del
+#: filesystem non ha nulla a che vedere con l'utilita': la definizione di un
+#: simbolo sta nel codice, non nelle note del piano. Senza un ordine scelto, i
+#: primi cinquanta risultati di `queue_id` erano le code scritte a mano nella
+#: radice e `PIANO_*.md`, e il tetto era esaurito prima di arrivare a `core/`.
+SEARCH_FIRST_DIRS = ("core", "tests", "tools", "sigma_studio", "projects")
 
 # Binary / archive / weight formats that must never be read as text.
 SEARCH_IGNORE_EXTENSIONS = IGNORE_EXTENSIONS | {
@@ -516,6 +547,55 @@ def _is_probably_binary(fp) -> bool:
     return b"\x00" in head if isinstance(head, bytes) else "\x00" in head
 
 
+
+def _voci_da_esaminare(root: Path) -> List[Path]:
+    """Cosa visitare e in che ordine, quando la ricerca parte da una cartella.
+
+    Le cartelle utili per prime, i file della radice per ultimi, i nomi in
+    ordine alfabetico: senza questo l'ordine lo decide il filesystem, e su
+    questo progetto significava consumare il tetto dei risultati nei file di
+    appoggio della radice. Le cartelle di stato non entrano affatto.
+    """
+    cartelle: List[Path] = []
+    file_radice: List[Path] = []
+    try:
+        voci = sorted(root.iterdir(), key=lambda e: e.name.lower())
+    except OSError:
+        return []
+    for voce in voci:
+        try:
+            if voce.is_dir():
+                nome = voce.name
+                if nome in SEARCH_IGNORE_DIRS or (nome.startswith(".") and nome != ".github"):
+                    continue
+                cartelle.append(voce)
+            elif voce.is_file():
+                file_radice.append(voce)
+        except OSError:
+            continue
+    cartelle.sort(key=lambda e: (0 if e.name in SEARCH_FIRST_DIRS else 1, e.name.lower()))
+    return cartelle + file_radice
+
+
+def cartelle_di_stato_saltate(root_path: Optional[str] = None) -> List[str]:
+    """Le cartelle di stato che una ricerca dalla radice non visitera'.
+
+    Serve a poterlo dire: `non ho guardato in var/` e' un'informazione, e senza
+    quella un elenco piu' corto del previsto si legge come `quel testo non esiste`.
+    """
+    radice = Path(root_path or get_default_workspace_root()).resolve()
+    if not radice.is_dir():
+        return []
+    fuori: List[str] = []
+    for nome in sorted(SEARCH_IGNORE_RUNTIME_DIRS):
+        try:
+            if (radice / nome).is_dir():
+                fuori.append(nome)
+        except OSError:
+            continue
+    return fuori
+
+
 def search_workspace_files(
     root_path: Optional[str] = None,
     query: str = "",
@@ -528,9 +608,11 @@ def search_workspace_files(
 ) -> Dict[str, Any]:
     """Searches text occurrences across workspace files under strict safety budgets.
 
-    The walk prunes heavy directories (weights, datasets, caches, node_modules) *before*
-    descending into them, skips binaries and oversized files, reads line-by-line instead
-    of loading whole files in RAM, and always stops at the deadline / file / byte caps.
+    The walk prunes heavy directories (weights, datasets, caches, node_modules)
+    and the program's own runtime state *before* descending into them, visits
+    the project's source folders before the rest of the tree, skips binaries and
+    oversized files, reads line-by-line instead of loading whole files in RAM,
+    and always stops at the deadline / file / byte caps.
     """
     if not root_path:
         root_path = get_default_workspace_root()
@@ -549,7 +631,7 @@ def search_workspace_files(
     scanned_files = 0
     skipped_files = 0
     scanned_bytes = 0
-    stop_reason = None
+    stop_reason: Optional[str] = None
 
     def _budget_exceeded() -> Optional[str]:
         if should_cancel is not None and should_cancel():
@@ -562,75 +644,77 @@ def search_workspace_files(
             return "max_bytes"
         return None
 
-    try:
-        for dirpath, dirnames, filenames in os.walk(root, topdown=True, onerror=None):
-            # Prune heavy/ignored directories in place so os.walk never descends into them
-            dirnames[:] = [
-                d for d in dirnames
-                if d not in SEARCH_IGNORE_DIRS and not (d.startswith(".") and d not in {".github"})
-            ]
+    def _scan_file(fp: Path) -> Optional[str]:
+        """Le righe di `fp` che corrispondono; dice se la ricerca deve fermarsi."""
+        nonlocal scanned_files, skipped_files, scanned_bytes
+        nome = fp.name
+        if fp.suffix.lower() in SEARCH_IGNORE_EXTENSIONS or nome.endswith((".min.js", ".min.css")):
+            skipped_files += 1
+            return None
 
+        try:
+            size = fp.stat().st_size
+        except OSError:
+            skipped_files += 1
+            return None
+
+        if size == 0 or size > max_file_bytes:
+            skipped_files += 1
+            return None
+
+        scanned_files += 1
+        scanned_bytes += size
+        file_matches = 0
+
+        try:
+            with open(fp, "rb") as bf:
+                if _is_probably_binary(bf):
+                    skipped_files += 1
+                    scanned_files -= 1
+                    scanned_bytes -= size
+                    return None
+
+            with open(fp, "r", encoding="utf-8", errors="ignore") as tf:
+                for line_num, line in enumerate(tf, 1):
+                    if pattern.search(line):
+                        results.append({
+                            "path": str(fp).replace("\\", "/"),
+                            "filename": fp.name,
+                            "line_number": line_num,
+                            "line_content": line.strip()[:200]
+                        })
+                        file_matches += 1
+                        if len(results) >= max_results:
+                            return "max_results"
+                        if file_matches >= SEARCH_MAX_MATCHES_PER_FILE:
+                            break
+        except OSError:
+            return None
+        return None
+
+    try:
+        for voce in _voci_da_esaminare(root):
             stop_reason = _budget_exceeded()
             if stop_reason:
                 break
-
-            for name in filenames:
-                stop_reason = _budget_exceeded()
+            if voce.is_file():
+                stop_reason = _scan_file(voce)
+                continue
+            for dirpath, dirnames, filenames in os.walk(str(voce), topdown=True, onerror=None):
+                # Prune heavy/ignored directories in place so os.walk never descends into them
+                dirnames[:] = [
+                    d for d in dirnames
+                    if d not in SEARCH_IGNORE_DIRS and not (d.startswith(".") and d not in {".github"})
+                ]
+                for name in sorted(filenames):
+                    stop_reason = _budget_exceeded()
+                    if stop_reason:
+                        break
+                    stop_reason = _scan_file(Path(dirpath) / name)
+                    if stop_reason:
+                        break
                 if stop_reason:
                     break
-
-                fp = Path(dirpath) / name
-                if fp.suffix.lower() in SEARCH_IGNORE_EXTENSIONS or name.endswith((".min.js", ".min.css")):
-                    skipped_files += 1
-                    continue
-
-                try:
-                    size = fp.stat().st_size
-                except Exception:
-                    skipped_files += 1
-                    continue
-
-                if size == 0 or size > max_file_bytes:
-                    skipped_files += 1
-                    continue
-
-                scanned_files += 1
-                scanned_bytes += size
-                file_matches = 0
-
-                try:
-                    with open(fp, "rb") as bf:
-                        if _is_probably_binary(bf):
-                            skipped_files += 1
-                            scanned_files -= 1
-                            scanned_bytes -= size
-                            continue
-
-                    with open(fp, "r", encoding="utf-8", errors="ignore") as tf:
-                        for line_num, line in enumerate(tf, 1):
-                            if pattern.search(line):
-                                results.append({
-                                    "path": str(fp).replace("\\", "/"),
-                                    "filename": fp.name,
-                                    "line_number": line_num,
-                                    "line_content": line.strip()[:200]
-                                })
-                                file_matches += 1
-                                if len(results) >= max_results:
-                                    return {
-                                        "success": True,
-                                        "results": results,
-                                        "total_matches": len(results),
-                                        "capped": True,
-                                        "stop_reason": "max_results",
-                                        "scanned_files": scanned_files,
-                                        "skipped_files": skipped_files
-                                    }
-                                if file_matches >= SEARCH_MAX_MATCHES_PER_FILE:
-                                    break
-                except Exception:
-                    continue
-
             if stop_reason:
                 break
     except Exception as e:
@@ -640,7 +724,7 @@ def search_workspace_files(
     if stop_reason:
         log.info("Workspace search stopped early (%s) after %d files", stop_reason, scanned_files)
 
-    return {
+    esito: Dict[str, Any] = {
         "success": True,
         "results": results,
         "total_matches": len(results),
@@ -649,3 +733,7 @@ def search_workspace_files(
         "scanned_files": scanned_files,
         "skipped_files": skipped_files
     }
+    saltate = cartelle_di_stato_saltate(str(root))
+    if saltate:
+        esito["ignored_runtime_dirs"] = saltate
+    return esito

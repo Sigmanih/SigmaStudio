@@ -137,6 +137,17 @@ def adatta_alla_shell(comando: str) -> str:
     `$?` va letto *prima* di ogni altra cosa, perche' anche un assegnamento lo
     riscrive; `$LASTEXITCODE` lo muovono solo i programmi veri, e si parte da
     zero per non ereditare il codice di un comando di dieci minuti fa.
+
+    **Sulla codifica non si tocca niente, ed e' una scelta misurata.** Il 23
+    settembre 2026, con PowerShell 5.1 e le pipe, `Write-Output` e l'output dei
+    processi figli passano per questi canali **byte per byte**: un figlio che
+    scrive UTF-8 arriva al genitore come UTF-8. Il carattere corrotto che si
+    vedeva (`perch├®`) non nasceva qui: era il *terminale di chi guardava* che
+    rileggeva in cp850. Aggiungere qui un preambolo che forza
+    `[Console]::OutputEncoding` non cambiava un solo byte e introduceva
+    un'assegnazione in piu' prima della catena di `$?`: tolto. La codifica si
+    risolve dal lato dei figli, dove `PYTHONUTF8` la decide (vedi
+    `_ambiente_non_interattivo`).
     """
     if sys.platform != "win32":
         return comando
@@ -185,6 +196,14 @@ def _ambiente_non_interattivo() -> Dict[str, str]:
     ambiente.setdefault("npm_config_progress", "false")
     ambiente.setdefault("PIP_DISABLE_PIP_VERSION_CHECK", "1")
     ambiente.setdefault("PYTHONUNBUFFERED", "1")
+    # La codifica dei figli si decide qui, non si spera. Su Windows, senza
+    # queste due, un figlio Python scrive nella code page della console (cp850):
+    # un `print` con un accento non e' codificabile, lo script muore con
+    # UnicodeEncodeError, e l'agente - che non sa perche' - impara ad aggiungere
+    # `-X utf8` a mano. Su un run vero e' costato due turni per script: un
+    # fallimento che sembrava un difetto dello script, e non lo era.
+    ambiente.setdefault("PYTHONUTF8", "1")
+    ambiente.setdefault("PYTHONIOENCODING", "utf-8")
     return ambiente
 
 

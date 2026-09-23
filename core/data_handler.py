@@ -2,6 +2,7 @@
 import os
 import glob
 import json
+import time
 from core import paths
 from core.logger import get_logger
 from core.store import modules_store
@@ -38,11 +39,24 @@ def _infer_file_type(filename: str) -> dict:
     return {"type": file_type, "is_entrypoint": is_entrypoint}
 
 
+#: Quanto si riusa l'indice dei moduli per le letture. Vedi `modules_meta()`.
+MODULES_META_TTL = 3.0
+
+#: L'ultimo indice ricostruito e quando: la copia che serve alle letture.
+_MODULES_META: dict = {"quando": 0.0, "dati": None}
+
+
 def rebuild_modules_meta() -> dict:
-    """
-    Synchronise modules_meta.json from the filesystem in real time.
-    Scans the entire ./data/ tree recursively into a Universal Knowledge Node Graph (TopicNodes).
-    Supports arbitrary folder depth, attached multi-type files, and embedded web applications.
+    """Sincronizza modules_meta.json dal filesystem, adesso.
+
+    Scans the entire ./data/ tree recursively into a Universal Knowledge Node
+    Graph (TopicNodes). Supports arbitrary folder depth, attached multi-type
+    files, and embedded web applications.
+
+    Chi *scrive* in `data/` chiama questa e vuole la versione nuova adesso: resta
+    la funzione che ricostruisce davvero. Chi *legge* per l'interfaccia usa
+    `modules_meta()`, che riusa il risultato per qualche secondo - vedi li' il
+    perche'.
     """
     data_root = paths.workspace_dir()
     data_dir = str(data_root)
@@ -112,12 +126,32 @@ def rebuild_modules_meta() -> dict:
     meta_data = {"topics": topics, "nodes": nodes, "modules": modules}
     modules_store.save(meta_data)
     log.info("modules_meta.json rebuilt (%d nodes, %d topics)", len(nodes), len(topics))
+    _MODULES_META["quando"] = time.time()
+    _MODULES_META["dati"] = meta_data
     return meta_data
+
+
+def modules_meta() -> dict:
+    """L'indice dei moduli per chi lo legge, ricostruito al massimo ogni pochi secondi.
+
+    `/api/topics` lo chiede a ogni giro dell'interfaccia, e il pannello gira
+    anche con piu' schede aperte: la scansione di `data/` e la riscrittura del
+    file finivano per girare **una volta al secondo** (il log lo diceva, una riga
+    «modules_meta.json rebuilt (379 nodes, 4 topics)» al secondo). Un indice di
+    lettura non ha bisogno di essere fresco al secondo: entro il TTL la
+    differenza non si vede, e chi scrive ha comunque la strada diretta.
+    """
+    adesso = time.time()
+    if (_MODULES_META["dati"] is not None
+            and adesso - _MODULES_META["quando"] < MODULES_META_TTL):
+        return _MODULES_META["dati"]
+    # Qui si ricostruisce davvero: e' il ripiego del TTL, non un richiamo a se'.
+    return rebuild_modules_meta()
 
 
 def get_all_module_folders(self):
     """Scan topic folders for nested module folders."""
-    meta = rebuild_modules_meta()
+    meta = modules_meta()
     topics = meta.get("topics", {})
     result = []
     for topic_id, topic_data in topics.items():
@@ -189,7 +223,7 @@ def load_module_files(self, folder_path):
 
 def handle_api_modules(self):
     try:
-        meta = rebuild_modules_meta()
+        meta = modules_meta()
         data = {"modules": []}
         mod_folders = get_all_module_folders(self)
         for mod in mod_folders:
@@ -217,7 +251,7 @@ def handle_api_topics(self):
     and files are attached directly to the node that contains them.
     """
     try:
-        meta = rebuild_modules_meta()
+        meta = modules_meta()
         result = {"topics": []}
         nodes = meta.get("nodes", {})
         

@@ -45,6 +45,14 @@ MAX_ERROR_CHARS = 300
 #: stesso file scritto male cinque volte.
 MAX_RICEVUTO_CHARS = 240
 
+#: Tetto dello stato che entra in ogni prompt. Lo stato si riscrive a ogni
+#: turno, quindi ogni sua riga si paga una volta per turno: su un run da
+#: trenta turni, mille caratteri di troppo sono trentamila caratteri, cioe
+#: circa novemila token. Misurato il 23 settembre su un run vero: lo stato
+#: era 6075 caratteri, e con la mappa dei file l'overhead fisso per turno
+#: arrivava a 5817 token ? piu' di quanto il modello generasse.
+MAX_STATE_CHARS = 9000
+
 
 @dataclass
 class Requirement:
@@ -103,13 +111,40 @@ class FileRecord:
             return False
         return self.lines_seen[0] == (1, self.total_lines)
 
+    def missing_ranges(self, max_spans: int = 4) -> List[Tuple[int, int]]:
+        """Le zone del file che nessuna finestra ha mostrato, in ordine.
+
+        Serve a dire *dove* guardare e non solo *che* si e gia guardato. Il 23
+        settembre 2026 un agente ha letto `loop.py` (4212 righe) nelle finestre
+        1-1200 e 2400-2899 e ha passato dieci turni a cercare una firma che
+        stava alla riga 2132, cioe dentro il buco che nessuno gli aveva
+        nominato.
+        """
+        if not self.total_lines:
+            return []
+        buchi: List[Tuple[int, int]] = []
+        atteso = 1
+        for inizio, fine in self.lines_seen:
+            if inizio > atteso:
+                buchi.append((atteso, min(inizio - 1, self.total_lines)))
+            atteso = max(atteso, fine + 1)
+            if atteso > self.total_lines:
+                break
+        if atteso <= self.total_lines:
+            buchi.append((atteso, self.total_lines))
+        return buchi[: max(1, int(max_spans))]
+
     def coverage_note(self) -> str:
         if self.total_lines is None:
             return "letto"
         if self.fully_read:
             return f"letto integralmente ({self.total_lines} righe)"
         spans = ", ".join(f"{a}-{b}" for a, b in self.lines_seen[:4])
-        return f"letto righe {spans} di {self.total_lines}"
+        nota = f"letto righe {spans} di {self.total_lines}"
+        buchi = self.missing_ranges(max_spans=2)
+        if buchi:
+            nota += " (manca " + ", ".join(f"{a}-{b}" for a, b in buchi) + ")"
+        return nota
 
 
 # Something that looks like a workspace path: at least one separator or a
@@ -659,6 +694,33 @@ class DevSessionLedger:
             rec = self._files.get(self._rel(path))
             return bool(rec and rec.reads)
 
+    def gap_windows(self, path: str, size: int = 800, max_windows: int = 3
+                    ) -> List[Tuple[int, int]]:
+        """Le finestre mai viste di un file, come (prima_riga, quante_righe).
+
+        E cio che rende utile un rifiuto: ?lo hai gia letto? senza dire dove
+        guardare lascia all agente l unica mossa di cercare altrove, che e
+        esattamente cio che e successo su `gguf_converter.py` (cinque turni) e
+        su `pcb-lab.css` (quattro). Una finestra pronta toglie il calcolo.
+        """
+        try:
+            quantita = max(1, int(size))
+        except (TypeError, ValueError):
+            quantita = 800
+        limite = max(1, int(max_windows))
+        with self._lock:
+            rec = self._files.get(self._rel(path))
+            if not rec or not rec.total_lines:
+                return []
+            finestre: List[Tuple[int, int]] = []
+            for inizio, fine in rec.missing_ranges(max_spans=8):
+                for offset in range(inizio, fine + 1, quantita):
+                    ultima = min(offset + quantita - 1, fine)
+                    finestre.append((offset, ultima - offset + 1))
+                    if len(finestre) >= limite:
+                        return finestre
+            return finestre
+
     def successful_commands(self) -> List[Dict[str, Any]]:
         with self._lock:
             return [c for c in self._commands if c["ok"]]
@@ -1062,10 +1124,33 @@ class DevSessionLedger:
         return (
             "\n**Dove sei:** questa e' la cartella di Sigma Studio, il programma che ti sta eseguendo. Modificarlo e' legittimo se l'obiettivo parla di *lui*. Se invece l'obiettivo e' un applicativo nuovo e separato, qui non ci va: la sua casa e' l'indirizzo di sviluppo (`data/progetti/`), e crearlo qui dentro significa mescolarlo al sorgente di Sigma Studio e ai suoi commit. In quel caso dillo e fermati, invece di scrivere."
         )
-    def render_state_block(self) -> str:
-        """The state block re-emitted into every prompt, in place of old turns."""
+    def render_state_block(self, turn: int = 0, max_turns: int = 0) -> str:
+        """The state block re-emitted into every prompt, in place of old turns.
+
+        `turn` e `max_turns`, quando arrivano, dicono anche quanto resta. Un
+        modello che non sa di essere al ventesimo turno su trenta non puo
+        decidere di spezzare il lavoro: vede solo cio che ha fatto, mai il
+        tempo che gli e rimasto.
+        """
         with self._lock:
             parts: List[str] = ["## STATO DEL LAVORO (aggiornato automaticamente, non ripetere azioni gia svolte)"]
+
+            if turn and max_turns:
+                meta = max(1, int(max_turns)) // 2
+                scritte = [r for r in self._files.values() if r.edits or r.writes]
+                riga_turni = "\n**Turni:** %d di %d" % (int(turn), int(max_turns))
+                if not scritte:
+                    riga_turni += (
+                        " - nessuna scrittura in questa sessione: la meta era il "
+                        "turno %d" % meta
+                    )
+                    if int(turn) > meta:
+                        riga_turni += (
+                            ", ed e passata. Se il lavoro e piu grande di quanto"
+                            " sembrava, spezzalo invece di arrivare in fondo a mani"
+                            " vuote."
+                        )
+                parts.append(riga_turni)
 
             avviso = self._avviso_sulla_radice()
             if avviso:
@@ -1138,12 +1223,14 @@ class DevSessionLedger:
 
             if read_only:
                 parts.append("\n**File gia letti (non rileggerli senza motivo):**")
-                for r in sorted(read_only, key=lambda x: -x.last_touch)[:25]:
+                for r in sorted(read_only, key=lambda x: -x.last_touch)[:12]:
                     parts.append(f"- `{r.path}` — {r.coverage_note()}")
 
             if self._commands:
                 parts.append("\n**Comandi eseguiti:**")
-                for c in self._commands[-10:]:
+                # Le ultime quattro: un comando di dieci turni fa non dice piu'
+                # niente su cosa fare adesso, e occupa posto in ogni turno.
+                for c in self._commands[-4:]:
                     mark = "OK " if c["ok"] else "FALLITO"
                     line = f"- [{mark}] `{c['command']}`"
                     if not c["ok"] and c.get("error"):
@@ -1170,19 +1257,31 @@ class DevSessionLedger:
 
             if self._decisions:
                 parts.append("\n**Decisioni prese:**")
-                parts.extend(f"- {d}" for d in self._decisions)
+                # Le decisioni vecchie sono memoria, e la memoria ha la sua
+                # sezione piu' sotto. Qui restano le ultime, che sono quelle
+                # che vincolano il passo successivo.
+                parts.extend(f"- {d}" for d in self._decisions[-6:])
 
             if self._session_memory:
                 parts.append("\n**Memoria della sessione (decisioni e motivazioni storiche):**")
-                for m in self._session_memory:
+                for m in self._session_memory[-6:]:
                     tr = f"[{m['turn_range']}] " if m.get("turn_range") else ""
                     parts.append(f"- {tr}{m.get('summary', '')}")
 
             if self._failures:
                 parts.append("\n**Errori recenti da non ripetere:**")
-                parts.extend(f"- {f}" for f in self._failures[-5:])
+                parts.extend(f"- {f}" for f in self._failures[-3:])
 
-            return "\n".join(parts)
+            testo = "\n".join(parts)
+            if len(testo) > MAX_STATE_CHARS:
+                avanzo = len(testo) - MAX_STATE_CHARS
+                # Si taglia la coda, non la testa: in cima stanno l'obiettivo e
+                # i criteri di accettazione, che sono le due cose senza cui il
+                # turno non puo' decidere niente.
+                testo = testo[:MAX_STATE_CHARS] + (
+                    "\n[...stato abbreviato: %d caratteri di storia in meno."
+                    " Se ti serve un dettaglio che non vedi, chiedilo con un tool.]" % avanzo)
+            return testo
 
 
 # ---------------------------------------------------------------------------

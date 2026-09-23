@@ -120,7 +120,7 @@ ROLE_CODER = DevRole(
     max_turns=30,
     tools=(
         "read_file", "edit_file", "write_file", "search_code", "terminal",
-        "list_dir", "glob", "delete", "screenshot",
+        "list_dir", "glob", "delete", "screenshot", "find_symbol",
     ),
     focus_areas=(
         "implementazione corretta", "design ed estetica moderna", "coerenza contrattuale API",

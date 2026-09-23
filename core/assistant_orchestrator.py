@@ -78,10 +78,17 @@ def handle_switch_agent(self, agent_name: str, message: str, history: list, bot_
     # Add the routing reason
     full_prompt = f"{system_prompt}\n\n---\nRichiesta inoltrata da Sigma Assistant: {message}"
     
-    # Build messages
+    # Build messages — SELEZIONE DICHIARATA: si dice cosa resta fuori
+    _hist_total = len(history)
+    _hist_kept = min(5, _hist_total)
+    _hist_dropped = _hist_total - _hist_kept
+    if _hist_dropped > 0:
+        log.info("[Orchestrator] Selezione dichiarata: %d messaggi storici esclusi (tenuti gli ultimi %d). Chiedi esplicitamente il contesto precedente se ti serve.", _hist_dropped, _hist_kept)
     messages = [{"role": "system", "content": full_prompt}]
     for h in history[-5:]:
         messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+    if _hist_dropped > 0:
+        message = f"[NOTA: {_hist_dropped} messaggi storici esclusi dal contesto per restare nel budget. Se ti serve il contesto precedente, chiedi esplicitamente.]\n\n" + message
     messages.append({"role": "user", "content": message})
     
     # Call the AI

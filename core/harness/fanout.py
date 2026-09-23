@@ -444,6 +444,11 @@ def _esegui_voce(
             # effetto. Lo stesso difetto che questo progetto ha gia' visto
             # cinque volte, stavolta in casa propria.
             deliver=deliver,
+            # La coda, al ciclo. Senza, la via d uscita ?questa voce e piu
+            # grande di cosi? non era esprimibile: l agente la vedeva nel
+            # testo del prompt, e il ciclo non sapeva di essere in una coda.
+            queue_id=coda.queue_id,
+            item_id=voce.id,
             allowed_tools=None,
             policy_label=role_id or "",
         ):

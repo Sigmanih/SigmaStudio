@@ -87,6 +87,11 @@ def _scrivi(dati: Dict[str, Any]) -> None:
         os.replace(temporaneo, percorso)
     except OSError as exc:
         log.debug("[Attivita] salvataggio non riuscito: %s", exc)
+    # Chi scrive ha appena cambiato la verita': la fotografia per l'interfaccia
+    # non vale piu'. Senza questa riga un run appena partito non comparirebbe
+    # nel pannello per tutto il TTL - e il test `test_una_voce_aperta_risulta_attiva`
+    # l'ha detto prima di qualunque utente.
+    _STATO_CACHE["dati"] = None
 
 
 def _viva(voce: Dict[str, Any], adesso: float) -> bool:
@@ -180,6 +185,18 @@ def attive() -> List[Dict[str, Any]]:
         return sorted(vive.values(), key=lambda v: -float(v.get("iniziato") or 0))
 
 
+#: Quanto si riusa la fotografia dell'attivita' per l'interfaccia.
+#:
+#: Il pannello la chiede piu' volte al secondo, e con due schede aperte le
+#: richieste si sommano: ogni giro rilegge il file dell'attivita' sotto lucchetto.
+#: Sotto il secondo la differenza non si vede - «chi sta lavorando adesso» non
+#: cambia fra due fotogrammi - e le letture si dividono per il numero di schede.
+#: La logica interna (`attive()`, che serve anche alla chat e al ventaglio) non
+#: e' toccata: quella deve vedere lo stato vero.
+STATO_TTL_SECONDI = 1.0
+_STATO_CACHE: Dict[str, Any] = {"quando": 0.0, "dati": None}
+
+
 def storico(limite: int = 10) -> List[Dict[str, Any]]:
     with _lucchetto:
         return list(_leggi()["storico"])[:max(0, int(limite))]
@@ -187,13 +204,20 @@ def storico(limite: int = 10) -> List[Dict[str, Any]]:
 
 def stato() -> Dict[str, Any]:
     """La risposta completa per l'interfaccia e per la chat."""
+    adesso = time.time()
+    if (_STATO_CACHE["dati"] is not None
+            and adesso - _STATO_CACHE["quando"] < STATO_TTL_SECONDI):
+        return _STATO_CACHE["dati"]
     correnti = attive()
-    return {
+    dati = {
         "busy": bool(correnti),
         "count": len(correnti),
         "running": correnti,
         "recent": storico(10),
     }
+    _STATO_CACHE["quando"] = adesso
+    _STATO_CACHE["dati"] = dati
+    return dati
 
 
 def riga_per_la_chat() -> str:

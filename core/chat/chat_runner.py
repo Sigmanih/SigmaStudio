@@ -76,6 +76,33 @@ def _engine_context_window() -> int:
     return _DEFAULT_CLOUD_CONTEXT
 
 
+def _taglia_a_confine(testo: str, caratteri: int) -> tuple:
+    """Taglia al confine piu' vicino, mai a meta' riga o a meta' parola.
+
+    Il passo 4 del budget tagliava con `testo[:chars_avail]`. In Python una
+    fetta non spezza il carattere — si lavora su code point — ma spezza la
+    **riga** e la **parola**, e con quelle se ne vanno due cose che contano: la
+    frase resta monca, e una sequenza che appartiene a una lettera (un accento
+    scritto come segno combinante, che nei testi dei modelli capita) o a una
+    emoji viene separata dal resto. Fermarsi a un confine di riga o di parola
+    tiene insieme tutte e due, perche' nessuna sequenza comincia dopo uno spazio.
+
+    Ritorna anche quanti caratteri restano fuori: il messaggio deve dirlo,
+    perche' un contesto ridotto senza avviso viene trattato come completo.
+    """
+    if caratteri <= 0:
+        return "", len(testo or "")
+    if len(testo) <= caratteri:
+        return testo, 0
+    testa = testo[:caratteri]
+    taglio = testa.rfind("\n")
+    if taglio < caratteri // 2:
+        # Una riga sola, o righe lunghissime: si scende all'ultima parola intera.
+        spazio = testa.rfind(" ")
+        taglio = spazio if spazio > 0 else len(testa)
+    return testa[:taglio], len(testo) - taglio
+
+
 def _sanitize_history_message(content: str) -> str:
     """Sanitize history messages to remove old system prompts, role headers, welcome badges, and reasoning monologues."""
     if not content:
@@ -1465,12 +1492,31 @@ Contenuto completo...
                 messages[0]["content"] = full_prompt
                 fixed_tokens = estimate_tokens(full_prompt, tokenizer) + estimate_tokens(final_user_turn, tokenizer)
 
-            # Step 4: hard clamp user message if still overflowing
+            # Step 4: selezione dichiarata — mai un taglio a metà carattere.
+            # Si sceglie cosa entra, si dice cosa resta fuori e come chiederlo.
             if fixed_tokens > max_prompt_budget:
                 chars_avail = max(max_prompt_budget * 3, 500)
-                final_user_turn = final_user_turn[:chars_avail]
-                full_prompt = full_prompt[:chars_avail]
+                # Il taglio scende a un confine di riga o di parola, e dice
+                # quanti caratteri restano fuori davvero: `[:chars_avail]`
+                # spezzava la frase a meta' e, con un accento, il carattere.
+                final_user_turn, esclusi_utente = _taglia_a_confine(final_user_turn, chars_avail)
+                full_prompt, esclusi_sistema = _taglia_a_confine(full_prompt, chars_avail)
                 messages[0]["content"] = full_prompt
+                notice_parts = []
+                if esclusi_utente > 0:
+                    notice_parts.append(f"messaggio utente ridotto di {esclusi_utente} caratteri")
+                if esclusi_sistema > 0:
+                    notice_parts.append(f"prompt di sistema ridotto di {esclusi_sistema} caratteri")
+                log.warning(
+                    "[Chat] SELEZIONE DICHIARATA: %s per rispettare il budget di %d token. "
+                    "Chiedi esplicitamente i contenuti esclusi se ti servono.",
+                    "; ".join(notice_parts), max_prompt_budget,
+                )
+                final_user_turn = (
+                    f"[NOTA: {'; '.join(notice_parts)} per rispettare il budget di contesto. "
+                    f"Se ti servono i contenuti esclusi, chiedi esplicitamente.]\n\n"
+                    + final_user_turn
+                )
 
         budget = history_budget(
             context_window=ctx_window,

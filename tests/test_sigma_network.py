@@ -6,7 +6,15 @@ Task 4: provider e broker di inferenza.
 Task 5: scoperta dei peer (PeerDiscovery).
 """
 
+
 from __future__ import annotations
+
+# Una dipendenza opzionale assente non deve fermare la raccolta: senza questa
+# riga `pytest tests/` usciva con un errore di collection e **nessun** test
+# partiva. La rete firmata usa `cryptography` per le identita.
+import pytest
+
+pytest.importorskip("cryptography")
 
 import base64
 import json
@@ -648,7 +656,10 @@ import base64 as _base64
 
 from core.modules.sigma_network.identity import sign as _sign
 
-
+# Una dipendenza opzionale assente non deve fermare la raccolta: senza
+# questa riga `pytest tests/` usciva con un errore di collection e nessun
+# test partiva. La rete firmata usa `cryptography` per le identita.
+import pytest
 def _peer_client(tmp_path):
     """TestClient sul router, con i singleton isolati in tmp_path."""
     import core.modules.sigma_network.handlers as h

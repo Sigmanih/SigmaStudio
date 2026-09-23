@@ -12,7 +12,7 @@ import json
 import time
 import difflib
 from pathlib import Path
-from typing import Callable, Dict, List, Any, Optional, Generator
+from typing import Callable, Dict, List, Any, Optional, Generator, Tuple
 
 from core.logger import get_logger
 from core.harness.fs_manager import (
@@ -165,7 +165,11 @@ def recovery_stage(ledger) -> str:
         return "act"
     try:
         if ledger.has_reads():
-            return "act"
+            # Ha letto, ma non tutto: se di un file resta una finestra mai
+            # vista, quella e la mossa che manca. Il 23 settembre 2026 la
+            # firma da modificare stava nel buco, e il recupero ha ripetuto
+            # "scrivi ORA" per dieci turni.
+            return "gap" if _primo_buco_di_lettura(ledger) else "act"
         if ledger.has_listings() or ledger.has_searches():
             return "read"
         return "explore"
@@ -178,6 +182,8 @@ def recovery_tools(ledger) -> tuple:
     return {
         "explore": EXPLORATION_RECOVERY_TOOLS,
         "read": READING_RECOVERY_TOOLS,
+        # Di un buco resta da leggere: gli stessi strumenti, e nient altro.
+        "gap": READING_RECOVERY_TOOLS,
     }.get(recovery_stage(ledger), RECOVERY_TOOLS)
 
 
@@ -298,6 +304,31 @@ riesegue; una riga di shell no.
 `read_file` — legge righe numerate. Dice quante righe ha il file e se continua.
 {"path": "PERCORSO", "offset": PRIMA_RIGA, "limit": QUANTE_RIGHE}
 offset e limit sono opzionali (default: dalla riga 1, 800 righe).
+
+### Quando il contenuto e lungo: il corpo fuori dal JSON
+
+Per `write_file`, `edit_file` e `append_file` c e una seconda forma, e
+conviene ogni volta che il testo contiene virgolette, a capo o barre
+rovesciate. L intestazione resta JSON corto, il contenuto viene dopo una
+riga di soli trattini:
+
+```tool:write_file
+{"path": "core/modulo.py"}
+---
+def saluta(nome):
+    return "ciao " + nome
+```
+
+Vale per `write_file` (tutto il file), `append_file` (aggiunto in coda) e
+`edit_file` (dove il JSON porta `path` e `old_string`, e il corpo e il testo
+nuovo). Perche: dentro una stringa JSON ogni virgoletta va raddoppiata e
+ogni a capo va scritto come barra-rovesciata-n, e su un file di cento righe
+e da li che nascono le chiamate rifiutate.
+
+`find_symbol` - dove e definito un simbolo, in tutto il progetto.
+{"query": "NOME_FUNZIONE_O_CLASSE"}
+Usalo prima di aprire un file lungo: dice file e riga, senza leggerlo. Per i
+file citati nell obiettivo la mappa dei simboli e gia nello stato del lavoro.
 
 `edit_file` — sostituisce un frammento esatto. Il modo normale di modificare.
 {"path": "PERCORSO", "old_string": "TESTO_ESATTO_DA_SOSTITUIRE", "new_string": "TESTO_NUOVO"}
@@ -637,7 +668,59 @@ _INLINE_WRITE_PATTERNS = (
     # here-doc: cat > file << EOF
     re.compile(r"^\s*cat\s*>{1,2}\s*\S", re.I | re.M),
     re.compile(r"\bnew-item\b[^\n]*-value\b", re.I),
+    # Redirezione a un file, da qualunque comando: `qualsiasi-cosa > percorso`.
+    # Era il buco piu largo, e da li che sono passati dieci estratti di
+    # `gguf_converter.py` in sei minuti: il file nasce su disco senza backup,
+    # senza controllo di sintassi, senza diff e senza voce nel ledger.
+    # `$null`, `NUL` e `/dev/null` non scrivono niente e restano legittimi,
+    # come le redirezioni di descrittore (`2>&1`), che non nominano percorsi.
+    re.compile(r"(?<![0-9&>])>{1,2}\s*(?!(?:\$null\b|nul\b|/dev/null\b))[^\s|;&]+", re.I),
 )
+
+
+#: I percorsi che un comando di shell scrive. Serve a due cose: decidere se
+#: rifiutare, e dire cosa e stato scritto fuori dai tool ? che e il modo in cui
+#: un lavoro smette di essere dimostrabile. Non e un parser di shell: e un
+#: elenco di destinazioni plausibili, e basta al suo scopo.
+_PERCORSI_SCRITTI = (
+    re.compile(r"(?<![0-9&>])>{1,2}\s*([^\s|;&]+)", re.I),
+    re.compile(r"\b(?:set-content|out-file|add-content|tee-object)\b[^\n|;]*?(?:-path|-filepath)\s+([^\s|;&]+)", re.I),
+    re.compile(r"\bnew-item\b[^\n|;]*?\s([^-\s|;&][^\s|;&]*)", re.I),
+)
+
+
+def percorsi_scritti_dal_comando(command: str) -> List[str]:
+    # Le virgolette attorno a un percorso sono parte della sintassi della shell,
+    # non del percorso: si tolgono qui una volta sola.
+    testo = str(command or "")
+    fuori: List[str] = []
+    for schema in _PERCORSI_SCRITTI:
+        for trovato in schema.finditer(testo):
+            candidato = trovato.group(1).strip().strip("'`")
+            if candidato and candidato not in fuori:
+                fuori.append(candidato)
+    return fuori
+
+
+def scrittura_consentita(destinazione: str, workspace_root: str) -> bool:
+    # Due posti sono legittimi: fuori dall albero del progetto (un file
+    # temporaneo, la cartella di sistema) e `var/`, che e la zona di servizio del
+    # programma. Dentro l albero un file scritto dalla shell non ha backup, non
+    # viene controllato e non entra nel ledger: li si passa dai tool, che fanno
+    # tutte e tre le cose.
+    pulito = str(destinazione or "").strip().strip("'`")
+    if not pulito:
+        return False
+    basso = pulito.lower().replace(chr(92), chr(47))
+    if basso.startswith(("$env:", "%temp%", "%tmp%", "/tmp", "/dev/", "nul")):
+        return True
+    if not Path(pulito).is_absolute():
+        relativo = basso[2:] if basso.startswith("./") else basso
+        return relativo.startswith("var/") or relativo == "var"
+    try:
+        return not Path(pulito).resolve().is_relative_to(Path(workspace_root).resolve())
+    except (OSError, ValueError):
+        return False
 
 
 def authors_a_file_inline(command: str) -> bool:
@@ -679,6 +762,26 @@ def _as_history(full_text: str) -> str:
 SCRITTURE_SENZA_PROVA = 3
 
 
+def _cartelle_di_stato(result: Dict[str, Any]) -> str:
+    """Cosa la ricerca non ha guardato, quando l'albero non e' tutto il progetto.
+
+    Una ricerca che salta in silenzio la contabilita' del programma risponde su
+    un albero piu' piccolo di quello che l'agente immagina, e la conclusione
+    "quel testo li' dentro non c'e" e' quella su cui costruisce il passo dopo.
+    Il 23 settembre 2026 quella conclusione e' costata dieci turni: la funzione
+    cercata era una sola e le corrispondenze erano otto, sette dentro `var/`.
+    """
+    saltate = [str(d).strip() for d in (result.get("ignored_runtime_dirs") or []) if str(d).strip()]
+    if not saltate:
+        return ""
+    elenco = ", ".join(f"`{d}/`" for d in saltate)
+    return (
+        f"Non ho guardato in {elenco}: sono cartelle di stato del programma "
+        "(sessioni salvate, worktree dei run finiti, cache), non il progetto. "
+        "Se il testo cercato vive li' dentro, chiedimelo con `path` e lo cerco la'."
+    )
+
+
 def _riassunto_ricerca(result: Dict[str, Any]) -> str:
     """Una riga che dice com'e' andata la ricerca, per chi guarda il pannello.
 
@@ -687,14 +790,16 @@ def _riassunto_ricerca(result: Dict[str, Any]) -> str:
     """
     trovate = len(result.get("results") or [])
     esaminati = int(result.get("scanned_files") or 0)
+    saltate = [str(d).strip() for d in (result.get("ignored_runtime_dirs") or []) if str(d).strip()]
+    coda = f" Saltate {len(saltate)} cartelle di stato ({', '.join(saltate)})." if saltate else ""
     if not trovate:
         if esaminati == 0 and not int(result.get("skipped_files") or 0):
             return (f"Nessun file esaminato in '{result.get('path') or '.'}': "
-                    "il percorso non esiste o non contiene file di testo.")
+                    "il percorso non esiste o non contiene file di testo." + coda)
         return (f"Nessuna corrispondenza per '{result.get('query')}' "
-                f"in {esaminati} file esaminati.")
+                f"in {esaminati} file esaminati." + coda)
     riga = (f"{trovate} corrispondenze per '{result.get('query')}' "
-            f"in {esaminati} file esaminati.")
+            f"in {esaminati} file esaminati." + coda)
     if result.get("capped"):
         riga += f" Elenco troncato ({result.get('stop_reason') or 'limite'})."
     return riga
@@ -716,6 +821,7 @@ def _ricerca_a_vuoto(result: Dict[str, Any]) -> str:
     dove = result.get("path") or "."
     esaminati = int(result.get("scanned_files") or 0)
     saltati = int(result.get("skipped_files") or 0)
+    nota = _cartelle_di_stato(result)
 
     if esaminati == 0 and saltati == 0:
         return (
@@ -724,6 +830,7 @@ def _ricerca_a_vuoto(result: Dict[str, Any]) -> str:
             "non esiste, e' vuota, o non contiene file di testo. Verifica il "
             "percorso con `list_dir` prima di cercare di nuovo: ripetere la "
             "ricerca con un'altra parola dara' di nuovo zero."
+            + (f"\n{nota}" if nota else "")
         )
 
     riga = (f"Nessuna corrispondenza per '{query}' in '{dove}'. "
@@ -734,7 +841,7 @@ def _ricerca_a_vuoto(result: Dict[str, Any]) -> str:
              "affidabile, non un errore. Se ti aspettavi di trovarlo, il nome "
              "e' diverso da come lo ricordi — cerca una parte piu' corta, "
              "oppure guarda con `list_dir` dove sta davvero.")
-    return riga
+    return f"{riga}\n{nota}" if nota else riga
 
 
 def _promemoria_di_verifica(ledger: Any, verify_command: str = "") -> str:
@@ -763,6 +870,243 @@ def _promemoria_di_verifica(ledger: Any, verify_command: str = "") -> str:
         return STATE_TAIL_VERIFICA.format(file=len(modificati), comando=comando)
     return STATE_TAIL_VERIFICA_LIBERA.format(file=len(modificati))
 
+
+
+
+#: Sotto questa lunghezza una finestra sola mostra il file: una mappa sarebbe
+#: una lettura in piu per dire meno.
+MAPPA_MIN_RIGHE = 600
+#: Quanti file mappare. La mappa sta nello stato, che va in ogni turno: tre file
+#: sono un indice, trenta sono il problema che la mappa risolve.
+MAPPA_MAX_FILE = 3
+#: Quante definizioni per file: oltre, la mappa diventa il file.
+MAPPA_MAX_VOCI = 30
+_MAPPA_CACHE: Dict[str, Any] = {}
+
+
+def _mappa_di_un_file(percorso: str) -> str:
+    """L indice dei simboli di un file, con memo su (percorso, mtime, taglia)."""
+    from core.harness.symbol_index import outline_of_file
+
+    p = Path(percorso)
+    try:
+        stato = p.stat()
+        firma = (stato.st_mtime, stato.st_size)
+    except OSError:
+        return ""
+    memo = _MAPPA_CACHE.get(str(p))
+    if memo and memo.get("firma") == firma:
+        return memo.get("testo", "")
+
+    esito = outline_of_file(str(p), limit=MAPPA_MAX_VOCI)
+    testo = ""
+    if esito.get("success") and esito.get("symbols"):
+        voci = ["  %s: %s" % (voce.get("line"), voce.get("signature"))
+                for voce in esito["symbols"]]
+        resto = ""
+        if int(esito.get("count") or 0) > len(voci):
+            resto = "\n  ... e altre %d definizioni" % (int(esito["count"]) - len(voci))
+        testo = ("- `%s` (%s righe):\n" % (str(p).replace(chr(92), chr(47)),
+                                          esito.get("total_lines"))
+                 + "\n".join(voci) + resto)
+    if len(_MAPPA_CACHE) > 64:
+        _MAPPA_CACHE.clear()
+    _MAPPA_CACHE[str(p)] = {"firma": firma, "testo": testo}
+    return testo
+
+
+def _mappa_dei_file_citati(ledger: Any, workspace_root: str) -> str:
+    """Dove guardare, prima di chiedere una finestra.
+
+    La mappa serve finche il file non e stato visto, o finche ne resta un buco.
+    Appena una lettura lo copre per intero non dice piu niente che lo stato del
+    lavoro non dica gia, e tenerla sarebbe solo contesto speso.
+    """
+    if ledger is None:
+        return ""
+    voci: List[str] = []
+    for rel in list(getattr(ledger, "goal_paths", []) or []):
+        if len(voci) >= MAPPA_MAX_FILE:
+            break
+        try:
+            intero = resolve_workspace_path(rel, workspace_root, strict=False)
+        except Exception:
+            continue
+        if not intero:
+            continue
+        p = Path(intero)
+        try:
+            if not p.is_file():
+                continue
+            totale = len(p.read_text(encoding="utf-8", errors="replace").splitlines())
+        except OSError:
+            continue
+        if totale < MAPPA_MIN_RIGHE:
+            continue
+        chiave = str(p).replace(chr(92), chr(47))
+        if ledger.was_read_before_change(chiave) and not _buchi_di_lettura(ledger, chiave):
+            continue
+        mappa = _mappa_di_un_file(str(p))
+        if mappa:
+            voci.append(mappa)
+    if not voci:
+        return ""
+    return ("\n**Mappa dei file citati nell obiettivo: chiedi la finestra "
+            "giusta, non il file intero.**\n" + "\n".join(voci))
+
+
+def _esegui_la_prova_dichiarata(ledger: Any, comando: str, workspace_root: str,
+                                should_cancel: Any = None,
+                                memoria: Optional[Dict[str, Any]] = None) -> str:
+    # Il cancello di completamento pretende una prova **eseguita**, e finche
+    # nessuno la esegue l agente scrive file che non puo dimostrare: sui run
+    # registrati quarantanove `complete_goal` sono stati rifiutati cosi. La
+    # prova e un comando che chi ha scritto il task ha gia dichiarato: il ciclo
+    # lo esegue e mette l esito nello stato, invece di chiederlo di nuovo.
+    pulito = str(comando or "").strip()
+    if not pulito or ledger is None:
+        return ""
+    try:
+        scritture = len(list(ledger.modified_files or []))
+    except Exception:
+        return ""
+    if not scritture:
+        return ""
+    memoria = memoria if memoria is not None else {}
+    if memoria.get("scritture") == scritture:
+        # Stesse scritture di prima: la prova e gia stata eseguita, e ripeterla
+        # a ogni turno sarebbe un comando che gira per sempre.
+        return ""
+    memoria["scritture"] = scritture
+    try:
+        from core.harness.esecutori import scegli_esecutore
+        esecutore = scegli_esecutore(radice=workspace_root)
+        grezzo = esecutore.esegui(pulito, cwd=workspace_root, timeout_s=900,
+                                  should_cancel=should_cancel)
+    except Exception as exc:
+        return f"La prova dichiarata `{pulito}` non e partita: {exc}"
+    codice = int(getattr(grezzo, "returncode", 1) or 0)
+    uscita = str(getattr(grezzo, "stdout", "") or "")
+    errori = str(getattr(grezzo, "stderr", "") or "")
+    # Nel registro come se l avesse eseguita l agente: e la stessa cosa, ed e li
+    # che il cancello di completamento guarda.
+    try:
+        ledger.record_tool(
+            "terminal", {"command": pulito},
+            {"success": codice == 0, "returncode": codice,
+             "command": pulito, "stdout": uscita[-2000:],
+             "stderr": errori[-2000:]})
+    except Exception as exc:
+        return f"Prova eseguita ma non registrata: {exc}"
+    esito = "riuscita" if codice == 0 else "fallita"
+    return (f"La prova dichiarata l ho eseguita io: `{pulito}` -> {esito} "
+            f"(codice {codice}).\n{_coda_output(uscita, errori)}")
+
+
+def _coda_output(uscita: str, errori: str, tetto: int = 1200) -> str:
+    # Un esito senza il suo output non serve: la riga che dice cosa correggere
+    # sta li dentro.
+    pezzi = [str(uscita or "").strip()[-tetto:],
+             str(errori or "").strip()[-tetto:]]
+    return "\n".join(pezzo for pezzo in pezzi if pezzo) or "(nessun output)"
+
+
+def _proposta_di_spezzatura(queue_id: str, item_id: str, turn: int,
+                            max_turns: int) -> str:
+    """La forma pronta per spezzare la voce, quando meta dei turni e andata.
+
+    Nove run su nove hanno consumato tutti i turni disponibili con due esiti
+    ricorrenti: nessuna modifica prodotta, lavoro prodotto ma non dimostrato.
+    `queue_add` con `replaces` esisteva da sempre e nessuno lo ha mai usato: la
+    via d uscita era descritta in fondo a un prompt lungo, e chiedeva di
+    comporre a mano un JSON con quattro campi annidati. Qui la forma arriva
+    scritta, e resta da riempire solo l elenco dei pezzi.
+    """
+    meta = max(1, int(max_turns)) // 2
+    motivo = (
+        "Sei al turno %d di %d (la meta era %d) e in questa sessione non hai "
+        "ancora scritto un file. Cosi come e, il lavoro finisce senza consegnare "
+        "niente: spezzarlo adesso vale piu che arrivare in fondo a mani vuote."
+        % (turn, max_turns, meta)
+    )
+    if not queue_id:
+        return (
+            motivo + " Scrivi ORA il piano in pezzi con il tool `pipeline` ? un "
+            "solo blocco, da due a quattro voci, ognuna con i file che tocca e il "
+            "ruolo ? e poi esegui la prima."
+        )
+    voce = '  "item_id": "%s",\n' % item_id if item_id else ""
+    return (
+        motivo
+        + "\n\nEmetti ORA un solo blocco tool, cosi, sostituendo i due PEZZO "
+        "con i pezzi che hai capito che servono (almeno due, ognuno con i file "
+        "che tocca):\n"
+        "```tool:queue_add\n"
+        "{\n"
+        '  "queue_id": "%s",\n' % queue_id
+        + voce
+        + '  "replaces": true,\n'
+        '  "reason": "PERCHE SPEZZARE, IN UNA RIGA",\n'
+        '  "items": [\n'
+        '    {"id": "1", "title": "PRIMO PEZZO", "files": ["PERCORSO"]},\n'
+        '    {"id": "2", "title": "SECONDO PEZZO", "files": ["PERCORSO"]}\n'
+        "  ]\n"
+        "}\n"
+        "```\n"
+        "Ogni voce conviene che porti anche il suo `verify`, il comando che la "
+        "dimostra: e cio che il cancello di completamento chiede a chi la fara. "
+        "I pezzi prendono il posto di questa voce, e ognuno lo fara un run suo."
+    )
+
+
+def _primo_buco_di_lettura(ledger: Any) -> str:
+    """La prima finestra mai vista fra i file gia letti, come chiamata pronta."""
+    try:
+        letti = list(getattr(ledger, "read_files", []) or [])
+    except Exception:
+        return ""
+    for percorso in letti:
+        testo = _finestra_suggerita(ledger, percorso, percorso)
+        if testo:
+            return testo
+    return ""
+
+
+def _buchi_di_lettura(ledger: Any, percorso: str, limit: int = 800) -> List[Tuple[int, int]]:
+    """Le finestre di quel file che nessuno ha ancora mostrato.
+
+    Vuoto significa una cosa sola: il file e stato visto tutto, e rileggerlo
+    davvero non aggiunge niente. Non vuoto significa il contrario, e allora
+    rifiutare la lettura e l errore, non la lettura.
+    """
+    try:
+        return list(ledger.gap_windows(percorso, limit) or [])
+    except Exception:
+        return []
+
+
+def _finestra_suggerita(ledger: Any, percorso: str, mostrato: str = "",
+                        limit: int = 800) -> str:
+    """La finestra mancante, scritta come si scrive una chiamata.
+
+    "Se ti serve una porzione diversa chiedila con un offset esplicito" lascia
+    all agente il conto di cosa non ha visto, su un file di cui non ha in testa
+    nemmeno la lunghezza. Il conto lo fa il ledger, che le finestre le registra
+    una per una: qui esce una chiamata pronta da emettere.
+    """
+    buchi = _buchi_di_lettura(ledger, percorso, limit)
+    if not buchi:
+        return ""
+    dove = mostrato or percorso
+    inizio, quante = buchi[0]
+    resto = ""
+    if len(buchi) > 1:
+        resto = "; dopo quella restano " + ", ".join(f"{a}-{b}" for a, b in buchi[1:])
+    return (
+        f"La parte che non hai mai visto comincia alla riga {inizio}: emetti ORA "
+        f'```tool:read_file {{"path": "{dove}", "offset": {inizio}, '
+        f'"limit": {quante}}}```{resto}.'
+    )
 
 def _recovery_directive(ledger: Optional["DevSessionLedger"] = None) -> str:
     """The message that replaces a stalled transcript.
@@ -794,6 +1138,17 @@ def _recovery_directive(ledger: Optional["DevSessionLedger"] = None) -> str:
     # modo in cui un run e' finito con un Blueprint Flask dentro un progetto
     # FastAPI, in un file che non e' mai esistito.
     stadio = recovery_stage(ledger)
+
+    if stadio == "gap":
+        buco = _primo_buco_di_lettura(ledger)
+        return (
+            "STOP. Non ti manca un idea: ti manca una finestra. Il file che"
+            " l obiettivo cita l hai letto a pezzi, e la parte che non hai"
+            " visto e quella che ti serve.\n\n"
+            f"{buco}\n\n"
+            "In questo turno list_dir, glob e search_code sono SOSPESI: emetti"
+            " UN SOLO blocco tool, quello qui sopra, e leggi."
+        )
 
     if stadio == "read":
         noti = sorted(ledger._listings)[:6] if ledger else []
@@ -1156,6 +1511,41 @@ def resolve_workspace_path(path: Optional[str], workspace_root: str,
     return _dentro_la_radice(candidato, workspace_root, str(path))
 
 
+def _salva_corpo_prosa(raw_body: str, tool_name: str) -> Optional[Dict[str, Any]]:
+    """Riprende un corpo di sola prosa quando il JSON non si puo' riparare.
+
+    Un `complete_goal` il cui `summary` contiene una virgoletta non protetta -
+    «sono ancora "DA FARE"» - non e' JSON valido e non lo si puo' rendere tale
+    senza indovinare dove finisce la stringa. Ma il contenuto e' li', leggibile.
+
+    Il caso vero, del 23 settembre 2026: un run ha emesso il proprio riepilogo
+    **otto volte di fila**, identico, e ogni volta il cancello ha risposto «il
+    corpo non e un oggetto JSON valido» mostrando l'esempio `{"path": "..."}` -
+    cioe' dicendogli di togliere proprio il campo che doveva riempire. Il run e'
+    finito con i turni esauriti. Rifiutare otto volte non ha protetto niente:
+    la prosa si prende, e si prende qui.
+    """
+    if tool_name not in ("complete_goal", "finish_task", "task_complete"):
+        return None
+    taglio = raw_body.find(":")
+    if taglio == -1:
+        return None
+    resto = raw_body[taglio + 1:].strip()
+    if not resto or resto[0] not in "\"'":
+        return None
+    testo = resto[1:]
+    # Si taglia all'ULTIMA virgoletta, non alla prima: una virgoletta dentro la
+    # prosa e' esattamente il motivo per cui siamo qui.
+    ultima = max(testo.rfind('"'), testo.rfind("'"))
+    if ultima > 0:
+        testo = testo[:ultima]
+    for sequenza, carattere in (("\\n", "\n"), ("\\r", "\r"), ("\\t", "\t"),
+                                ('\\"', '"'), ("\\'", "'"), ("\\\\", "\\")):
+        testo = testo.replace(sequenza, carattere)
+    testo = testo.strip().rstrip("}").strip()
+    return {"summary": testo} if testo else None
+
+
 def normalize_tool_params(raw_body: str, tool_name: str) -> Dict[str, Any]:
     """Safely extracts JSON or fallback dictionary from tool body."""
     raw_body = raw_body.strip()
@@ -1176,6 +1566,11 @@ def normalize_tool_params(raw_body: str, tool_name: str) -> Dict[str, Any]:
             return data
         if isinstance(data, list) and tool_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
             return {"tasks": data}
+
+    # Prose that is not JSON but is still the content: see `_salva_corpo_prosa`.
+    salvato = _salva_corpo_prosa(raw_body, tool_name)
+    if salvato is not None:
+        return salvato
 
     # A body that still looks like JSON (or like the prompt's own placeholder)
     # is a malformed call, not a bare path. Treating it as one produces
@@ -1207,6 +1602,48 @@ def normalize_tool_params(raw_body: str, tool_name: str) -> Dict[str, Any]:
     return {"raw": raw_body}
 
 
+#: I tool il cui contenuto e codice, e la chiave che lo porta.
+#:
+#: Su trecentodieci fallimenti registrati, centoventinove erano JSON
+#: malformato, e i due tool che falliscono di piu sono proprio quelli che
+#: scrivono codice: `edit_file` (sessantadue) e `write_file` (quarantanove).
+#: La causa non e distrazione: e il formato. Mettere cento righe di Python
+#: dentro una stringa JSON significa raddoppiare ogni virgoletta e scrivere
+#: ogni a capo come `\n`, ed e li che il modello sbaglia.
+#:
+#: Con il corpo grezzo quel lavoro sparisce: l intestazione e JSON corto (il
+#: percorso, e per `edit_file` il testo da sostituire), la parte lunga e
+#: testo normale.
+_CORPO_GREZZO = {
+    "write_file": "content", "write": "content", "save_file": "content",
+    "append_file": "content", "append": "content", "add_to_file": "content",
+    "edit_file": "new_string", "edit": "new_string",
+    "replace_in_file": "new_string",
+}
+
+#: La riga che divide l intestazione JSON dal corpo grezzo.
+_SEPARATORE_CORPO = "---"
+
+
+def _separa_corpo_grezzo(body: str) -> Tuple[Optional[str], Optional[str]]:
+    """Divide il corpo di un recinto in (intestazione JSON, corpo grezzo).
+
+    Il corpo grezzo, quando c e, comincia dopo una riga di soli trattini. La
+    regola e rigida di proposito: `---` da solo su una riga non compare per
+    caso dentro un JSON, e un separatore confondibile con il contenuto
+    reintrodurrebbe l ambiguita che questa forma esiste per togliere.
+    """
+    righe = (body or "").splitlines()
+    for indice, riga in enumerate(righe):
+        if riga.strip() == _SEPARATORE_CORPO:
+            # Un file di codice finisce con un a capo: `splitlines` lo perde,
+            # e un file scritto senza e quello che i diff segnalano per sempre.
+            coda = "\n" if righe[indice + 1:] and (body or "").endswith("\n") else ""
+            intestazione = "\n".join(righe[:indice]).strip()
+            return intestazione, "\n".join(righe[indice + 1:]) + coda
+    return body, None
+
+
 def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
     """Extracts structured tool calls from model output (code blocks, XML, JSON)."""
     tools = []
@@ -1220,7 +1657,14 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
     for match in tool_named_block.finditer(text):
         tool_name = match.group(1).lower()
         body = match.group(2)
-        params = normalize_tool_params(body, tool_name)
+        intestazione, corpo = _separa_corpo_grezzo(body)
+        chiave = _CORPO_GREZZO.get(tool_name)
+        if chiave and corpo is not None:
+            # Il corpo e il contenuto del file, non JSON: si prende com e.
+            params = normalize_tool_params(intestazione or body, tool_name)
+            params[chiave] = corpo
+        else:
+            params = normalize_tool_params(body, tool_name)
         tools.append({"tool": tool_name, "params": params, "raw_block": match.group(0)})
 
     # 2. Matches ```tool\n...``` or ```json\n{"tool": "..."}``` or ```json\n{"action": "..."}```
@@ -1335,6 +1779,14 @@ _ESEMPI_DI_CHIAMATA = {
     'read_file': '{"path": "backend/index.js"}',
     'search_code': '{"query": "proxy_pass"}',
     'list_dir': '{"path": "frontend"}',
+    # `complete_goal` mancava, e il suo esempio di ripiego era `{"path": "..."}`:
+    # cioe' il messaggio d'errore diceva al modello di **togliere** il campo
+    # `summary` che il prompt gli chiede di riempire. Su un run vero il riepilogo
+    # e' stato emesso otto volte identico, otto volte rifiutato.
+    'complete_goal': ('{"summary": "## Fatto: <cosa>\\n\\n- **<criterio 1>**: '
+                      'prova (comando e esito)\\n- **<criterio 2>**: prova"}'),
+    'spec': '{"understanding": "<cosa hai capito>", "criteria": ["<criterio 1>", "<criterio 2>"]}',
+    'pipeline': '{"tasks": [{"id": "1", "title": "<cosa>", "status": "pending"}]}',
 }
 
 #: Vale per i tool che portano un file dentro un campo, ed e' li' che si rompe.
@@ -1487,6 +1939,12 @@ def _execute_admin_tool_impl(
 ) -> Dict[str, Any]:
     """Executes a single admin developer tool with full workspace resolution and lifecycle hooks."""
     tool_name = tool_name.lower()
+    # Il nome puo' arrivare da un client MCP (`read_file_window`,
+    # `edit_file_exact`): e' lo stesso tool con un altro nome, e si porta al
+    # nome canonico qui, una volta sola. Lasciarlo cadere in «Tool sconosciuto»
+    # costa un turno all'agente e non gli insegna niente: il tool che cercava
+    # esisteva, si chiamava in un altro modo.
+    tool_name = canonical(tool_name)
 
     # Lifecycle Pre-Hook execution
     try:
@@ -1503,7 +1961,10 @@ def _execute_admin_tool_impl(
             "success": False,
             "error": (
                 f"Chiamata a '{tool_name}' malformata: il corpo non e un "
-                "oggetto JSON valido." + '\n' + _esempio_di_chiamata(tool_name)
+                "oggetto JSON valido. Le due cause, in ordine di frequenza: "
+                "una virgoletta doppia dentro il testo non protetta (si scrive "
+                "\\\"), e un a capo vero dentro una stringa (si scrive \\n)."
+                + '\n' + _esempio_di_chiamata(tool_name)
             ),
             "received": params.get("raw", ""),
         }
@@ -1523,7 +1984,17 @@ def _execute_admin_tool_impl(
             return {"tool": "terminal", "action": "kill", **res}
 
         cmd = params.get("command") or params.get("raw", "")
-        if authors_a_file_inline(cmd):
+        # Un file scritto dalla shell dentro l albero non ha backup, non viene
+        # controllato per sintassi e non entra nel ledger: e il modo piu
+        # silenzioso di perdere una modifica. `var/` e la zona di servizio del
+        # programma, e resta aperta: quello che ci finisce e ricreabile.
+        scritti_dal_comando = percorsi_scritti_dal_comando(cmd)
+        dentro_l_albero = [grezzo for grezzo in scritti_dal_comando
+                           if not scrittura_consentita(grezzo, workspace_root)]
+        # Senza percorsi riconoscibili non c e nulla da controllare, e la
+        # firma classica (`write_text` dentro `python -c`) resta rifiutata: e
+        # una scrittura di cui non si sa nemmeno dove finisca.
+        if authors_a_file_inline(cmd) and (dentro_l_albero or not scritti_dal_comando):
             return {
                 "tool": "terminal",
                 "command": cmd,
@@ -1999,6 +2470,16 @@ def _execute_admin_tool_impl(
                         f"`{verifica[:80]}`, che {motivo} Dalle una prova che "
                         "esegua: un test, una build, una chiamata al servizio."
                     )
+            else:
+                # Una voce senza prova finira con "lavoro prodotto ma non
+                # dimostrato": il cancello di completamento chiede una prova
+                # eseguita, e chi la fara non sa quale sia. Si avvisa e non si
+                # rifiuta: la prova a volte si scopre strada facendo, ma va
+                # saputo adesso, quando correggerlo costa una riga.
+                avvisi.append(
+                    f"la voce '{voce.get('id', '?')}' non dichiara `verify`: "
+                    "chi la fara non sapra come dimostrarla."
+                )
             avvisi.extend(_gia_fatto(voce, workspace_root))
 
         aggiunte = coda.add_many(voci, avvisi=avvisi)
@@ -2153,6 +2634,8 @@ def _stream_agent_turn_impl(
     review_run: bool = False,
     verify_command: str = "",
     deliver: Optional[bool] = None,
+    queue_id: str = "",
+    item_id: str = "",
     _chiusura: Optional[Dict[str, Any]] = None,
 ) -> Generator[Dict[str, Any], None, None]:
     """
@@ -2393,12 +2876,22 @@ def _stream_agent_turn_impl(
         base_system_prompt = adapt_prompt_for_native_tools(base_system_prompt)
     native_announced = False
 
+    # Un consuntivo che non dice *quale* turno costa non serve a decidere: la
+    # media su trenta turni nasconde il turno da dodicimila token di contesto e
+    # quello da duecento. Per questo `turns_detail` esiste, e per questo il
+    # modello sta qui dentro: nel 67% delle sessioni salvate non c'era, e senza
+    # il modello il rendimento non e' attribuibile a nessuno.
     run_metrics: Dict[str, Any] = {
         "turns": 0,
         "generated_tokens": 0,
+        "prompt_tokens": 0,
+        "reuse_tokens": 0,
+        "model": str(model_name or ""),
+        "provider": str(provider or ""),
         "tool_calls": 0,
         "tool_failures": 0,
         "tool_refusals": 0,
+        "turns_detail": [],
         "started_at": time.time(),
         "resumed": ripreso,
     }
@@ -2482,11 +2975,43 @@ def _stream_agent_turn_impl(
     rilevatore = RilevatoreCicli(workspace_root)
     # Successful calls whose repetition cannot produce new information.
     inert_call_signatures: set = set()
+    # La via d uscita si offre una volta sola: un promemoria ripetuto diventa
+    # rumore, e il rumore si salta.
+    spezzatura_proposta = False
     total_generated_tokens = 0
     t_turn_start = time.perf_counter()
     overall_first_token_time = None
 
+    #: La riga del turno in corso. Si chiude quando il turno e finito, ma non
+    #: solo dove il ciclo lo dichiara: un turno che finisce senza tool esce da
+    #: un altro ramo, e la prima stesura di questa misura perdeva proprio
+    #: quei turni ? cioe i piu frequenti.
+    #: Quante scritture c erano all ultima prova eseguita dal ciclo: la prova
+    #: si rifa solo quando il codice cambia davvero.
+    memoria_prova: Dict[str, Any] = {}
+    riga_turno: Dict[str, Any] = {}
+
+    def _chiudi_riga_turno() -> None:
+        """Registra il turno concluso, per qualunque strada sia finito."""
+        if not riga_turno:
+            return
+        riga_turno["duration_s"] = round(time.perf_counter() - t_turn_start, 2)
+        riga_turno["tool_calls"] = int(run_metrics["tool_calls"]) - int(riga_turno.pop("calls_prima", 0))
+        riga_turno["tool_failures"] = (
+            int(run_metrics["tool_failures"]) - int(riga_turno.pop("falliti_prima", 0)))
+        dettaglio = run_metrics.setdefault("turns_detail", [])
+        dettaglio.append(dict(riga_turno))
+        # Quaranta turni sono la coda di un run; quattrocento sarebbero il run
+        # intero dentro il proprio consuntivo.
+        del dettaglio[:-40]
+        run_metrics["prompt_tokens"] = (int(run_metrics.get("prompt_tokens") or 0)
+                                          + int(riga_turno.get("prompt_tokens") or 0))
+        riga_turno.clear()
+
     while current_turn < max_turns:
+        # Un turno rimasto aperto dal giro precedente si chiude qui: succede
+        # quando il ciclo e uscito dal ramo senza tool.
+        _chiudi_riga_turno()
         if _cancelled():
             _persist_session(session_id, ledger, model_name, run_metrics, status="cancelled")
             yield {"type": "cancelled", "reason": "Interrotto dall'utente."}
@@ -2519,13 +3044,46 @@ def _stream_agent_turn_impl(
         if not needs_spec_turn and not goal_reached and not force_action_turn:
             coda_verifica = _promemoria_di_verifica(ledger, verify_command)
 
+        # La prova dichiarata la esegue il ciclo, appena l agente ha scritto
+        # qualcosa: aspettare che ci pensi lui costa i turni che servono a
+        # scrivere il codice, e finche nessuno la esegue il cancello di
+        # completamento resta chiuso su un lavoro che esiste gia.
+        coda_prova = ""
+        if not needs_spec_turn and not goal_reached:
+            coda_prova = _esegui_la_prova_dichiarata(
+                ledger, verify_command, workspace_root, should_cancel, memoria_prova)
+            if coda_prova:
+                yield {"type": "status",
+                       "text": "Prova dichiarata: eseguita dal ciclo"}
+
+        coda_spezzatura = ""
+        if (not spezzatura_proposta and not needs_spec_turn and not goal_reached
+                and current_turn > max_turns // 2 and not ledger.modified_files):
+            spezzatura_proposta = True
+            coda_spezzatura = _proposta_di_spezzatura(
+                queue_id, item_id, current_turn, max_turns)
+
+        # Lo stato e l unica parte del prompt che si riscrive a ogni turno: la
+        # sua dimensione e la voce di costo che si puo abbassare senza toccare
+        # il modello. Registrarla per turno rende l economia una misura.
+        stato_del_lavoro = (
+            ledger.render_state_block(current_turn, max_turns)
+            + _mappa_dei_file_citati(ledger, workspace_root)
+        )
         render_messages = _with_state_block(
             full_messages,
-            ledger.render_state_block(),
+            stato_del_lavoro,
             STATE_TAIL_SPEC if needs_spec_turn
             else (STATE_TAIL_SUMMARISE if goal_reached
-                  else (coda_verifica or STATE_TAIL_ACT)),
+                  else (coda_prova or coda_verifica or coda_spezzatura or STATE_TAIL_ACT)),
         )
+        riga_turno["state_chars"] = len(stato_del_lavoro)
+        if coda_spezzatura:
+            yield {
+                "type": "status",
+                "text": ("\u26a0 Meta dei turni senza scritture: "
+                         "proposta di spezzare in voci piu piccole"),
+            }
         if coda_verifica:
             yield {"type": "status",
                    "text": "⚠ Scritture senza prove: verifica sollecitata"}
@@ -2538,9 +3096,17 @@ def _stream_agent_turn_impl(
         in_tool_block = False
         has_notified_tool = False
         turn_tokens = 0
+        turn_reused = 0
         pending_out = ""
         turn_first_token_time = None
         t_call_start = time.perf_counter()
+        calls_prima = int(run_metrics["tool_calls"])
+        falliti_prima = int(run_metrics["tool_failures"])
+        # Niente `clear()` qui: lo stato del turno e gia stato costruito sopra
+        # (e la sua dimensione registrata). Chiudere il turno precedente e
+        # compito di `_chiudi_riga_turno`, che azzera lui.
+        riga_turno.update({"turn": current_turn, "calls_prima": calls_prima,
+                           "falliti_prima": falliti_prima, "reuse_tokens": 0})
 
         yield {"type": "turn_start", "turn": current_turn}
         run_metrics["turns"] = current_turn
@@ -2652,6 +3218,14 @@ def _stream_agent_turn_impl(
                 if chunk.get("tool_calls"):
                     native_calls.extend(chunk["tool_calls"])
                     continue
+
+                if chunk.get("prefix_reused_tokens") is not None:
+                    # Il riuso del prefisso e' la differenza fra un turno con
+                    # dodicimila token da prefillare e uno con duecento. Senza
+                    # questo numero il riuso resta una dichiarazione.
+                    turn_reused = int(chunk.get("prefix_reused_tokens") or 0)
+                    run_metrics["reuse_tokens"] = int(run_metrics.get("reuse_tokens") or 0) + turn_reused
+                    riga_turno["reuse_tokens"] = int(riga_turno.get("reuse_tokens") or 0) + turn_reused
 
                 if chunk.get("model_status") or (chunk.get("status") and chunk.get("text")):
                     status_text = chunk.get("model_status") or chunk.get("text")
@@ -2782,6 +3356,12 @@ def _stream_agent_turn_impl(
             "total_tokens": total_generated_tokens,
             "duration_s": round(t_now - t_turn_start, 2)
         }
+        riga_turno.update({
+            "prompt_tokens": _approx_prompt,
+            "generated_tokens": turn_tokens,
+            "tps": tps,
+            "ttft_ms": ttft_ms,
+        })
 
         full_text = "".join(accumulated_response)
 
@@ -3013,7 +3593,8 @@ def _stream_agent_turn_impl(
             # unchecked it is a stall that looks like activity, because every
             # call succeeds.
             inert_signature = (t_name, json.dumps(t_params, sort_keys=True, default=str)[:400])
-            if (t_name in ("list_dir", "list_directory", "ls", "glob")
+            if (t_name in ("list_dir", "list_directory", "ls", "glob",
+                          "search_code", "grep")
                     and (rilevatore.gia_inerte(t_name, t_params)
                          or inert_signature in inert_call_signatures)):
                 msg = (
@@ -3035,27 +3616,25 @@ def _stream_agent_turn_impl(
             # recover a spec the context reset had just discarded; the cost was
             # that it could re-read forever, which is the stall the recovery
             # turn exists to break.
-            if force_action_turn and t_name in ("read_file", "read"):
-                probe = t_params.get("path") or ""
-                already = ledger.was_read_before_change(
-                    resolve_workspace_path(probe, workspace_root, strict=False).replace("\\", "/")
-                )
-                if already:
+            if force_action_turn and t_name in ('read_file', 'read'):
+                probe = t_params.get('path') or ""
+                percorso_letto = resolve_workspace_path(
+                    probe, workspace_root, strict=False).replace("\\", "/")
+                # Un file di cui resta una finestra mai vista non e gia letto:
+                # rifiutare quella lettura toglie l unica mossa che porta alla
+                # risposta. Il 23 settembre 2026 la firma che il task chiedeva di
+                # modificare stava in una finestra mai chiesta, e il rifiuto ha
+                # ripetuto scrivi-ORA per dieci turni di fila.
+                if (ledger.was_read_before_change(percorso_letto)
+                        and not _buchi_di_lettura(ledger, percorso_letto)):
                     turn_gave_direction = True
                     msg = (
-                        f"Tool 'read_file' SOSPESO su '{probe}': lo hai gia letto "
-                        "in questa sessione, e i nomi che quel file definisce sono "
-                        "elencati nello stato del lavoro qui sopra, sotto 'API dei "
-                        "file gia letti'. Usa quelli. Scrivi ORA con write_file il "
-                        "file previsto dall'obiettivo."
+                        f"Tool 'read_file' SOSPESO su '{probe}': lo hai letto "
+                        "integralmente in questa sessione, e i nomi che quel file "
+                        "definisce sono elencati nello stato del lavoro qui sopra, "
+                        "sotto 'API dei file gia letti'. Usa quelli. Scrivi ORA con "
+                        "write_file il file previsto dall'obiettivo."
                     )
-                    yield {
-                        "type": "tool_result",
-                        "tool": t_name,
-                        "result": {"tool": t_name, "success": False, "error": msg},
-                    }
-                    tool_observations.append(msg + "\n")
-                    continue
 
             if t_name in ("read_file", "read"):
                 probe = t_params.get("path") or ""
@@ -3066,14 +3645,22 @@ def _stream_agent_turn_impl(
                 )
                 if still_visible:
                     turn_gave_direction = True
+                    in_coda = _finestra_suggerita(
+                        ledger, resolved.replace(chr(92), "/"), probe)
                     msg = (
                         f"Tool 'read_file' NON eseguito: il contenuto di "
                         f"'{probe}' e gia presente qui sopra in questa "
                         "conversazione. Rileggerlo non aggiunge nulla e consuma "
                         "il contesto. Passa all'azione: usa edit_file o "
-                        "write_file. Se ti serve una porzione diversa del file, "
-                        "chiedila con un offset esplicito."
+                        "write_file."
                     )
+                    if in_coda:
+                        msg += " " + in_coda
+                    else:
+                        msg += (
+                            " Quel file l hai visto tutto: non c e un altra "
+                            "parte da leggere, quindi la prossima mossa e scrivere."
+                        )
                     yield {
                         "type": "tool_result",
                         "tool": t_name,
@@ -3328,7 +3915,14 @@ def _stream_agent_turn_impl(
             # `spec` e `pipeline` sono passi obbligatori del ciclo di lavoro,
             # ed esplorare e' cio' che si deve fare prima di scrivere — tutti
             # e tre venivano contati contro l'agente.
-            if result.get("success"):
+            # Una chiamata che ha gia dato la sua risposta non e progresso la
+            # seconda volta. Senza questo, ogni ricerca riuscita azzerava il
+            # contatore dei turni improduttivi: il 23 settembre 2026 dieci
+            # ricerche identiche hanno consumato gli ultimi turni di un run
+            # senza che il recupero entrasse in scena nemmeno una volta.
+            firma_inerte = (t_name, json.dumps(t_params, sort_keys=True, default=str)[:400])
+            ripetizione_inerte = firma_inerte in inert_call_signatures
+            if result.get("success") and not ripetizione_inerte:
                 turn_was_productive = True
             if result.get("success") and t_name in PRODUCTIVE_TOOLS:
                 consecutive_truncations = 0
@@ -3361,10 +3955,9 @@ def _stream_agent_turn_impl(
                     and t_name in ("write_file", "edit_file", "append_file", "restore_file")
                     and result.get("path")):
                 reads_this_turn.append(str(result["path"]))
-            if result.get("success") and t_name in ("list_dir", "list_directory", "ls", "glob"):
-                inert_call_signatures.add(
-                    (t_name, json.dumps(t_params, sort_keys=True, default=str)[:400])
-                )
+            if result.get("success") and t_name in ("list_dir", "list_directory", "ls", "glob",
+                                                     "search_code", "grep"):
+                inert_call_signatures.add(firma_inerte)
                 rilevatore.registra_inerte(t_name, t_params)
             if not result.get("success"):
                 run_metrics["tool_failures"] += 1
@@ -3530,13 +4123,31 @@ def _stream_agent_turn_impl(
                         )
                     obs_str += f"{header}:\n{body}"
                     if result.get("has_more"):
+                        dopo = int(result.get("last_line", 0)) + 1
+                        restanti = max(0, int(total or 0) - int(result.get("last_line", 0)))
+                        coda_righe = f" ({restanti} righe ancora)" if restanti else ""
                         obs_str += (
-                            f"\n\n[Il file continua oltre la riga {result.get('last_line')}. "
-                            f"Per leggere il resto: read_file con "
-                            f'"offset": {result.get("last_line", 0) + 1}]'
+                            f"\n\n[Il file continua oltre la riga {result.get('last_line')}"
+                            f"{coda_righe}. Per leggere il resto: read_file con "
+                            f'"offset": {dopo}'
+                            " - e `limit` puo arrivare a 5000 righe, cosi una "
+                            "finestra sola puo bastare]"
                         )
             elif t_name == "terminal":
                 obs_str += f"Output terminale (exit code {result.get('returncode')}):\n{result.get('stdout', '')}\n{result.get('stderr', '')}"
+                # Un file nato da un comando non compare fra i risultati
+                # dell agente: dirglielo e l unico modo perche non lo conti come
+                # lavoro fatto, e perche non ci riprovi al turno dopo.
+                creati = [grezzo for grezzo in percorsi_scritti_dal_comando(
+                    str(t_params.get("command") or ""))
+                    if scrittura_consentita(grezzo, workspace_root)]
+                if creati and result.get("success"):
+                    obs_str += (
+                        "\n[File scritti dal comando, fuori dai tool: "
+                        + ", ".join(f"`{g}`" for g in creati[:5])
+                        + ". Non hanno backup ne controllo di sintassi, e non "
+                          "compaiono fra le tue modifiche: per il progetto usa "
+                          "`write_file`, `edit_file` o `append_file`.]")
                 if ledger._consecutive_dup_commands >= 1 and result.get("success"):
                     obs_str += (
                         "\n[AVVISO: Questo comando e gia stato eseguito con successo e nulla e cambiato nel codice. "
@@ -3650,6 +4261,9 @@ def _stream_agent_turn_impl(
                     )
                     if result.get("capped"):
                         obs_str += f"\n[Risultati troncati: {result.get('stop_reason') or 'limite raggiunto'}]"
+                    nota = _cartelle_di_stato(result)
+                    if nota:
+                        obs_str += f"\n{nota}"
             else:
                 obs_str += json.dumps(result, ensure_ascii=False)
 
@@ -3664,6 +4278,8 @@ def _stream_agent_turn_impl(
             tool_observations.append(obs_str)
 
         yield {"type": "turn_end", "turn": current_turn, "has_tools": True}
+
+        _chiudi_riga_turno()
 
         # Append assistant turn + tool observations to message history for synthesis
         if turn_was_productive:
@@ -3758,12 +4374,14 @@ def _stream_agent_turn_impl(
                 "per_esaurimento": True,
             }
 
+    _chiudi_riga_turno()
     run_metrics["generated_tokens"] = total_generated_tokens
     run_metrics["elapsed_s"] = round(time.time() - run_metrics["started_at"], 2)
     run_metrics["ttft_ms"] = (
         round((overall_first_token_time - t_turn_start) * 1000, 1)
         if overall_first_token_time else None
     )
+    run_metrics["model"] = str(model_name or run_metrics.get("model") or "")
     run_metrics["native_tool_calling"] = native_mode
     run_metrics["goal_reached"] = goal_reached
     run_metrics["exhausted_turns"] = current_turn >= max_turns and not goal_reached

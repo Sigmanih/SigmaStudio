@@ -12,6 +12,12 @@ from typing import Dict, Iterable, Optional, Set, Tuple
 ALIASES: Dict[str, str] = {
     # lettura
     "read": "read_file",
+    # I nomi con cui l'hub MCP espone gli stessi tool: un client collegato li
+    # legge da li', e li riscrive identici in una chiamata all'agente. Senza
+    # queste tre righe la chiamata cade in «Tool sconosciuto» e costa un turno -
+    # successo il 23 settembre 2026 con `read_file_window`.
+    "read_file_window": "read_file",
+    "read_file_slice": "read_file",
     "read_file": "read_file",
     # scrittura integrale
     "write": "write_file",
@@ -22,6 +28,7 @@ ALIASES: Dict[str, str] = {
     "replace_in_file": "edit_file",
     "str_replace": "edit_file",
     "edit_file": "edit_file",
+    "edit_file_exact": "edit_file",
     # aggiunta in coda
     "append": "append_file",
     "add_to_file": "append_file",

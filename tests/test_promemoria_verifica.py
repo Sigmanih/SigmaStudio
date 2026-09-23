@@ -101,7 +101,11 @@ class TestIlCicloLoUsaDavvero:
 
         sorgente = inspect.getsource(_stream_agent_turn_impl)
         assert "_promemoria_di_verifica(ledger, verify_command)" in sorgente
-        assert "coda_verifica or STATE_TAIL_ACT" in sorgente
+        # La coda del turno e una catena: il promemoria di verifica, la proposta
+        # di spezzare (23 settembre, PIANO_TASK 1.1), l invito ad agire. Il test
+        # verifica che il promemoria sia davvero in quella catena: una variabile
+        # calcolata e mai usata non lo farebbe fallire altrimenti.
+        assert "coda_verifica or coda_spezzatura or STATE_TAIL_ACT" in sorgente
 
     def test_non_scatta_mentre_si_definiscono_i_criteri(self):
         """Il turno della `spec` ha gia' la sua coda, e sovrascriverla

@@ -328,9 +328,17 @@ IMPORTANTE: Rispondi esclusivamente in formato JSON. Nessun testo prima del JSON
 """
     full_system += loop_prompt
 
+    # SELEZIONE DICHIARATA: si dice cosa resta fuori
+    _hist_total = len(history)
+    _hist_kept = min(10, _hist_total)
+    _hist_dropped = _hist_total - _hist_kept
+    if _hist_dropped > 0:
+        log.info("[ExecuteLoop] Selezione dichiarata: %d messaggi storici esclusi (tenuti gli ultimi %d).", _hist_dropped, _hist_kept)
     messages = [{"role": "system", "content": full_system}]
     for h in history[-10:]:
         messages.append({"role": h.get("role", "user"), "content": h.get("content", "")})
+    if _hist_dropped > 0:
+        goal = f"[NOTA: {_hist_dropped} messaggi storici esclusi dal contesto. Se ti serve il contesto precedente, chiedi esplicitamente.]\n\n" + goal
     messages.append({"role": "user", "content": goal})
 
     # Intent classification: check if we should run the iterative feedback loop or bypass to a direct text reply.
