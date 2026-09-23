@@ -243,13 +243,18 @@ class MCPHub:
     # --- guarded execution ---------------------------------------------------
 
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any] = None,
-                     approval_id: str = "") -> Dict[str, Any]:
+                     approval_id: str = "", client: str = "") -> Dict[str, Any]:
         """Run a tool through the policy gate.
 
         Returns one of three shapes:
           {"status": "ok", "result": ...}
           {"status": "confirmation_required", "approval": {...}}
           {"status": "error", "error": "..."}
+
+        `client` e' chi chiama quando non e' l'applicazione: un client esterno non
+        puo' consumare l'assenso che ha chiesto lui (vedi
+        `governance.take_approval`), e riceve una richiesta parkata che puo' solo
+        leggere e attendere.
         """
         arguments = arguments or {}
 
@@ -257,8 +262,21 @@ class MCPHub:
         # parked record, never from the caller, so nothing can be swapped in
         # between the operator seeing the request and the tool running.
         if approval_id:
-            record = governance.take_approval(approval_id)
+            record = governance.take_approval(approval_id, client=client)
             if not record:
+                # Dire *perche*: "scaduta", "attende ancora" e "non e' tua"
+                # chiedono tre mosse diverse a chi legge.
+                attesa = governance.get_approval(approval_id)
+                if attesa and attesa.get("status") == governance.PENDING:
+                    return {"status": "error",
+                            "error": "La richiesta esiste ma attende ancora l'assenso umano."}
+                if attesa and attesa.get("status") == governance.REFUSED:
+                    return {"status": "error",
+                            "error": "La richiesta e' stata rifiutata dall'operatore."}
+                if client and attesa:
+                    return {"status": "error",
+                            "error": ("Un assenso lo consuma l'applicazione, non chi ha "
+                                      "chiesto la chiamata.")}
                 return {"status": "error", "error": "Richiesta di conferma scaduta o già usata."}
             tool_name = record["tool"]
             arguments = record["arguments"]
@@ -286,12 +304,19 @@ class MCPHub:
         # Not pre-approved and able to act on the world: park it for a human.
         if not approval_id and governance.requires_approval(safety):
             approval = governance.create_approval(
-                tool_name, arguments, server.name, meta.get("description", ""))
+                tool_name, arguments, server.name, meta.get("description", ""),
+                client=client)
             return {"status": "confirmation_required", "approval": approval}
 
         result = server.call_tool(tool_name, arguments)
+        text = " ".join(part.get("text", "") for part in result.get("content", [])
+                        if isinstance(part, dict))
+        # Chi ha chiesto una chiamata approvata non l'ha eseguita e non ne vede
+        # il risultato: l'esito va scritto dove puo' leggerlo.
+        if approval_id:
+            governance.record_outcome(approval_id, not result.get("isError"),
+                                      output=text)
         if result.get("isError"):
-            text = " ".join(part.get("text", "") for part in result.get("content", []))
             return {"status": "error", "error": text or "Esecuzione fallita."}
         return {"status": "ok", "result": result, "tool": tool_name, "server": server.name}
 

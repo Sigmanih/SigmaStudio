@@ -155,16 +155,88 @@ def requires_approval(safety: str) -> bool:
 _APPROVAL_TTL_SECONDS = 900
 _pending: Dict[str, Dict[str, Any]] = {}
 
+# Chi arriva da un altro processo - un client MCP collegato via stdio - non puo'
+# appoggiarsi a questo dizionario: le richieste le deve vedere l'app, che e' un
+# processo diverso, e la memoria non attraversa i processi. Quelle richieste
+# vivono in un file sotto `var/`, che vale anche da traccia di chi ha chiesto
+# cosa e chi ha risposto.
+#
+# Gli stati: `pending` attende l'umano, `approved` ha avuto l'assenso, `refused`
+# l'ha negato, `done`/`failed` dicono com'e' finita. Verdetto ed esito restano
+# scritti perche' chi ha chiesto - e non puo' approvare - deve poterli leggere.
+PENDING = "pending"
+APPROVED = "approved"
+REFUSED = "refused"
+DONE = "done"
+FAILED = "failed"
+_STATI_ESEGUIBILI = (PENDING, APPROVED)
+
+#: Dove vivono le richieste condivise fra processi, una per file.
+SHARED_DIR_NAME = ("mcp", "approvals")
+
+
+def shared_dir() -> Path:
+    return paths.var_dir().joinpath(*SHARED_DIR_NAME)
+
+
+def _file_di(request_id: str) -> Path:
+    # L'identificativo lo generiamo qui (uuid), ma un carattere strano non deve
+    # poter uscire dalla cartella: il nome del file si costruisce, non si copia.
+    pulito = "".join(ch for ch in str(request_id or "") if ch.isalnum() or ch in "-_")
+    return shared_dir() / f"{pulito}.json"
+
+
+def _leggi_condivisa(request_id: str) -> Optional[Dict[str, Any]]:
+    percorso = _file_di(request_id)
+    if not percorso.is_file():
+        return None
+    try:
+        with percorso.open("r", encoding="utf-8") as handle:
+            record = json.load(handle)
+        return record if isinstance(record, dict) else None
+    except Exception as exc:
+        log.warning("Richiesta condivisa illeggibile (%s): %s", percorso.name, exc)
+        return None
+
+
+def _scrivi_condivisa(record: Dict[str, Any]) -> None:
+    percorso = _file_di(record.get("request_id", ""))
+    try:
+        percorso.parent.mkdir(parents=True, exist_ok=True)
+        # Su file temporaneo e poi sostituzione: l'app puo' leggere mentre il
+        # figlio scrive, e un JSON letto a meta' e' un errore che si vede solo
+        # sotto carico.
+        provvisorio = percorso.with_suffix(".json.tmp")
+        with provvisorio.open("w", encoding="utf-8") as handle:
+            json.dump(record, handle, ensure_ascii=False, indent=2)
+        provvisorio.replace(percorso)
+    except Exception as exc:
+        log.error("Richiesta condivisa non scritta (%s): %s", record.get("tool"), exc)
+
 
 def _prune_expired() -> None:
     cutoff = time.time() - _APPROVAL_TTL_SECONDS
     for key in [k for k, v in _pending.items() if v["created_at"] < cutoff]:
         _pending.pop(key, None)
+    if not shared_dir().is_dir():
+        return
+    for percorso in shared_dir().glob("*.json"):
+        try:
+            if percorso.stat().st_mtime < cutoff:
+                percorso.unlink()
+        except OSError:
+            pass
 
 
 def create_approval(tool_name: str, arguments: Dict[str, Any], server: str = "",
-                    summary: str = "") -> Dict[str, Any]:
-    """Park a sensitive call and return the record the UI shows the operator."""
+                    summary: str = "", client: str = "") -> Dict[str, Any]:
+    """Park a sensitive call and return the record the UI shows the operator.
+
+    `client` e' chi ha chiesto: vuoto quando la richiesta nasce dentro
+    l'applicazione, altrimenti il nome di un processo esterno. La differenza non
+    e' burocratica: decide anche **dove** la richiesta vive, perche' solo quella
+    di un processo esterno deve attraversare il confine fra processi.
+    """
     with _lock:
         _prune_expired()
         request_id = f"mcp-{uuid.uuid4().hex[:12]}"
@@ -175,29 +247,116 @@ def create_approval(tool_name: str, arguments: Dict[str, Any], server: str = "",
             "arguments": arguments,
             "summary": summary,
             "created_at": time.time(),
-            "status": "pending",
+            "status": PENDING,
+            "client": str(client or ""),
         }
-        _pending[request_id] = record
+        if client:
+            _scrivi_condivisa(record)
+        else:
+            _pending[request_id] = record
         return dict(record)
 
 
-def take_approval(request_id: str) -> Optional[Dict[str, Any]]:
-    """Claim a pending call for execution. Returns None if unknown or expired.
+def get_approval(request_id: str) -> Optional[Dict[str, Any]]:
+    """Il record, ovunque viva. Non consuma niente: serve a chi aspetta."""
+    with _lock:
+        _prune_expired()
+        record = _pending.get(str(request_id or ""))
+        if record:
+            return dict(record)
+        return _leggi_condivisa(request_id)
 
-    Claiming removes it, so an approval cannot be replayed into a second call.
+
+def _aggiorna(record: Dict[str, Any], **campi: Any) -> Dict[str, Any]:
+    aggiornato = {**record, **campi}
+    if aggiornato.get("client"):
+        _scrivi_condivisa(aggiornato)
+    else:
+        _pending[aggiornato["request_id"]] = aggiornato
+    return dict(aggiornato)
+
+
+def confirm_approval(request_id: str, approved: bool = True,
+                     by: str = "operatore") -> Optional[Dict[str, Any]]:
+    """Il verdetto di un umano. Il record resta, cosi' chi ha chiesto lo legge.
+
+    Non esegue niente: eseguire e' un passo separato, cosi' un rifiuto non ha
+    effetti e un assenso si puo' consumare una volta sola.
+    """
+    with _lock:
+        record = _pending.get(str(request_id or "")) or _leggi_condivisa(request_id)
+        if not record:
+            return None
+        return _aggiorna(record, status=APPROVED if approved else REFUSED,
+                         confirmed_by=str(by or ""), confirmed_at=time.time())
+
+
+def record_outcome(request_id: str, ok: bool, output: str = "",
+                   error: str = "") -> Optional[Dict[str, Any]]:
+    """Com'e' finita. Chi ha chiesto una chiamata approvata non l'ha eseguita e
+    non ne ha visto l'esito: senza questo resta ad aspettare un risultato che
+    esiste gia' da un'altra parte."""
+    with _lock:
+        record = _pending.get(str(request_id or "")) or _leggi_condivisa(request_id)
+        if not record:
+            return None
+        return _aggiorna(record, status=DONE if ok else FAILED,
+                         output=str(output or "")[:4000], error=str(error or ""),
+                         ended_at=time.time())
+
+
+def take_approval(request_id: str, client: str = "") -> Optional[Dict[str, Any]]:
+    """Prendi in carico una chiamata per eseguirla. None se non e' tua.
+
+    Regola: **chi chiede non approva.** Un client esterno non riceve mai indietro
+    il proprio record - nemmeno nominandolo - perche' l'assenso e' di un umano, e
+    l'umano sta nell'applicazione. Se potesse reclamarlo da solo, il cancello dei
+    tool sensibili sarebbe una porta finta: basterebbe riprovare con
+    l'identificativo che la richiesta stessa gli ha appena consegnato.
     """
     with _lock:
         _prune_expired()
-        return _pending.pop(request_id, None)
+        record = _pending.get(str(request_id or "")) or _leggi_condivisa(request_id)
+        if not record:
+            return None
+        if client:
+            return None
+        if record.get("status") not in _STATI_ESEGUIBILI:
+            return None
+        # L'esecuzione l'ha presa in carico questo processo: se la richiesta e'
+        # condivisa il file resta fino all'esito, cosi' chi aspetta lo legge
+        # invece di restare appeso a un identificativo che non esiste piu'.
+        if not record.get("client"):
+            _pending.pop(record["request_id"], None)
+        return dict(record)
 
 
 def list_pending() -> List[Dict[str, Any]]:
+    """Solo cio' che attende un umano: quello in memoria e quello su disco."""
     with _lock:
         _prune_expired()
-        return [dict(record) for record in _pending.values()]
+        voci: Dict[str, Dict[str, Any]] = {
+            key: value for key, value in _pending.items() if value.get("status") == PENDING
+        }
+        if shared_dir().is_dir():
+            for percorso in shared_dir().glob("*.json"):
+                try:
+                    with percorso.open("r", encoding="utf-8") as handle:
+                        voce = json.load(handle)
+                except Exception:
+                    continue
+                if isinstance(voce, dict) and voce.get("status") == PENDING:
+                    voci[voce.get("request_id", percorso.stem)] = voce
+        return sorted((dict(v) for v in voci.values()), key=lambda v: v.get("created_at", 0))
 
 
 def reset_pending() -> None:
     """Drop every parked call. Used by the tests and when the operator clears."""
     with _lock:
         _pending.clear()
+        if shared_dir().is_dir():
+            for percorso in shared_dir().glob("*.json"):
+                try:
+                    percorso.unlink()
+                except OSError:
+                    pass

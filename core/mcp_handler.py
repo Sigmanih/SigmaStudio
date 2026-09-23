@@ -330,11 +330,17 @@ def handle_mcp_approve(self):
             return self.send_json_response({"error": "Manca request_id"}, 400)
 
         if not payload.get("approve", False):
-            record = governance.take_approval(request_id)
-            log.info("Chiamata MCP rifiutata dall'operatore: %s", record.get("tool") if record else request_id)
+            # Il verdetto negativo resta scritto: chi ha chiesto la chiamata -
+            # magari un processo esterno che sta aspettando - deve poter leggere
+            # che gli e' stato detto di no, invece di restare appeso.
+            record = governance.confirm_approval(request_id, approved=False,
+                                                 by="operatore")
+            log.info("Chiamata MCP rifiutata dall'operatore: %s",
+                     record.get("tool") if record else request_id)
             return self.send_json_response({"success": True, "status": "rejected",
                                             "tool": (record or {}).get("tool", "")})
 
+        governance.confirm_approval(request_id, approved=True, by="operatore")
         outcome = mcp_hub.execute_tool("", {}, approval_id=request_id)
         if outcome["status"] == "ok":
             content = outcome["result"].get("content", [])
