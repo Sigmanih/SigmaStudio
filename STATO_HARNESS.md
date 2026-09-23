@@ -920,8 +920,8 @@ diventate due regole da tenere allineate, e la seconda diverge sempre - ma
 facendone un **alias**: `hub_stdio` con il filtro fissato su `Developer Files`.
 Stessi cinque tool dei file, stessa policy, stesso assenso, una sola
 implementazione. Il costo e che il filtro limita l elenco, non l avvio: l hub
-costruisce i suoi server comunque (indice compreso). Renderlo pigro e il lavoro
-della voce s7 della coda.
+costruisce i suoi server comunque (indice compreso). Renderlo pigro resta un
+lavoro aperto, e non e ancora in coda.
 
 Il ciclo del protocollo e lo scambio di `sys.stdout` li prepara `hub_stdio`, e
 `fs_stdio` lo importa dentro `main` **prima** di qualunque altra cosa: due moduli
@@ -932,3 +932,91 @@ partire scriverebbe i messaggi su stderr, dove il client non li legge.
 con la modalita automatica spenta, una scrittura da quella porta non avviene, la
 richiesta resta in attesa e la risposta dice di chiamare `await_approval`. Prima
 di questa correzione quel test sarebbe rosso, perche la scrittura avveniva.
+
+## 17. Il numero che sembrava un dato · 24 settembre 2026
+
+La voce s7 della coda diceva: leggi i numeri che ci sono gia, perche il difetto
+non e la misura mancante. Era vero a meta. I numeri c erano, ma non erano tre
+misure: erano una misura, una stima e un silenzio travestito da zero.
+
+### 17.1 Lo strumento che dichiarava la regola
+
+`tools/analisi_ttft.py` **stampava** la regola invece di calcolarla: correlava
+`ttft_ms` con il numero di turni (che non e la dimensione del prompt) e poi
+scriveva che il tempo al primo token cresce con il prompt. Usciva sempre con
+codice zero, anche se i dati dicevano il contrario, quindi valeva come una
+verifica che non aveva verificato niente - il caso peggiore descritto in
+`AGENTS.md`, perche un controllo rosso si nota e uno verde per costruzione no.
+
+**Riscritto** (`tools/analisi_ttft.py`), con due livelli dichiarati e la
+copertura dichiarata: 187 file letti, 156 sessioni con un ttft leggibile, 9
+turni con il dettaglio. Se i numeri non sostengono la regola, lo strumento dice
+quale delle tre conclusioni vale, e la riga `SIGMA-CHECK` esce diversa da zero
+solo su problemi veri (misure spaiate, file illeggibili).
+
+**Quello che dice**, e che rovescia la premessa della voce in coda:
+
+| Gruppo | run | ttft mediano del primo token | turni mediani |
+|:--|--:|--:|--:|
+| obiettivo raggiunto | 54 | 7.080 ms | 14 |
+| turni esauriti | 100 | **5.351 ms** | 22 |
+
+Chi esaurisce i turni aspetta il **24% di meno**. La correlazione ttft~turni e
+r=0.169. Il rapporto di 38x fra il run piu lento e il piu veloce non era il
+contesto: era il **caricamento del modello**, che cade dentro il ttft del run
+perche `run_metrics["ttft_ms"]` si misura da `t_turn_start`, cioe da prima che i
+pesi siano in memoria. Dentro una singola sessione il prefill invece si sente:
++173 ms ogni 1000 token stimati in piu, r=0.60 (r^2=0.36). Un terzo dell attesa
+e il contesto; il resto e altro - vedi la voce s9, nuova in coda.
+
+### 17.2 `reuse_tokens` era zero perche nessuno lo scriveva
+
+`core/ai_providers.py::call_openai_compatible_stream` leggeva solo
+`choices[0].delta` e scartava il resto: `usage` (OpenAI) e `timings` (llama.cpp)
+finivano nel cestino. Il ciclo dell agente aspetta `prefix_reused_tokens`, che
+solo `core/engine/unified_runtime.py` emetteva - il motore SigmaEngine. Su un
+server GGUF, cioe sul percorso che le sessioni mostrano davvero, quel numero
+restava zero in tutti i turni di tutte le sessioni: **non una misura di zero,
+l assenza di una misura**. Ed e il numero su cui si decide se il contesto costa.
+
+Adesso: `_raccogli_numeri` legge `usage` e `timings`; il riuso si prende da
+`cache_n` quando il server lo dichiara, altrimenti da `prompt_tokens - prompt_n`;
+il conto si fa alla fine, quindi non dipende dall ordine in cui i due pezzi
+arrivano. `_chunk_numeri` emette il pezzo **solo se c e qualcosa da dire**: chi
+legge deve poter distinguere un riuso mancato da un riuso non misurato. I
+conteggi si chiedono con `stream_options` **solo agli endpoint locali**, e un
+400 su quel campo non perde il run: si richiede senza, perche una misura non
+vale un run perso.
+
+`prompt_tokens` smette di essere solo `len(contenuto)//4`: dove il server
+dichiara il suo conto vale quello, e la riga del turno porta
+`prompt_tokens_estimated`, cosi la stima si riconosce da lontano.
+
+### 17.3 La telemetria live che non ha mai parlato
+
+Nell evento `context_telemetry` di ogni turno, `ttft_ms` e `tps` erano **sempre
+`null`**: si calcolavano da `turn_first_token_time`, che viene azzerata all inizio
+di ogni turno, quindi la condizione `current_turn > 1 and turn_first_token_time
+is not None` era falsa per costruzione. Il numero c era nel consuntivo della
+sessione e non e mai arrivato all interfaccia. Ora la telemetria porta l ultimo
+turno **concluso** (l unico che un primo token ce l ha), come faceva gia il campo
+accanto `generated_tokens_last_turn`.
+
+### 17.4 I numeri del costo dove si vedono
+
+L evento `metrics` del run porta `reuse_tokens`, `prefill_ms` (la somma dei
+prefill dichiarati dal server) e `prompt_tokens_estimated_pct` (quanta parte del
+contesto e stimata): un ttft senza il suo prefill non dice se quel tempo e
+andato in lettura del contesto o in attesa del modello. La coda acquista due
+voci: **s8** (i tagli silenziosi che restano: `history[-5:]`, `history[-10:]` e
+le degradazioni di `chat_runner`) e **s9** (l attesa del primo token alla sua
+causa misurata).
+
+### 17.5 La prova
+
+| Prova | Esito |
+|:--|:--|
+| `python -m pytest tests/ -q` | **2647 passed**, 3 rossi d ambiente, 4 skipped |
+| `tests/test_numeri_del_provider.py` | 11 casi nuovi |
+| `tests/test_consuntivo_per_turno.py` | 5 casi nuovi (conteggio vero, telemetria, costo) |
+| `python tools/analisi_ttft.py` | 187 file, 156 sessioni, 9 turni, 0 problemi |
