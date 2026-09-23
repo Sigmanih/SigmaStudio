@@ -963,6 +963,77 @@ def call_openai_compatible(
         return None, None, str(e)
 
 
+def _endpoint_locale(api_url: str) -> bool:
+    """Vero se l'endpoint gira su questa macchina: llama-server, Ollama, vLLM.
+
+    Serve a decidere se chiedere i conteggi (`stream_options`): li sa dare il
+    server locale, ed e' l'unico posto dove servono per sapere quanto prefisso
+    e' stato riusato. A un servizio remoto non si chiede un campo che non
+    conosce.
+    """
+    from urllib.parse import urlsplit
+    try:
+        host = (urlsplit(api_url or "").hostname or "").lower()
+    except ValueError:
+        return False
+    return host in ("localhost", "127.0.0.1", "0.0.0.0", "::1", "::")
+
+
+def _raccogli_numeri(data, numeri):
+    """I conteggi veri del server: `usage` (OpenAI) o `timings` (llama.cpp).
+
+    Il ciclo dell'agente aspetta `prefix_reused_tokens`, e finora solo il
+    motore SigmaEngine lo mandava. Da un server compatibile OpenAI il campo non
+    arrivava mai: il riuso del prefisso risultava zero in tutte le sessioni
+    GGUF. Non era una misura di zero, era l'assenza di una misura — e su quel
+    numero si decide se il contesto costa o no.
+    """
+    if not isinstance(data, dict):
+        return numeri
+    uso = data.get("usage")
+    if isinstance(uso, dict):
+        if isinstance(uso.get("prompt_tokens"), (int, float)):
+            numeri["prompt_tokens"] = int(uso["prompt_tokens"])
+        if isinstance(uso.get("completion_tokens"), (int, float)):
+            numeri.setdefault("generated_tokens", int(uso["completion_tokens"]))
+    tempi = data.get("timings")
+    if isinstance(tempi, dict):
+        # `prompt_ms` e' il prefill misurato dal server: l'attesa del primo
+        # token senza il caricamento del modello e senza il decode.
+        if isinstance(tempi.get("prompt_ms"), (int, float)):
+            numeri["prefill_ms"] = round(float(tempi["prompt_ms"]), 1)
+        if isinstance(tempi.get("predicted_n"), (int, float)):
+            numeri.setdefault("generated_tokens", int(tempi["predicted_n"]))
+        if isinstance(tempi.get("cache_n"), (int, float)):
+            # Il server dice lui quanti token vengono dalla cache.
+            numeri["prefix_reused_tokens"] = int(tempi["cache_n"])
+        elif isinstance(tempi.get("prompt_n"), (int, float)):
+            # `prompt_n` conta i token DAVVERO valutati: quel che manca al
+            # prompt intero e' il prefisso riusato. Si tiene da parte e si
+            # calcola alla fine, perche' `usage` puo' arrivare dopo.
+            numeri["prompt_tokens_evaluated"] = int(tempi["prompt_n"])
+    return numeri
+
+
+def _chunk_numeri(numeri):
+    """Il pezzo coi conteggi, o None quando non c'e' niente da dichiarare.
+
+    Un pezzo vuoto non si manda: chi legge deve poter distinguere «il server ha
+    detto zero» da «il server non ha detto niente», ed e' la differenza fra un
+    riuso mancato e un riuso non misurato.
+    """
+    if not numeri:
+        return None
+    pezzo = dict(numeri)
+    valutati = pezzo.pop("prompt_tokens_evaluated", None)
+    if valutati is not None and pezzo.get("prompt_tokens"):
+        pezzo["prefix_reused_tokens"] = max(
+            0, int(pezzo["prompt_tokens"]) - int(valutati))
+    pezzo["token"] = ""
+    pezzo["counters"] = True
+    return pezzo
+
+
 def call_openai_compatible_stream(
     messages: list,
     model: str,
@@ -1008,12 +1079,26 @@ def call_openai_compatible_stream(
                 "max_tokens": max_tokens,
                 "top_p": top_p,
             })
+        chiedi_i_numeri = _endpoint_locale(api_url)
+        if chiedi_i_numeri:
+            # I conteggi del server sono l'unico modo di sapere quanto prefisso
+            # e' stato riusato: senza, il riuso resta invisibile.
+            payload["stream_options"] = {"include_usage": True}
         resp = requests.post(api_url, json=payload, headers=headers, stream=True, timeout=int(timeout or 120))
+        if resp.status_code == 400 and chiedi_i_numeri:
+            # Un server che non conosce `stream_options` rifiuta la richiesta
+            # intera: la misura non vale un run perso, quindi si richiede
+            # senza conteggi e si va avanti con quello che arriva.
+            log.info("Il server ha rifiutato `stream_options`: richiedo senza.")
+            payload.pop("stream_options", None)
+            resp = requests.post(api_url, json=payload, headers=headers,
+                                 stream=True, timeout=int(timeout or 120))
         if resp.status_code != 200:
             yield {"error": True, "message": f"API error {resp.status_code}: {resp.text[:200]}"}
             return
         from core.engine.tool_calls import ToolCallAccumulator
         accumulatore = ToolCallAccumulator()
+        numeri = {}
         for line in resp.iter_lines(chunk_size=1, decode_unicode=True):
             if _cancelled(cancel):
                 resp.close()
@@ -1028,10 +1113,14 @@ def call_openai_compatible_stream(
                 complete = accumulatore.result()
                 if complete:
                     yield {"tool_calls": complete}
+                conteggi = _chunk_numeri(numeri)
+                if conteggi:
+                    yield conteggi
                 yield {"done": True}
                 break
             try:
                 data = json.loads(data_str)
+                _raccogli_numeri(data, numeri)
                 choice = data.get("choices", [{}])[0]
                 delta = choice.get("delta", {})
                 content = delta.get("content", "")
@@ -1052,6 +1141,9 @@ def call_openai_compatible_stream(
                     complete = accumulatore.result()
                     if complete:
                         yield {"tool_calls": complete}
+                    conteggi = _chunk_numeri(numeri)
+                    if conteggi:
+                        yield conteggi
                     yield {"done": True, "done_reason": finish_reason, "truncated": finish_reason == "length"}
                     break
             except json.JSONDecodeError:

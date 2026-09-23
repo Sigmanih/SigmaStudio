@@ -2981,6 +2981,11 @@ def _stream_agent_turn_impl(
     total_generated_tokens = 0
     t_turn_start = time.perf_counter()
     overall_first_token_time = None
+    # L ultimo turno concluso: e quello che la telemetria live puo mostrare,
+    # perche il turno in corso non ha ancora un primo token.
+    ultimo_ttft_ms = None
+    ultimo_tps = None
+    ultimo_tokens = 0
 
     #: La riga del turno in corso. Si chiude quando il turno e finito, ma non
     #: solo dove il ciclo lo dichiara: un turno che finisce senza tool esce da
@@ -3097,6 +3102,9 @@ def _stream_agent_turn_impl(
         has_notified_tool = False
         turn_tokens = 0
         turn_reused = 0
+        # Il conteggio vero che il server dichiara per questo turno, quando lo
+        # dichiara: `prompt_tokens` dal server batte la stima caratteri/4.
+        prompt_vero = {"valore": None}
         pending_out = ""
         turn_first_token_time = None
         t_call_start = time.perf_counter()
@@ -3139,23 +3147,19 @@ def _stream_agent_turn_impl(
 
         # Telemetria live di contesto: emessa ad ogni turno nel flusso eventi.
         # prompt_tokens: stima del contesto in ingresso a questo turno.
-        # ttft_ms / tps: riferiti al turno precedente completato (nulli al primo).
+        # ttft_ms / tps: l'ultimo turno CONCLUSO, perche' il primo token di
+        # questo non e' ancora arrivato. Prima qui si leggeva
+        # `turn_first_token_time`, che viene azzerata all'inizio di ogni turno:
+        # la condizione era sempre falsa e l'interfaccia riceveva `null` a ogni
+        # turno, cioe' il numero non si vedeva mai.
         _approx_prompt = sum(len(m.get("content", "")) for m in full_messages) // 4
-        _ttft_ms = None
-        _tps = None
-        if current_turn > 1 and turn_first_token_time is not None and t_call_start:
-            _elapsed_s = max(turn_first_token_time - t_call_start, 1e-9)
-            _ttft_ms = round(_elapsed_s * 1000, 2)
-            if turn_tokens > 0 and overall_first_token_time is not None:
-                _gen_s = max(time.perf_counter() - overall_first_token_time, 1e-9)
-                _tps = round(turn_tokens / _gen_s, 2)
         yield {
             "type": "context_telemetry",
             "turn": current_turn,
             "prompt_tokens": _approx_prompt,
-            "ttft_ms": _ttft_ms,
-            "tps": _tps,
-            "generated_tokens_last_turn": turn_tokens if current_turn > 1 else 0,
+            "ttft_ms": ultimo_ttft_ms,
+            "tps": ultimo_tps,
+            "generated_tokens_last_turn": ultimo_tokens,
         }
 
         try:
@@ -3226,6 +3230,15 @@ def _stream_agent_turn_impl(
                     turn_reused = int(chunk.get("prefix_reused_tokens") or 0)
                     run_metrics["reuse_tokens"] = int(run_metrics.get("reuse_tokens") or 0) + turn_reused
                     riga_turno["reuse_tokens"] = int(riga_turno.get("reuse_tokens") or 0) + turn_reused
+
+                if chunk.get("prompt_tokens") is not None:
+                    # Quanti token il server ha davvero ricevuto. La stima
+                    # caratteri/4 resta come ripiego per chi non lo dichiara,
+                    # ma dove il numero arriva e' quello che vale.
+                    prompt_vero["valore"] = int(chunk.get("prompt_tokens") or 0)
+
+                if chunk.get("prefill_ms") is not None:
+                    riga_turno["prefill_ms"] = round(float(chunk["prefill_ms"]), 1)
 
                 if chunk.get("model_status") or (chunk.get("status") and chunk.get("text")):
                     status_text = chunk.get("model_status") or chunk.get("text")
@@ -3357,11 +3370,16 @@ def _stream_agent_turn_impl(
             "duration_s": round(t_now - t_turn_start, 2)
         }
         riga_turno.update({
-            "prompt_tokens": _approx_prompt,
+            "prompt_tokens": (prompt_vero["valore"] if prompt_vero["valore"] is not None
+                              else _approx_prompt),
+            "prompt_tokens_estimated": prompt_vero["valore"] is None,
             "generated_tokens": turn_tokens,
             "tps": tps,
             "ttft_ms": ttft_ms,
         })
+        ultimo_ttft_ms = ttft_ms
+        ultimo_tps = tps
+        ultimo_tokens = turn_tokens
 
         full_text = "".join(accumulated_response)
 
@@ -4389,21 +4407,36 @@ def _stream_agent_turn_impl(
     elapsed_total_s = max(run_metrics["elapsed_s"], 0.001)
     calc_tps = round(total_generated_tokens / elapsed_total_s, 1) if total_generated_tokens > 0 else 1091.5
 
+    # I numeri del costo, dove si vedono: il riuso del prefisso decide se un
+    # turno costa dodicimila token di attesa o duecento, e il prefill e' il
+    # tempo che il server ha speso a leggere il contesto prima di rispondere.
+    # `prompt_tokens` e' una stima caratteri/4 finche' il provider non dichiara
+    # i suoi conteggi: la quota dice quanto fidarsi del numero accanto.
+    righe_turno = run_metrics.get("turns_detail") or []
+    stimate = sum(1 for r in righe_turno if r.get("prompt_tokens_estimated"))
+    metriche = {
+        "load_duration_ms": 1.28,
+        "routing_time_ms": run_metrics.get("ttft_ms"),
+        "tokens_per_second": calc_tps,
+        "token_count": total_generated_tokens,
+        "elapsed_s": elapsed_total_s,
+        "ttft_ms": run_metrics.get("ttft_ms"),
+        "reuse_tokens": int(run_metrics.get("reuse_tokens") or 0),
+        "prefill_ms": round(sum(float(r.get("prefill_ms") or 0) for r in righe_turno), 1),
+        "prompt_tokens_estimated_pct": (
+            round(100 * stimate / len(righe_turno)) if righe_turno else None),
+        "hardware_note": "NVIDIA RTX 5070 Ti (16GB) + RTX 5060 (8GB) - CUDA",
+    }
+
     yield {
         "type": "metrics",
-        "metrics": {
-            "load_duration_ms": 1.28,
-            "routing_time_ms": run_metrics.get("ttft_ms"),
-            "tokens_per_second": calc_tps,
-            "token_count": total_generated_tokens,
-            "elapsed_s": elapsed_total_s,
-            "ttft_ms": run_metrics.get("ttft_ms"),
-            "hardware_note": "NVIDIA RTX 5070 Ti (16GB) + RTX 5060 (8GB) - CUDA",
-        },
+        "metrics": metriche,
         "meta": {
             "load_duration_ms": 1.28,
             "tokens_per_second": calc_tps,
             "ttft_ms": run_metrics.get("ttft_ms"),
+            "reuse_tokens": metriche["reuse_tokens"],
+            "prefill_ms": metriche["prefill_ms"],
             "model_status": "Pronto",
             "hardware_note": "NVIDIA RTX 5070 Ti (16GB) + RTX 5060 (8GB) - CUDA",
         },

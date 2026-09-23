@@ -21,7 +21,8 @@ CHIAVI_DELLA_RIGA = ("turn", "prompt_tokens", "generated_tokens", "tps",
                      "reuse_tokens", "state_chars")
 
 
-def _turno(destinazione, max_turns=1, riuso=None, con_tool=False):
+def _turno(destinazione, max_turns=1, riuso=None, con_tool=False,
+           prompt_vero=None):
     """Un run finto. Senza una chiamata nel primo turno il ciclo chiude al
     primo: il modello ha risposto, e un run che risponde e finito."""
     chiamate = {"n": 0}
@@ -37,6 +38,8 @@ def _turno(destinazione, max_turns=1, riuso=None, con_tool=False):
             pezzi.append({"token": ' mondo'})
         if riuso is not None:
             pezzi.append({"prefix_reused_tokens": riuso})
+        if prompt_vero is not None:
+            pezzi.append({"prompt_tokens": prompt_vero, "prefill_ms": 1200.0})
         pezzi.append({"done": True})
         return iter(pezzi)
 
@@ -56,6 +59,18 @@ def _consuntivo(eventi):
     finali = [e for e in eventi if e.get("type") == "run_metrics"]
     assert finali, "il run deve dichiarare il suo consuntivo"
     return finali[-1]
+
+
+def _costi(eventi):
+    """L'evento `metrics` del run: quello con i numeri del costo.
+
+    Non va confuso con il `metrics` di ogni turno, che porta tps e ttft del
+    turno appena finito e nessun consuntivo.
+    """
+    finali = [e for e in eventi
+              if e.get("type") == "metrics" and isinstance(e.get("metrics"), dict)]
+    assert finali, "il run deve dichiarare quanto e' costato"
+    return finali[-1]["metrics"]
 
 
 class TestLaRigaDelTurno:
@@ -90,4 +105,47 @@ class TestLaRigaDelTurno:
         metrica = _consuntivo(_turno(tmp_path))
         assert metrica["model"] == "modello-di-prova"
         assert metrica["provider"] == "sigma_engine"
+
+    def test_il_conteggio_vero_del_server_batte_la_stima(self, tmp_path):
+        """Quando il server dice quanti token ha ricevuto, quello e' il numero."""
+        riga = _consuntivo(_turno(tmp_path, prompt_vero=9500))["turns_detail"][0]
+        assert riga["prompt_tokens"] == 9500
+        assert riga["prompt_tokens_estimated"] is False
+        assert riga["prefill_ms"] == 1200.0
+
+    def test_senza_il_conteggio_la_stima_si_dichiara_tale(self, tmp_path):
+        riga = _consuntivo(_turno(tmp_path))["turns_detail"][0]
+        assert riga["prompt_tokens"] > 0
+        assert riga["prompt_tokens_estimated"] is True
+
+    def test_il_costo_del_run_si_vede_senza_aprire_il_json(self, tmp_path):
+        metrica = _costi(_turno(tmp_path, riuso=9500, prompt_vero=9500))
+        assert metrica["reuse_tokens"] == 9500
+        assert metrica["prefill_ms"] == 1200.0
+        assert metrica["prompt_tokens_estimated_pct"] == 0
+
+    def test_senza_conteggi_la_quota_di_stime_lo_dichiara(self, tmp_path):
+        metrica = _costi(_turno(tmp_path))
+        assert metrica["reuse_tokens"] == 0
+        assert metrica["prompt_tokens_estimated_pct"] == 100
+
+
+class TestLaTelemetriaLive:
+    """Il tempo al primo token deve arrivare all'interfaccia, non stare muto.
+
+    La prima stesura lo calcolava da `turn_first_token_time`, che viene
+    azzerata all'inizio di ogni turno: la condizione era sempre falsa e ogni
+    evento `context_telemetry` portava `ttft_ms: null`. Il numero c'era nel
+    consuntivo e nessuno lo vedeva mentre il run girava.
+    """
+
+    def test_al_secondo_turno_il_tempo_del_primo_si_vede(self, tmp_path):
+        eventi = _turno(tmp_path, max_turns=2, con_tool=True)
+        telemetrie = [e for e in eventi if e.get("type") == "context_telemetry"]
+        assert len(telemetrie) == 2
+        assert telemetrie[0]["ttft_ms"] is None
+        assert telemetrie[0]["generated_tokens_last_turn"] == 0
+        assert telemetrie[1]["ttft_ms"] is not None
+        assert telemetrie[1]["tps"] is not None
+        assert telemetrie[1]["generated_tokens_last_turn"] >= 1
 
