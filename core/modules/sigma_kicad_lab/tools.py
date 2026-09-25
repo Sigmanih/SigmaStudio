@@ -62,6 +62,24 @@ def _esito(nome: str, riuscito: bool, **extra: Any) -> Dict[str, Any]:
     return {"tool": nome, "success": riuscito, **extra}
 
 
+def _esito_dal_ponte(nome: str, esito: Dict[str, Any]) -> Dict[str, Any]:
+    """Il risultato di un tool che parla col ponte `pcbnew`.
+
+    Il ponte dichiara il successo con `ok` e il motivo del fallimento con
+    `errore`; il resto del sistema legge `success` e `error`. La traduzione sta
+    qui, in un posto solo: sparsa nei sei tool ognuno l'avrebbe fatta a modo
+    suo, e il rifiuto del lavoratore — «il riferimento e' gia' usato su questa
+    scheda» — sarebbe arrivato a valle come un successo senza motivo. Un agente
+    che legge un successo non riprova: crede di avere in scheda un componente
+    che non c'e'.
+    """
+    esito = dict(esito)
+    riuscito = bool(esito.pop("ok", True))
+    if not riuscito and "errore" in esito and "error" not in esito:
+        esito["error"] = esito.pop("errore")
+    return _esito(nome, riuscito, **esito)
+
+
 # --- contesto ------------------------------------------------------------------
 
 def _pcb() -> Path:
@@ -528,7 +546,7 @@ def kicad_pcbnew_status() -> Dict[str, Any]:
     """Stato del ponte pcbnew: versione e percorsi trovati."""
     try:
         from . import pcbnew_bridge as ponte
-        return _esito("kicad_pcbnew_status", True, **ponte.disponibile())
+        return _esito_dal_ponte("kicad_pcbnew_status", ponte.disponibile())
     except Exception as exc:
         return _esito("kicad_pcbnew_status", False, error=str(exc))
 
@@ -537,7 +555,7 @@ def kicad_libraries() -> Dict[str, Any]:
     """Elenco delle librerie di footprint disponibili."""
     try:
         from . import pcbnew_bridge as ponte
-        return _esito("kicad_libraries", True, **ponte.elenca_librerie())
+        return _esito_dal_ponte("kicad_libraries", ponte.elenca_librerie())
     except Exception as exc:
         return _esito("kicad_libraries", False, error=str(exc))
 
@@ -547,8 +565,9 @@ def kicad_search_footprint(query: str = "", limite: int = 20,
     """Cerca footprint nelle librerie KiCad."""
     try:
         from . import pcbnew_bridge as ponte
-        return _esito("kicad_search_footprint", True,
-                      **ponte.cerca_footprint(query, limite=limite, libreria=libreria))
+        return _esito_dal_ponte(
+            "kicad_search_footprint",
+            ponte.cerca_footprint(query, limite=limite, libreria=libreria))
     except Exception as exc:
         return _esito("kicad_search_footprint", False, error=str(exc))
 
@@ -559,10 +578,11 @@ def kicad_new_board(percorso: str = "", larghezza_mm: float = 100.0,
     """Crea una nuova scheda KiCad vuota."""
     try:
         from . import pcbnew_bridge as ponte
-        return _esito("kicad_new_board", True,
-                      **ponte.crea_scheda(percorso, larghezza_mm=larghezza_mm,
-                                          altezza_mm=altezza_mm,
-                                          net=net or [], sovrascrivi=sovrascrivi))
+        return _esito_dal_ponte(
+            "kicad_new_board",
+            ponte.crea_scheda(percorso, larghezza_mm=larghezza_mm,
+                              altezza_mm=altezza_mm,
+                              net=net or [], sovrascrivi=sovrascrivi))
     except Exception as exc:
         return _esito("kicad_new_board", False, error=str(exc))
 
@@ -571,16 +591,18 @@ def kicad_add_part(percorso: str = "", libreria: str = "", footprint: str = "",
                    riferimento: str = "", valore: str = "",
                    x_mm: float = 0.0, y_mm: float = 0.0,
                    rotazione: float = 0.0,
-                   net_per_pad: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+                   net_per_pad: Optional[Dict[str, str]] = None,
+                   lato: str = "") -> Dict[str, Any]:
     """Aggiunge un componente (footprint) a una scheda esistente."""
     try:
         from . import pcbnew_bridge as ponte
-        return _esito("kicad_add_part", True,
-                      **ponte.aggiungi_componente(
-                          percorso, libreria=libreria, footprint=footprint,
-                          riferimento=riferimento, valore=valore,
-                          x_mm=x_mm, y_mm=y_mm, rotazione=rotazione,
-                          net_per_pad=net_per_pad or {"1": "GND"}))
+        return _esito_dal_ponte(
+            "kicad_add_part",
+            ponte.aggiungi_componente(
+                percorso, libreria=libreria, footprint=footprint,
+                riferimento=riferimento, valore=valore,
+                x_mm=x_mm, y_mm=y_mm, rotazione=rotazione,
+                net_per_pad=net_per_pad or {"1": "GND"}, lato=lato))
     except Exception as exc:
         return _esito("kicad_add_part", False, error=str(exc))
 
@@ -591,7 +613,7 @@ def kicad_read_board_full(percorso: str = "") -> Dict[str, Any]:
         from . import pcbnew_bridge as ponte
         if not percorso:
             raise KicadToolError("percorso obbligatorio per leggere una scheda")
-        return _esito("kicad_read_board_full", True, **ponte.leggi_scheda(percorso))
+        return _esito_dal_ponte("kicad_read_board_full", ponte.leggi_scheda(percorso))
     except Exception as exc:
         return _esito("kicad_read_board_full", False, error=str(exc))
 
@@ -686,7 +708,8 @@ _SINONIMI: Dict[str, Dict[str, str]] = {
     "kicad_add_part": {"nome": "riferimento", "ref": "riferimento",
                        "reference": "riferimento", "designator": "riferimento",
                        "x": "x_mm", "y": "y_mm", "lib": "libreria",
-                       "library": "libreria", "value": "valore"},
+                       "library": "libreria", "value": "valore",
+                       "side": "lato", "layer": "lato"},
     "kicad_read_board_full": {"path": "percorso"},
     "kicad_search_footprint": {"lib": "libreria", "library": "libreria",
                                "limit": "limite", "q": "query"},

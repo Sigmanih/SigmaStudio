@@ -115,13 +115,31 @@ class TestUnaSolaImplementazione(unittest.TestCase):
         from core.paths import project_root
 
         colpevoli = []
+        esaminati = 0
+        # Il confronto e' fra percorsi assoluti: `project_root()` lo e', e un
+        # `Path("core/modules")` relativo non sarebbe mai dentro `parents` — il
+        # filtro non filtrerebbe niente e il controllo resterebbe rosso per un
+        # file che il kernel non possiede.
+        modulo = project_root() / "core" / "modules"
         for f in (project_root() / "core").rglob("*.py"):
             if "__pycache__" in str(f) or f.name == "sse.py":
                 continue
+            # I moduli non appartengono a questo albero: `core/modules/*` e'
+            # ignorato da git e pubblicato su un repository suo. Un controllo
+            # dello stile del kernel non ha titolo per imporre regole a codice
+            # che il kernel non possiede — e un file che qui c'e' e in un
+            # checkout pulito non c'e' non puo' decidere l'esito della suite.
+            if modulo in f.parents:
+                continue
+            esaminati += 1
             testo = f.read_text(encoding="utf-8", errors="ignore")
             if re.search(r"def _sse\(", testo):
                 colpevoli.append(f.name)
 
+        # Un elenco di colpevoli vuoto e' anche quello che si ottiene non
+        # guardando niente: il conteggio dice che il controllo ha esaminato
+        # davvero i file del kernel.
+        self.assertGreater(esaminati, 100, "il controllo non ha guardato i sorgenti del kernel")
         self.assertEqual(colpevoli, [],
                          "questi file si sono riscritti il writer SSE invece di "
                          "usare core.sse.sse_writer")

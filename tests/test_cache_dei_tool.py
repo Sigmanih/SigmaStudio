@@ -209,3 +209,54 @@ class TestIlCicloModificaRileggi:
             "riga sbagliata"
         )
         assert c.get("read_file", {"path": str(f), "offset": 3, "limit": 1})["content"] == "riga tre"
+
+
+class TestIContatoriDelCiclo:
+    """I contatori della cache devono essere mossi dal ciclo, non solo esistere.
+
+    Una cache che risponde e' inutile se il ciclo non la interroga, e un
+    hit-rate fermo a zero non si distingue da una cache non innestata: sono due
+    guasti diversi con lo stesso sintomo. Queste prove guardano il cablaggio nel
+    file del ciclo, che e' l'unico posto dove i due si separano.
+    """
+
+    SORGENTE = Path(__file__).resolve().parents[1] / "core" / "harness" / "loop.py"
+
+    def _testo(self) -> str:
+        return self.SORGENTE.read_text(encoding="utf-8")
+
+    def test_i_tre_contatori_nascono_a_zero(self):
+        testo = self._testo()
+        for chiave in ('"cache_hits": 0', '"cache_misses": 0',
+                       '"prefetch_consumati": 0'):
+            assert chiave in testo, (
+                f"{chiave} non e' nella telemetria del run: senza, il numero "
+                "non arriva fino a chi rilegge la sessione"
+            )
+
+    def test_il_ciclo_li_incrementa_davvero(self):
+        testo = self._testo()
+        for atteso in ('run_metrics["cache_hits"] += 1',
+                       'run_metrics["cache_misses"] += 1',
+                       'run_metrics["prefetch_consumati"] += prefetch.consumati'):
+            assert atteso in testo, (
+                f"'{atteso}' non c'e' piu': il contatore resta a zero e la "
+                "telemetria racconta di un ciclo che non usa la cache"
+            )
+
+    def test_il_riepilogo_del_run_li_dice_nel_log(self):
+        """Un numero che resta solo dentro il diario non lo legge nessuno."""
+        righe = self._testo().splitlines()
+        inizio = next((i for i, r in enumerate(righe)
+                       if "log." in r and "cache_hits=" in r), None)
+        assert inizio is not None, (
+            "il ciclo non scrive nel log l'esito della cache: la telemetria "
+            "resta nel diario e a fine run non la vede nessuno"
+        )
+        blocco = "\n".join(righe[inizio:inizio + 3])
+        for pezzo in ("cache_hits=", "cache_misses=", "prefetch_consumati=",
+                      "hit, miss", 'run_metrics["prefetch_consumati"]'):
+            assert pezzo in blocco, (
+                f"la riga di log non riporta '{pezzo}': il numero c'e' ma non "
+                "e' quello che il ciclo ha contato"
+            )

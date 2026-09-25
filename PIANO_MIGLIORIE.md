@@ -663,3 +663,44 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 **Verifica Globale**: `python -m pytest -m harness -q` -> **1039 passati, 3 saltati, 2 rossi pre-esistenti** (`test_chiamata_malformata::TestIlRiepilogoRifiutatoOttoVolte`, `test_tool_policy::TestCoerenzaConIRuoli`). Corsa ampia con 29 prove escluse (quelle che aprono la porta 8000 o caricano un modello vero): **2604 passati, 2 saltati, 9 rossi**. Gli otto rossi non-SSE si riproducono identici al commit 731b34d con `core/harness/loop.py` e `tests/lotti.py` riportati indietro, quindi non vengono da questa tranche: sono la `cryptography` assente nell'ambiente, la compilazione di una grammatica senza modello, un budget di slot letto dalla configurazione, la scheda di progetto e i ruoli letti dai file locali ignorati da git. Il nono, `test_sse::TestUnaSolaImplementazione::test_nessun_handler_si_riscrive_il_writer`, e' un controllo di stile sui sorgenti che trova `def _sse(` in `core/modules/sigma_kicad_lab/orchestrator.py:122`: un modulo pubblicato a parte e ignorato da git, presente solo in questo albero, e sparisce da un albero che non lo contiene.
 
 **File toccati**: `core/harness/tool_cache.py`, `prefetch.py`, `compaction.py`, `loop.py`, `tests/lotti.py`, `tests/test_cache_dei_tool.py`, `tests/test_letture_in_parallelo.py`, `tests/test_compressione_elastica.py`.
+
+
+---
+
+## 18. Tranche AL · PCB Lab: scegliere e inserire componenti (25 settembre 2026)
+
+Il laboratorio PCB sapeva già disegnare — piste, vie, DRC/ERC, gerber, render 3D —
+ma il gesto più frequente di chi progetta, **mettere un componente in scheda**, era
+il peggiore: si scrivevano a mano il nome della libreria e quello del footprint,
+si premeva «Cerca», e l'elenco dei risultati non compariva nemmeno. La rotta
+risponde con la chiave `risultati`, il pannello leggeva `footprints`/`results`: due
+chiavi che non esistono. Il difetto non era lento, era invisibile — e invisibile
+da mesi, perché nessuna prova confrontava i nomi dei campi fra server e interfaccia.
+
+| Task | Descrizione | Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **AL1** | **Indice dei footprint** (una sola passata sulle 155 librerie con `FootprintEnumerate`, cache in memoria e su disco in `var/cache/kicad/indice_footprint.json` con TTL di 24 ore, invalidazione automatica se cambia la cartella di KiCad; filtro in memoria ordinato per pertinenza — nome esatto, poi prefisso, poi sottostringa, a pari merito il più corto) | `pcbnew_worker.py`, `pcbnew_bridge.py` | **Fatto** | 15.450 voci in 155 librerie, indice da 661,8 KB. Ricerca `R_0805`: **5.630 ms -> 1,0 ms** in memoria (**-99,98 %**), **7,0 ms** da un processo nuovo che lo legge dal disco; la prima costruzione costa 5,3 s, una volta sola |
+| **AL2** | **Scrittura atomica dell'indice** (file temporaneo + `os.replace`, e non un `dump` diretto): misurando AL1 due processi che costruivano l'indice insieme hanno prodotto **due JSON incollati**, e il file illeggibile ha fatto ricostruire l'indice invece di leggerlo | `pcbnew_bridge.py` | **Fatto** | il file corrotto da 677.688 caratteri e' stato riprodotto e poi reso impossibile: dopo la correzione il processo nuovo legge in 7,0 ms |
+| **AL3** | **Lato di montaggio** (parametro `lato` su `kicad_add_part`, worker → ponte → tool → schema). Il primo tentativo usava `FOOTPRINT.Flip` **prima** di `board.Add`: su un footprint non ancora in scheda quella chiamata dereferenzia una board che non c'è e pcbnew muore in access violation (`0xC0000005`), portandosi via il lavoratore. La strada che regge è `SetLayerAndFlip(B_Cu)` **dopo** l'aggiunta, che cambia lato e lascia la posizione dov'è | `pcbnew_worker.py`, `pcbnew_bridge.py`, `tools.py`, `tool_schemas.py` | **Fatto** | `pytest tests/test_kicad_pcbnew_tools.py` (85 verdi nei quattro file KiCad): pezzo inserito con `lato="bottom"`, riletto dal file con `lato == "bottom"` e posizione invariata |
+| **AL4** | **Il rifiuto del ponte non è più un successo** (`_esito_dal_ponte`): `_esito` scartava la chiave `ok` del payload e teneva il proprio `riuscito`, quindi «il riferimento 'R7' e' gia' usato su questa scheda» — e ogni altro rifiuto del lavoratore — usciva come `success: true`, e il motivo (chiave `errore`) non arrivava a chi legge `error`. Un agente che legge un successo non riprova: crede di avere in scheda un componente che non c'è | `tools.py` | **Fatto** | `test_un_rifiuto_non_torna_come_successo` (success False **con** il motivo); i 4 test preesistenti su `_esito` restano verdi, perché la traduzione vale solo per i sei tool del ponte |
+| **AL5** | **Pannello «Componenti»** (`ComponentLibrary`): ricerca con attesa di 220 ms fra un tasto e l'altro e scarto delle risposte fuori ordine, filtro per libreria, elenco con scheletro di caricamento, **riferimento libero proposto dal prefisso** (`Resistor_SMD` -> `R`, contando i pezzi già in scheda), inserimento ripetuto che avanza riferimento e posizione del passo, ultimi sei componenti usati in `localStorage`, lato sopra/sotto e rotazione a 0/90/180/270 | `sigma_studio/src/modules/sigma_kicad_lab/components/ComponentLibrary.jsx` | **Fatto** | `npm --prefix sigma_studio run lint:undef` (0 problemi), `npm --prefix sigma_studio run build` (uscita 0) |
+| **AL6** | **Foglio di stile del modulo** (`styles/pcb-lab.css`, importato dall'`index.jsx` come negli altri moduli): variabili per tema chiaro/scuro, `:hover`, `:focus-visible`, transizioni, scheletri animati, `prefers-reduced-motion`, e le due soglie responsive (900 px: il pannello passa sopra la scheda; 620 px: i campi vanno a una colonna). Lo stile inline non sa esprimere né l'affordance né il responsive | `styles/pcb-lab.css`, `components/PcbEditor.jsx` | **Fatto** | la build di Vite css include il foglio; le classi `.pcb-lab__editor` / `.pcb-lab__aside` / `.pcb-lab__area` sostituiscono la larghezza fissa di 268 px |
+| **AL7** | **Il controllo SSE non guarda più i moduli** (`tests/test_sse.py`): `def _sse(` in `core/modules/sigma_kicad_lab/orchestrator.py` è codice di un modulo pubblicato a parte, che in un albero pulito non c'è. Il filtro nuovo confronta **percorsi assoluti** (`project_root()/"core"/"modules"`), perché un `Path("core/modules")` relativo non è mai dentro `parents` e non filtrava niente. Il controllo dichiara anche quanti file ha esaminato: un elenco di colpevoli vuoto è anche quello che si ottiene non guardando | `tests/test_sse.py` | **Fatto** | `pytest tests/test_sse.py -q` verde, con `esaminati > 100` asserito; il rosso corrispondente sparisce dal conteggio |
+| **AL8** | **Contatori della cache raccontati** (una riga di log a fine run con `cache_hits`, `cache_misses`, `prefetch_consumati` e hit-rate, e due prove di cablaggio che rendono rosso il lotto se gli incrementi o la riga spariscono) | `core/harness/loop.py`, `tests/test_cache_dei_tool.py` | **Fatto** | `python -m pytest -m harness -q` -> **1042 passati, 3 saltati, 2 rossi pre-esistenti** (erano 1039 passati: +3 dai test nuovi) |
+
+**Rimandato con motivo, non dimenticato.** Il pool di processi per `search_code` resta
+non implementato: la misura di AK2 (1285 -> 1077 ms su quattro ricerche, e il tempo è
+lavoro di Python) non giustifica il costo di serializzare i risultati attraverso un
+processo. Il riuso del pool dentro il turno vale circa lo 0,03 % di un turno. La misura
+di oggi ha invece trovato un collo di bottiglia vero, da 5,6 secondi, e quello è stato
+tolto.
+
+**File toccati**: `core/modules/sigma_kicad_lab/{pcbnew_worker,pcbnew_bridge,tools,tool_schemas}.py`,
+`sigma_studio/src/modules/sigma_kicad_lab/{index.jsx,components/ComponentLibrary.jsx,components/PcbEditor.jsx,styles/pcb-lab.css}`,
+`core/harness/loop.py`, `tests/{test_sse,test_cache_dei_tool,test_kicad_pcbnew_tools}.py`,
+`projects/sigma_engine_rust/.dockerignore`.
+
+**Docker**: `docker build -t sigma-engine-rust:latest projects/sigma_engine_rust` — l'immagine
+esiste (35,9 MB) e il binario parte, rileva l'hardware e ascolta su `:8080`. Il `.dockerignore`
+nuovo serve perché `target/` pesava **10,9 GB**: senza, il daemon se li spediva tutti prima di
+iniziare a compilare.

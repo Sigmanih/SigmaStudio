@@ -9,6 +9,7 @@ import pytest
 from core.harness import policy as pol
 from core.harness import tool_schema as ts
 from core.harness.roles import DEV_ROLES
+from core.modules.sigma_kicad_lab import pcbnew_bridge as pcb
 from core.modules.sigma_kicad_lab import tools as kt
 
 # Come in `test_kicad_harness_tools`: la registrazione la fa il module loader
@@ -127,3 +128,80 @@ def test_sinonimi_path_e_lib(tmp_path):
 
     s = kt.esegui("kicad_search_footprint", {"q": "C_0805", "lib": "Capacitor_SMD"})
     assert s["success"] is True, s
+
+
+# --- 6. l'indice dei footprint: la ricerca non riapre le librerie ogni volta --
+
+def test_la_ricerca_arriva_dall_indice():
+    """Cercare non deve costare una scansione di 155 librerie.
+
+    Misurato su KiCad 10.0.6 prima e dopo l'indice: 5,63 s a ogni ricerca,
+    poi 1,0 ms in memoria e 7,0 ms da un processo nuovo (indice su disco da
+    15.450 voci).
+    """
+    indice = pcb.indice_footprint()
+    assert indice["ok"] is True, indice
+    assert indice["totale"] > 1000, f"indice sospetto: {indice['totale']} voci"
+    assert indice["librerie"] > 50, indice["librerie"]
+
+    trovato = pcb.cerca_footprint("R_0805", limite=5)
+    assert trovato["ok"] is True, trovato
+    assert trovato["risultati"], "l'indice non ha trovato un footprint che c'e'"
+    assert trovato["da_indice"] is True, (
+        "la ricerca e' tornata al sottoprocesso KiCad: l'indice non e' innestato"
+    )
+
+
+def test_a_pari_merito_vince_il_nome_esatto():
+    """Chi scrive il nome intero vuole quello, non una variante piu' lunga."""
+    trovato = pcb.cerca_footprint("R_0805_2012Metric", limite=5)
+    primo = trovato["risultati"][0]["footprint"]
+    assert primo == "R_0805_2012Metric", (
+        f"il primo risultato e' '{primo}': l'ordine e' tornato alfabetico, e "
+        "una variante HandSolder scavalca il nome chiesto"
+    )
+
+
+def test_il_lato_bottom_ribalta_il_pezzo(tmp_path):
+    """Un SMD sul lato inferiore e' la norma su una scheda densa."""
+    percorso = str(tmp_path / "sotto.kicad_pcb")
+    assert kt.kicad_new_board(percorso=percorso, larghezza_mm=40,
+                              altezza_mm=30)["success"] is True
+
+    esito = kt.kicad_add_part(
+        percorso=percorso, libreria="Resistor_SMD",
+        footprint="R_0805_2012Metric", riferimento="R1", valore="10k",
+        x_mm=10.0, y_mm=10.0, lato="bottom")
+    assert esito["success"] is True, esito
+    assert esito["lato"] == "bottom", esito
+
+    riletta = kt.kicad_read_board_full(percorso=percorso)
+    assert riletta["success"] is True, riletta
+    pezzo = riletta["componenti"][0]
+    # La posizione non deve essersi mossa col ribaltamento: il pezzo cambia
+    # lato, non posto — altrimenti un inserimento sposta lavoro gia' fatto.
+    assert pezzo["lato"] == "bottom", pezzo
+    assert (pezzo["x_mm"], pezzo["y_mm"]) == (10.0, 10.0), pezzo
+
+
+def test_un_rifiuto_non_torna_come_successo(tmp_path):
+    """Il rifiuto del lavoratore deve arrivare come errore, non come successo.
+
+    `_esito` scartava la chiave `ok` dei payload di pcbnew e teneva il proprio
+    `riuscito`: un riferimento gia' usato usciva come `success: true`, e un
+    agente che legge un successo non riprova.
+    """
+    percorso = str(tmp_path / "doppio.kicad_pcb")
+    assert kt.kicad_new_board(percorso=percorso, larghezza_mm=40,
+                              altezza_mm=30)["success"] is True
+    primo = kt.kicad_add_part(percorso=percorso, libreria="Resistor_SMD",
+                              footprint="R_0805_2012Metric", riferimento="R7",
+                              valore="10k", x_mm=5.0, y_mm=5.0)
+    assert primo["success"] is True, primo
+
+    bis = kt.kicad_add_part(percorso=percorso, libreria="Resistor_SMD",
+                            footprint="R_0805_2012Metric", riferimento="R7",
+                            valore="10k", x_mm=10.0, y_mm=5.0)
+    assert bis["success"] is False, (
+        f"un riferimento gia' usato e' tornato come successo: {bis}")
+    assert bis.get("error"), bis

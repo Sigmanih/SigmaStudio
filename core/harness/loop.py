@@ -4536,6 +4536,17 @@ def _stream_agent_turn_impl(
     run_metrics["goal_reached"] = goal_reached
     run_metrics["exhausted_turns"] = current_turn >= max_turns and not goal_reached
 
+    # I contatori della cache e del prefetch finiscono nella telemetria della
+    # sessione, e una telemetria che nessuno guarda a fine run non serve a
+    # niente: qui escono nel log, dove chi rilegge una sessione li trova senza
+    # aprire il diario e senza ricostruire niente.
+    hit = int(run_metrics["cache_hits"])
+    miss = int(run_metrics["cache_misses"])
+    log.info("[Loop] cache dei tool: cache_hits=%d cache_misses=%d "
+             "prefetch_consumati=%d (hit-rate %.0f%%)",
+             hit, miss, int(run_metrics["prefetch_consumati"]),
+             100.0 * hit / max(1, hit + miss))
+
     elapsed_total_s = max(run_metrics["elapsed_s"], 0.001)
     calc_tps = round(total_generated_tokens / elapsed_total_s, 1) if total_generated_tokens > 0 else 1091.5
 
