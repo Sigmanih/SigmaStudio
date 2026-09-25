@@ -1082,7 +1082,7 @@ class UniversalSigmaEngine:
             "format": facts.weight_format,
             "size_gb": round(facts.total_bytes / 2**30, 2),
             "backend": backend_cls.name,
-            "target_hardware": target_hardware,
+            "target_hardware": (target_hardware or "auto").strip().lower(),
             "placement": result.get("placement", {}),
             "settings": result.get("settings", {}),
             "load_seconds": result.get("load_seconds"),
@@ -1653,8 +1653,9 @@ class UniversalSigmaEngine:
             if not name: return ""
             return str(name).strip().lower().replace(".gguf", "").replace("--", "/").split("/")[-1].split("\\")[-1]
 
-        current_hw = (self.loaded_model or {}).get("target_hardware")
-        hw_changed = (target_hardware is not None and current_hw != target_hardware)
+        norm_target_hw = (target_hardware or "auto").strip().lower()
+        current_hw = ((self.loaded_model or {}).get("target_hardware") or "auto").strip().lower()
+        hw_changed = (norm_target_hw != current_hw)
 
         is_already_resident = (
             self.has_resident_model and not hw_changed and (

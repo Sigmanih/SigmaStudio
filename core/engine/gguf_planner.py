@@ -443,42 +443,27 @@ def _plan_settings(
     split_mode = None
     main_gpu = None
     if forced_single_gpu and gpus:
-        target_vram = float(gpus[0].get("total_vram_gb", 0.0) or 0.0)
         target_usable = usable[0] if usable else 0.0
-        target_cap = max(target_vram, target_usable)
         tensor_split = None
         split_mode = "none"
         main_gpu = forced_gpu_id if forced_gpu_id is not None else int(gpus[0].get("device_id", 0))
-        if target_cap > 0 and weights_gb <= target_cap * 1.05:
-            n_gpu_layers = -1
-            if weights_gb + kv_gb_f16 > target_cap * 0.95:
-                kv_quant = _KV_QUANT_TYPE
-                kv_gb = round(kv_gb_f16 / 2, 3)
+        # Se entra interamente nella GPU selezionata usa -1, altrimenti alloca i layer massimi ammessi
+        fits_single = _layers_that_fit(weights_gb, layers, target_usable, kv_gb)
+        n_gpu_layers = fits_single
     elif len(gpus) > 1:
-        # Se la GPU primaria più potente/capiente (gpus[0]) è in grado di
-        # accogliere interamente il modello (i byte reali dei pesi + KV entrano
-        # nella memoria della scheda primaria), NON dividiamo sui bus PCIe secondari:
-        # il tensor_split tra GPU asimmetriche costringe la scheda veloce ad attendere
-        # la scheda lenta a ogni layer. Concentrare il modello su una sola GPU
-        # garantisce il massimo throughput nativo (46+ tok/s).
-        g0_total = float(gpus[0].get("total_vram_gb", 0.0) or 0.0)
+        # Se la sola GPU primaria dispone di memoria LIBERA sufficiente per accogliere
+        # l'intero modello e la cache KV (_layers_that_fit == -1), concentriamo l'offload
+        # sulla scheda primaria (split_mode = none). Se invece non ci sta, sfruttiamo
+        # il multi-GPU (tensor_split) con split_mode='layer' su tutte le schede disponibili,
+        # evitando che il modello finisca parzialmente su CPU e mantenga le massime prestazioni.
         gpu0_usable = usable[0] if usable else 0.0
-        g0_cap = max(g0_total, gpu0_usable)
-        gpu0_fits = (
-            _layers_that_fit(weights_gb, layers, gpu0_usable, kv_gb) == -1
-            or (g0_cap > 0 and weights_gb <= g0_cap * 0.98)
-        )
+        gpu0_fits = (_layers_that_fit(weights_gb, layers, gpu0_usable, kv_gb) == -1)
         if gpu0_fits:
             tensor_split = None
             split_mode = "none"
             main_gpu = 0
             n_gpu_layers = -1
-            if g0_cap > 0 and (weights_gb + kv_gb_f16 > g0_cap * 0.95):
-                kv_quant = _KV_QUANT_TYPE
-                kv_gb = round(kv_gb_f16 / 2, 3)
         elif tensor_split is not None:
-            # Quando il multi-GPU è necessario, 'layer' (pipelined) evita
-            # la sincronizzazione continua ad ogni moltiplicazione matriciale
             split_mode = "layer"
 
     settings = {
