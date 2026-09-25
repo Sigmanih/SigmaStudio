@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "sigma-studio": {
+      "command": "C:/Users/Sigma/Desktop/Sigma_Studio/.venv/Scripts/python.exe",
+      "args": [
+        "-m",
+        "core.modules.sigma_developer_lab.mcp_tools.hub_stdio"
+      ],
+      "cwd": "C:/Users/Sigma/Desktop/Sigma_Studio",
+      "env": {
+        "SIGMA_WORKSPACE_ROOT": "C:/Users/Sigma/Desktop/Sigma_Studio",
+        "SIGMA_MCP_CLIENT": "Antigravity"
+      }
+    }
+  }
+}

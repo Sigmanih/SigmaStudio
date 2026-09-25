@@ -1,13 +1,14 @@
 # ==============================================================================
-# core/harness/kicad_tools.py — I tool con cui un agente progetta in KiCad
+# sigma_kicad_lab/tools.py — I tool con cui un agente progetta in KiCad
 # ==============================================================================
-"""Il vocabolario KiCad dell'harness: aprire, leggere, scrivere, verificare.
+"""Il vocabolario KiCad di un agente: aprire, leggere, scrivere, verificare.
 
-Il modulo `sigma_kicad_lab` sa gia' fare il lavoro, ma lo espone come server
-MCP — e l'harness non parla MCP: i tool di un agente sono la lista in
-`tool_schema.py`, smistata in `loop.py`. Senza questo file il ruolo
-`kicad_engineer` concede ventun tool di cui dieci non esistono per il modello,
-e la squadra non puo' toccare una scheda.
+Sta nel modulo perche' e' il modulo a possedere questi tool: il kernel sa
+smistare una chiamata e applicare i permessi, non sa cosa sia una pista. Prima
+del 25 settembre 2026 questo file viveva in `core/harness/kicad_tools.py` e
+importava `core.modules.sigma_kicad_lab` — cioe' il kernel dipendeva da un
+modulo opzionale, e con il modulo disinstallato restavano ventisette tool
+dichiarati al modello e nessuno in grado di eseguirli.
 
 Qui si chiama il motore direttamente — `bridge`, `kicad_cli`, `kicad_parser`,
 `pcb_writer` — invece di passare da MCP. Con EasyEDA il giro era obbligato
@@ -84,7 +85,7 @@ def _sch() -> Path:
 def kicad_open(path: str) -> Dict[str, Any]:
     """Apre un progetto KiCad e lo rende quello corrente per i tool seguenti."""
     try:
-        from core.modules.sigma_kicad_lab import bridge
+        from . import bridge
         trovati = bridge.find_project_files(Path(path))
         if not trovati.get("pcb") and not trovati.get("sch"):
             return _esito("kicad_open", False, path=path,
@@ -105,7 +106,7 @@ def kicad_open(path: str) -> Dict[str, Any]:
 def kicad_status() -> Dict[str, Any]:
     """KiCad c'e'? Che versione? Che progetto e' aperto?"""
     try:
-        from core.modules.sigma_kicad_lab import bridge
+        from . import bridge
         stato = bridge.status()
         return _esito("kicad_status", bool(stato.get("ok")),
                       kicad_found=stato.get("kicad_found"),
@@ -122,7 +123,7 @@ def kicad_status() -> Dict[str, Any]:
 def kicad_board_read() -> Dict[str, Any]:
     """Contorno, pezzi e net della scheda aperta, con le misure in millimetri."""
     try:
-        from core.modules.sigma_kicad_lab import bridge
+        from . import bridge
         scheda = bridge.read_board(_pcb(),
                                    Path(_progetto["sch"]) if _progetto["sch"] else None)
         return _esito("kicad_board_read", True,
@@ -138,7 +139,7 @@ def kicad_board_read() -> Dict[str, Any]:
 def kicad_list_parts() -> Dict[str, Any]:
     """I footprint sulla scheda: riferimento, valore, posizione, lato."""
     try:
-        from core.modules.sigma_kicad_lab import kicad_parser as parser
+        from . import kicad_parser as parser
         info = parser.read_pcb(_pcb())
         pezzi = [{"reference": f.reference, "value": f.value,
                   "footprint": f.footprint_lib,
@@ -160,7 +161,7 @@ def kicad_pads(part: str) -> Dict[str, Any]:
     invece che una coppia di coordinate indovinate.
     """
     try:
-        from core.modules.sigma_kicad_lab import kicad_parser as parser
+        from . import kicad_parser as parser
         info = parser.read_pcb(_pcb())
         fp = next((f for f in info.footprints if f.reference == part), None)
         if fp is None:
@@ -179,7 +180,7 @@ def kicad_pads(part: str) -> Dict[str, Any]:
 def kicad_nets() -> Dict[str, Any]:
     """Le net della scheda, con quanti pad tocca ciascuna."""
     try:
-        from core.modules.sigma_kicad_lab import kicad_parser as parser
+        from . import kicad_parser as parser
         info = parser.read_pcb(_pcb())
         conteggio: Dict[str, int] = {}
         for f in info.footprints:
@@ -213,7 +214,7 @@ def kicad_trace_width(current_a: float, delta_t_c: float = 10.0,
 def kicad_board_evaluate() -> Dict[str, Any]:
     """Giudica il piazzamento: sovrapposizioni, contorno, distanze, disaccoppiamento."""
     try:
-        from core.modules.sigma_kicad_lab import bridge
+        from . import bridge
         from core.modules.sigma_eda_lab import evaluate as valutatore
         scheda = bridge.read_board(_pcb(),
                                    Path(_progetto["sch"]) if _progetto["sch"] else None)
@@ -228,7 +229,7 @@ def kicad_placement_optimize(iterations: int = 4000, seed: int = 20260920,
     """Calcola un piazzamento migliore. NON scrive: restituisce gli spostamenti."""
     try:
         from dataclasses import replace
-        from core.modules.sigma_kicad_lab import bridge
+        from . import bridge
         from core.modules.sigma_eda_lab import evaluate as valutatore, placement
 
         scheda = bridge.read_board(_pcb(),
@@ -259,7 +260,7 @@ def kicad_placement_apply(moves: List[Dict[str, Any]],
                           dry_run: bool = True) -> Dict[str, Any]:
     """Riscrive nel .kicad_pcb le posizioni calcolate. `dry_run` non tocca nulla."""
     try:
-        from core.modules.sigma_kicad_lab import bridge
+        from . import bridge
         scheda = bridge.read_board(_pcb())
         voluti, ignoti = {}, []
         for m in (moves or []):
@@ -297,7 +298,7 @@ def kicad_add_track(start: Sequence[float], end: Sequence[float],
                     net: str = "") -> Dict[str, Any]:
     """Traccia un segmento di pista fra due punti, in millimetri."""
     try:
-        from core.modules.sigma_kicad_lab import pcb_writer
+        from . import pcb_writer
         return _esito("kicad_add_track", True,
                       **_ricorda(pcb_writer.add_track(
                           _pcb(), start, end, width_mm, layer, net)))
@@ -309,7 +310,7 @@ def kicad_add_route(points: List[Sequence[float]], width_mm: float,
                     layer: str = "F.Cu", net: str = "") -> Dict[str, Any]:
     """Instrada una spezzata: il modo normale di collegare due pad."""
     try:
-        from core.modules.sigma_kicad_lab import pcb_writer
+        from . import pcb_writer
         return _esito("kicad_add_route", True,
                       **_ricorda(pcb_writer.add_route(
                           _pcb(), points, width_mm, layer, net)))
@@ -322,7 +323,7 @@ def kicad_add_via(at: Sequence[float], size_mm: float = 0.8,
                   layers: Optional[List[str]] = None) -> Dict[str, Any]:
     """Mette un via passante fra due layer di rame."""
     try:
-        from core.modules.sigma_kicad_lab import pcb_writer
+        from . import pcb_writer
         coppia = tuple(layers or ("F.Cu", "B.Cu"))
         return _esito("kicad_add_via", True,
                       **_ricorda(pcb_writer.add_via(
@@ -337,7 +338,7 @@ def kicad_add_footprint(library_id: str, reference: str, value: str,
                         pads: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """Mette un footprint sulla scheda (fori, fiducial, schermature, prove)."""
     try:
-        from core.modules.sigma_kicad_lab import pcb_writer
+        from . import pcb_writer
         return _esito("kicad_add_footprint", True,
                       **_ricorda(pcb_writer.add_footprint(
                           _pcb(), library_id, reference, value,
@@ -349,7 +350,7 @@ def kicad_add_footprint(library_id: str, reference: str, value: str,
 def kicad_remove_footprint(reference: str) -> Dict[str, Any]:
     """Toglie un footprint dalla scheda. Il rame che lo raggiungeva resta."""
     try:
-        from core.modules.sigma_kicad_lab import pcb_writer
+        from . import pcb_writer
         return _esito("kicad_remove_footprint", True,
                       **_ricorda(pcb_writer.remove_footprint(_pcb(), reference)))
     except Exception as exc:
@@ -357,10 +358,89 @@ def kicad_remove_footprint(reference: str) -> Dict[str, Any]:
                       error=str(exc))
 
 
+# --- modifica di cio' che c'e' gia' ---------------------------------------------
+#
+# Le primitive qui sotto correggono una scheda invece di popolarla: spostare,
+# rinominare, cancellare. Servono all'utente che trascina un pezzo sulla canvas
+# e all'agente che si accorge di averlo messo nel posto sbagliato. Senza,
+# l'unica correzione possibile era togliere il pezzo e rimetterlo, e per una
+# pista tracciata male non c'era rimedio affatto.
+
+def kicad_move_footprint(reference: str, x_mm: float, y_mm: float,
+                         rotation: Optional[float] = None) -> Dict[str, Any]:
+    """Sposta un pezzo, e se serve lo ruota. Senza `rotation` la lascia com'era."""
+    try:
+        from . import pcb_writer
+        return _esito("kicad_move_footprint", True,
+                      **_ricorda(pcb_writer.move_footprint(
+                          _pcb(), reference, x_mm, y_mm, rotation)))
+    except Exception as exc:
+        return _esito("kicad_move_footprint", False, reference=reference,
+                      error=str(exc))
+
+
+def kicad_rename_footprint(reference: str, new_reference: str = "",
+                           value: str = "") -> Dict[str, Any]:
+    """Cambia il riferimento e/o il valore di un pezzo."""
+    try:
+        from . import pcb_writer
+        return _esito("kicad_rename_footprint", True,
+                      **_ricorda(pcb_writer.rename_footprint(
+                          _pcb(), reference, new_reference, value)))
+    except Exception as exc:
+        return _esito("kicad_rename_footprint", False, reference=reference,
+                      error=str(exc))
+
+
+def kicad_delete_track(start: Sequence[float], end: Sequence[float],
+                       layer: str = "") -> Dict[str, Any]:
+    """Toglie la pista che unisce due punti: gli estremi la identificano."""
+    try:
+        from . import pcb_writer
+        return _esito("kicad_delete_track", True,
+                      **_ricorda(pcb_writer.delete_track(
+                          _pcb(), start, end, layer)))
+    except Exception as exc:
+        return _esito("kicad_delete_track", False, error=str(exc))
+
+
+def kicad_delete_via(at: Sequence[float]) -> Dict[str, Any]:
+    """Toglie il via che sta in un punto."""
+    try:
+        from . import pcb_writer
+        return _esito("kicad_delete_via", True,
+                      **_ricorda(pcb_writer.delete_via(_pcb(), at)))
+    except Exception as exc:
+        return _esito("kicad_delete_via", False, error=str(exc))
+
+
+def kicad_set_board_outline(width_mm: float, height_mm: float) -> Dict[str, Any]:
+    """Sostituisce il contorno scheda con un rettangolo con un angolo in (0, 0)."""
+    try:
+        from . import pcb_writer
+        return _esito("kicad_set_board_outline", True,
+                      **_ricorda(pcb_writer.set_board_outline(
+                          _pcb(), width_mm, height_mm)))
+    except Exception as exc:
+        return _esito("kicad_set_board_outline", False, error=str(exc))
+
+
+def kicad_set_pad_net(reference: str, pad: str, net: str) -> Dict[str, Any]:
+    """Assegna una net al pad di un pezzo, creando la net se non esiste."""
+    try:
+        from . import pcb_writer
+        return _esito("kicad_set_pad_net", True,
+                      **_ricorda(pcb_writer.set_pad_net(
+                          _pcb(), reference, pad, net)))
+    except Exception as exc:
+        return _esito("kicad_set_pad_net", False, reference=reference,
+                      error=str(exc))
+
+
 def kicad_undo() -> Dict[str, Any]:
     """Annulla l'ultima scrittura sul PCB, dalla copia fatta prima di applicarla."""
     try:
-        from core.modules.sigma_kicad_lab import pcb_writer
+        from . import pcb_writer
         chiave = str(_pcb())
         copia = _ultimo_backup.get(chiave)
         if not copia:
@@ -378,7 +458,7 @@ def kicad_undo() -> Dict[str, Any]:
 def kicad_drc() -> Dict[str, Any]:
     """Design Rule Check di KiCad sul PCB. E' la prova che il rame sta in piedi."""
     try:
-        from core.modules.sigma_kicad_lab import kicad_cli as cli
+        from . import kicad_cli as cli
         report = cli.run_drc(_pcb())
         # Due cose diverse che il report chiama quasi allo stesso modo: `ok` e'
         # «il comando e' girato», `success` e' «la scheda passa». Fuse in un
@@ -394,7 +474,7 @@ def kicad_drc() -> Dict[str, Any]:
 def kicad_erc() -> Dict[str, Any]:
     """Electrical Rule Check sullo schematico."""
     try:
-        from core.modules.sigma_kicad_lab import kicad_cli as cli
+        from . import kicad_cli as cli
         report = cli.run_erc(_sch())
         passato = bool(report.pop("success", False))
         return _esito("kicad_erc", True, erc_passed=passato, **report)
@@ -407,7 +487,7 @@ def kicad_erc() -> Dict[str, Any]:
 def kicad_export_gerbers(output_dir: str = "") -> Dict[str, Any]:
     """Gerber e file di foratura, il pacchetto che si manda in fabbrica."""
     try:
-        from core.modules.sigma_kicad_lab import kicad_cli as cli
+        from . import kicad_cli as cli
         out = Path(output_dir) if output_dir else None
         gerbers = cli.export_gerbers(_pcb(), out)
         drill = cli.export_drill(_pcb(), out or _pcb().parent / "gerbers")
@@ -419,7 +499,7 @@ def kicad_export_gerbers(output_dir: str = "") -> Dict[str, Any]:
 def kicad_export_bom(output_path: str = "") -> Dict[str, Any]:
     """La distinta base, dallo schematico."""
     try:
-        from core.modules.sigma_kicad_lab import kicad_cli as cli
+        from . import kicad_cli as cli
         out = Path(output_path) if output_path else None
         return _esito("kicad_export_bom", True, **cli.export_bom(_sch(), out))
     except Exception as exc:
@@ -429,7 +509,7 @@ def kicad_export_bom(output_path: str = "") -> Dict[str, Any]:
 def kicad_render(output_path: str = "", mode: str = "3d") -> Dict[str, Any]:
     """Un'immagine della scheda, cosi' il lavoro si puo' guardare."""
     try:
-        from core.modules.sigma_kicad_lab import kicad_cli as cli
+        from . import kicad_cli as cli
         if mode == "svg":
             out = Path(output_path) if output_path else None
             return _esito("kicad_render", True, **cli.export_svg(_pcb(), out))
@@ -447,7 +527,7 @@ def kicad_render(output_path: str = "", mode: str = "3d") -> Dict[str, Any]:
 def kicad_pcbnew_status() -> Dict[str, Any]:
     """Stato del ponte pcbnew: versione e percorsi trovati."""
     try:
-        from core.modules.sigma_kicad_lab import pcbnew_bridge as ponte
+        from . import pcbnew_bridge as ponte
         return _esito("kicad_pcbnew_status", True, **ponte.disponibile())
     except Exception as exc:
         return _esito("kicad_pcbnew_status", False, error=str(exc))
@@ -456,7 +536,7 @@ def kicad_pcbnew_status() -> Dict[str, Any]:
 def kicad_libraries() -> Dict[str, Any]:
     """Elenco delle librerie di footprint disponibili."""
     try:
-        from core.modules.sigma_kicad_lab import pcbnew_bridge as ponte
+        from . import pcbnew_bridge as ponte
         return _esito("kicad_libraries", True, **ponte.elenca_librerie())
     except Exception as exc:
         return _esito("kicad_libraries", False, error=str(exc))
@@ -466,7 +546,7 @@ def kicad_search_footprint(query: str = "", limite: int = 20,
                             libreria: str = "") -> Dict[str, Any]:
     """Cerca footprint nelle librerie KiCad."""
     try:
-        from core.modules.sigma_kicad_lab import pcbnew_bridge as ponte
+        from . import pcbnew_bridge as ponte
         return _esito("kicad_search_footprint", True,
                       **ponte.cerca_footprint(query, limite=limite, libreria=libreria))
     except Exception as exc:
@@ -478,7 +558,7 @@ def kicad_new_board(percorso: str = "", larghezza_mm: float = 100.0,
                     sovrascrivi: bool = False) -> Dict[str, Any]:
     """Crea una nuova scheda KiCad vuota."""
     try:
-        from core.modules.sigma_kicad_lab import pcbnew_bridge as ponte
+        from . import pcbnew_bridge as ponte
         return _esito("kicad_new_board", True,
                       **ponte.crea_scheda(percorso, larghezza_mm=larghezza_mm,
                                           altezza_mm=altezza_mm,
@@ -494,7 +574,7 @@ def kicad_add_part(percorso: str = "", libreria: str = "", footprint: str = "",
                    net_per_pad: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """Aggiunge un componente (footprint) a una scheda esistente."""
     try:
-        from core.modules.sigma_kicad_lab import pcbnew_bridge as ponte
+        from . import pcbnew_bridge as ponte
         return _esito("kicad_add_part", True,
                       **ponte.aggiungi_componente(
                           percorso, libreria=libreria, footprint=footprint,
@@ -508,7 +588,7 @@ def kicad_add_part(percorso: str = "", libreria: str = "", footprint: str = "",
 def kicad_read_board_full(percorso: str = "") -> Dict[str, Any]:
     """Legge lo stato completo di una scheda KiCad."""
     try:
-        from core.modules.sigma_kicad_lab import pcbnew_bridge as ponte
+        from . import pcbnew_bridge as ponte
         if not percorso:
             raise KicadToolError("percorso obbligatorio per leggere una scheda")
         return _esito("kicad_read_board_full", True, **ponte.leggi_scheda(percorso))
@@ -516,7 +596,7 @@ def kicad_read_board_full(percorso: str = "") -> Dict[str, Any]:
         return _esito("kicad_read_board_full", False, error=str(exc))
 
 
-#: Nome canonico -> funzione. `loop.py` importa solo questo.
+#: Nome canonico -> funzione. Il provider espone `esegui`, che li smista tutti.
 ESECUTORI = {
     "kicad_status": kicad_status,
     "kicad_open": kicad_open,
@@ -533,6 +613,13 @@ ESECUTORI = {
     "kicad_add_via": kicad_add_via,
     "kicad_add_footprint": kicad_add_footprint,
     "kicad_remove_footprint": kicad_remove_footprint,
+    # correzione di una scheda che c'e' gia'
+    "kicad_move_footprint": kicad_move_footprint,
+    "kicad_rename_footprint": kicad_rename_footprint,
+    "kicad_delete_track": kicad_delete_track,
+    "kicad_delete_via": kicad_delete_via,
+    "kicad_set_board_outline": kicad_set_board_outline,
+    "kicad_set_pad_net": kicad_set_pad_net,
     "kicad_undo": kicad_undo,
     "kicad_drc": kicad_drc,
     "kicad_erc": kicad_erc,
@@ -548,15 +635,19 @@ ESECUTORI = {
     "kicad_read_board_full": kicad_read_board_full,
 }
 
-#: Cosa tocca i file del progetto. Serve a `policy` per il cancello.
-KICAD_WRITE_TOOLS = {
+#: Cosa tocca i file del progetto. Serve a `policy` per il cancello: le
+#: scritture non entrano mai fra i permessi di lettura, e un profilo in sola
+#: lettura puo' guardare una scheda senza poterla rovinare.
+WRITE_TOOLS = {
     "kicad_placement_apply", "kicad_add_track", "kicad_add_route",
     "kicad_add_via", "kicad_add_footprint", "kicad_remove_footprint",
+    "kicad_move_footprint", "kicad_rename_footprint", "kicad_delete_track",
+    "kicad_delete_via", "kicad_set_board_outline", "kicad_set_pad_net",
     "kicad_undo", "kicad_export_gerbers", "kicad_export_bom", "kicad_render",
     # pcbnew bridge: questi due scrivono file di progetto
     "kicad_new_board", "kicad_add_part",
 }
-KICAD_READ_TOOLS = set(ESECUTORI) - KICAD_WRITE_TOOLS
+READ_TOOLS = set(ESECUTORI) - WRITE_TOOLS
 
 
 #: Nomi che un modello usa al posto di quelli dichiarati, e perche'.
@@ -636,5 +727,57 @@ def esegui(tool_name: str, args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                              f"I parametri accettati sono: {', '.join(attesi) or 'nessuno'}."),
                       accepted_parameters=attesi)
     except Exception as exc:
-        log.exception("[kicad_tools] '%s' fallito", nome)
+        log.exception("[tools] '%s' fallito", nome)
         return _esito(nome, False, error=str(exc))
+
+
+# --- aggancio al kernel --------------------------------------------------------
+
+#: Come un modello puo' chiamare un tool, quando non usa il nome dichiarato.
+#: I sinonimi dei *parametri* stanno in `_SINONIMI`: questi sono i nomi del
+#: tool, e sono le parole che un modello scrive pensando all'operazione.
+#:
+#: `pista` non c'e' di proposito: per EDA quella parola e' un filo di rame fra i
+#: pin (`eda_wire`), e qui sarebbe una traccia sul PCB. Due provider che la
+#: rivendicano lasciano vincere chi si registra prima, e l'altro cambia parola
+#: sotto i piedi: `policy.registra_provider` rifiuta il secondo e lo dice nel log.
+_ALIAS_TOOL: Dict[str, str] = {
+    "instrada": "kicad_add_route",
+    "verifica_pcb": "kicad_drc",
+    "traccia": "kicad_add_track",
+    "via": "kicad_add_via",
+    "cerca_footprint": "kicad_search_footprint",
+}
+
+
+def provider() -> "ToolProvider":
+    """Questi tool come li vede il kernel: schemi, esecutore, permessi, ruolo."""
+    from core.harness.tool_providers import ToolProvider
+
+    from . import roles as hw_roles
+    from .tool_schemas import SCHEMI
+
+    alias = {nome: nome for nome in ESECUTORI}
+    alias.update({k: v for k, v in _ALIAS_TOOL.items() if v in ESECUTORI})
+    return ToolProvider(
+        id="sigma_kicad_lab",
+        label="KiCad",
+        schemas=tuple(SCHEMI),
+        execute=esegui,
+        read_only=frozenset(READ_TOOLS),
+        write=frozenset(WRITE_TOOLS),
+        aliases=alias,
+        roles=(hw_roles.ROLE_KICAD_ENGINEER,),
+    )
+
+
+def registra() -> List[str]:
+    """Aggancia tool e ruolo al kernel. Idempotente: si puo' richiamare.
+
+    La chiama `handlers.register_harness_tools()` all'avvio, che e' l'hook con
+    cui il module loader fa registrare un modulo. Chiamarla due volte sostituisce
+    la registrazione precedente invece di duplicarla.
+    """
+    from core.harness import tool_providers
+    return tool_providers.register(provider())
+

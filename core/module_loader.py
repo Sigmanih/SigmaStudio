@@ -337,6 +337,18 @@ class ModuleLoader:
                 except Exception as mcp_err:
                     log.warning(f"[ModuleLoader] Avviso registrazione MCP per '{module_id}': {mcp_err}")
 
+            # I tool con cui un modulo fa lavorare un agente. Il kernel non li
+            # elenca e non li conosce: li riceve da chi li possiede, e senza
+            # questo hook un modulo installato resterebbe invisibile all'harness
+            # — che e' lo stato in cui versava KiCad fino al 25 settembre 2026,
+            # quando l'elenco dei suoi tool stava scritto in `tool_schema.py`.
+            if hasattr(mod, "register_harness_tools"):
+                try:
+                    mod.register_harness_tools()
+                    log.info(f"[ModuleLoader] '{module_id}' tool dell'harness registrati da {loaded_path}.")
+                except Exception as tools_err:
+                    log.warning(f"[ModuleLoader] Avviso registrazione tool harness per '{module_id}': {tools_err}")
+
             self._loaded[module_id] = mod
             return True
         except Exception as e:

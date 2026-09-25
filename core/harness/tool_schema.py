@@ -22,7 +22,7 @@ sa nemmeno quale delle due strade e' stata percorsa.
 
 import re
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from core.logger import get_logger
 
@@ -64,8 +64,15 @@ def _f(name: str, description: str, properties: Dict[str, Any],
     }
 
 
-_STRINGA = {"type": "string"}
-_INTERO = {"type": "integer"}
+#: Il nome pubblico di `_f`: un modulo che dichiara i propri tool non deve
+#: importare un underscore, che non e' un contratto e domani cambia nome.
+function_schema = _f
+
+#: I frammenti di schema che i moduli riusano. Pubblici per lo stesso motivo.
+STRINGA = {"type": "string"}
+INTERO = {"type": "integer"}
+_STRINGA = STRINGA
+_INTERO = INTERO
 
 #: Il catalogo. I nomi sono quelli canonici di `policy.canonical`, cosi' che una
 #: chiamata nativa e una recintata finiscano nello stesso ramo di esecuzione.
@@ -193,96 +200,45 @@ TOOL_SCHEMAS += [
        {}, []),
 ]
 
-# --- KiCad: progettare una scheda vera ---------------------------------------
-#: I pad si indicano per riferimento e numero, le net per nome: un agente non
-#: deve tenere a mente indici interni fra una chiamata e l'altra.
-_XY = {"type": "number"}
-_PUNTI_MM = {"type": "array", "items": {
-    "type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}}
-
-TOOL_SCHEMAS += [
-    _f("kicad_status", "KiCad e' installato? Che versione? Che progetto e' aperto? Chiamalo per primo.", {}, []),
-    _f("kicad_open", "Apre un progetto KiCad (cartella, .kicad_pro o .kicad_pcb) e lo rende quello corrente.",
-       {"path": _STRINGA}, ["path"]),
-    _f("kicad_board_read", "Contorno, numero di pezzi e di net della scheda aperta.", {}, []),
-    _f("kicad_list_parts", "I footprint sulla scheda: riferimento, valore, posizione, lato, numero di pad.", {}, []),
-    _f("kicad_pads", "I pad di un footprint con net e posizione assoluta. Chiamalo PRIMA di instradare.",
-       {"part": _STRINGA}, ["part"]),
-    _f("kicad_nets", "Le net della scheda, con quanti pad tocca ciascuna.", {}, []),
-    _f("kicad_trace_width", "Larghezza minima di una pista per una corrente, secondo IPC-2221.",
-       {"current_a": {"type": "number"}, "delta_t_c": {"type": "number"},
-        "thickness_oz": {"type": "number"},
-        "layer": {"type": "string", "enum": ["external", "internal"]}}, ["current_a"]),
-    _f("kicad_board_evaluate", "Giudica il piazzamento: sovrapposizioni, contorno, distanze, disaccoppiamento.", {}, []),
-    _f("kicad_placement_optimize", "Calcola un piazzamento migliore. NON scrive: restituisce gli spostamenti proposti.",
-       {"iterations": _INTERO, "seed": _INTERO,
-        "lock": {"type": "array", "items": _STRINGA}}, []),
-    _f("kicad_placement_apply", "Riscrive le posizioni nel .kicad_pcb. Con dry_run non tocca il file.",
-       {"moves": {"type": "array", "items": {"type": "object", "properties": {
-           "reference": _STRINGA, "x_mm": _XY, "y_mm": _XY, "rotation": _INTERO},
-           "required": ["reference", "x_mm", "y_mm"]}},
-        "dry_run": {"type": "boolean"}}, ["moves"]),
-    _f("kicad_add_track", "Traccia un segmento di pista fra due punti, in millimetri.",
-       {"start": {"type": "array", "items": _XY}, "end": {"type": "array", "items": _XY},
-        "width_mm": _XY, "layer": _STRINGA, "net": _STRINGA},
-       ["start", "end", "width_mm"]),
-    _f("kicad_add_route", "Instrada una spezzata fra piu' punti: il modo normale di collegare due pad.",
-       {"points": _PUNTI_MM, "width_mm": _XY, "layer": _STRINGA, "net": _STRINGA},
-       ["points", "width_mm"]),
-    _f("kicad_add_via", "Mette un via passante fra due layer di rame.",
-       {"at": {"type": "array", "items": _XY}, "size_mm": _XY, "drill_mm": _XY,
-        "net": _STRINGA, "layers": {"type": "array", "items": _STRINGA}}, ["at"]),
-    _f("kicad_add_footprint", "Mette un footprint sulla scheda: fori di fissaggio, fiducial, schermature.",
-       {"library_id": _STRINGA, "reference": _STRINGA, "value": _STRINGA,
-        "x_mm": _XY, "y_mm": _XY, "rotation": _XY, "layer": _STRINGA,
-        "pads": {"type": "array", "items": {"type": "object"}}},
-       ["library_id", "reference", "value", "x_mm", "y_mm"]),
-    _f("kicad_remove_footprint", "Toglie un footprint dalla scheda. Il rame che lo raggiungeva resta.",
-       {"reference": _STRINGA}, ["reference"]),
-    _f("kicad_undo", "Annulla l'ultima scrittura sul PCB, dalla copia fatta prima di applicarla.", {}, []),
-    _f("kicad_drc", "Design Rule Check di KiCad sul PCB: la prova che il rame sta in piedi. Obbligatorio prima di complete_goal.", {}, []),
-    _f("kicad_erc", "Electrical Rule Check sullo schematico.", {}, []),
-    _f("kicad_export_gerbers", "Gerber e file di foratura: il pacchetto che si manda in fabbrica.",
-       {"output_dir": _STRINGA}, []),
-    _f("kicad_export_bom", "La distinta base, dallo schematico.", {"output_path": _STRINGA}, []),
-    _f("kicad_render", "Un immagine della scheda (3d o svg), cosi il lavoro si puo guardare.",
-       {"output_path": _STRINGA, "mode": {"type": "string", "enum": ["3d", "svg"]}}, []),
-    # pcbnew bridge: creazione e ispezione diretta via API pcbnew
-    _f("kicad_pcbnew_status",
-       "Verifica che il ponte pcbnew sia disponibile prima di creare o leggere schede: restituisce versione di KiCad e percorsi trovati. Usalo come primo passo quando non sai se l'ambiente e pronto.",
-       {}, []),
-    _f("kicad_libraries",
-       "Elenco delle librerie di footprint installate. Usalo per scegliere la libreria giusta prima di cercare un footprint o aggiungerlo alla scheda.",
-       {}, []),
-    _f("kicad_search_footprint",
-       "Cerca footprint nelle librerie KiCad per nome o parola chiave. Usalo quando conosci il tipo di componente (es. C_0805, R_0402) ma non la libreria esatta.",
-       {"query": _STRINGA,
-        "limite": {"type": "integer", "default": 20},
-        "libreria": _STRINGA}, ["query"]),
-    _f("kicad_new_board",
-       "Crea una nuova scheda KiCad vuota con le dimensioni date. Usalo per iniziare un progetto PCB da zero, prima di aggiungere componenti.",
-       {"percorso": _STRINGA,
-        "larghezza_mm": _XY,
-        "altezza_mm": _XY,
-        "net": {"type": "array", "items": _STRINGA},
-        "sovrascrivi": {"type": "boolean", "default": False}}, ["percorso"]),
-    _f("kicad_add_part",
-       "Aggiunge un componente (footprint) a una scheda esistente, con posizione, rotazione e net per pad. Usalo dopo kicad_new_board per popolare la scheda.",
-       {"percorso": _STRINGA,
-        "libreria": _STRINGA,
-        "footprint": _STRINGA,
-        "riferimento": _STRINGA,
-        "valore": _STRINGA,
-        "x_mm": _XY, "y_mm": _XY,
-        "rotazione": _XY,
-        "net_per_pad": {"type": "object"}},
-       ["percorso", "libreria", "footprint", "riferimento"]),
-    _f("kicad_read_board_full",
-       "Legge lo stato completo di una scheda KiCad: dimensioni, componenti, net. Usalo per verificare che kicad_new_board e kicad_add_part abbiano prodotto il risultato atteso.",
-       {"percorso": _STRINGA}, ["percorso"]),
-]
-
 _PER_NOME = {s["function"]["name"]: s for s in TOOL_SCHEMAS}
+
+
+def register_schemas(schemas: Sequence[Dict[str, Any]]) -> List[str]:
+    """Aggiunge al catalogo gli schemi dichiarati da un provider.
+
+    Restituisce i nomi accettati. Un nome gia' presente si scarta invece di
+    sovrascrivere: due provider che dichiarano lo stesso tool sono un errore di
+    chi li scrive, e lasciar vincere l'ultimo arrivato deciderebbe in silenzio
+    *quale* delle due implementazioni gira.
+    """
+    accettati: List[str] = []
+    for schema in schemas or []:
+        nome = str(((schema or {}).get("function") or {}).get("name") or "").strip()
+        if not nome:
+            log.warning("[ToolSchema] schema senza nome: scartato")
+            continue
+        if nome in _PER_NOME:
+            log.warning("[ToolSchema] '%s' gia' dichiarato: il secondo schema "
+                        "e' ignorato", nome)
+            continue
+        TOOL_SCHEMAS.append(schema)
+        _PER_NOME[nome] = schema
+        accettati.append(nome)
+    return accettati
+
+
+def deregister_schemas(nomi: Iterable[str]) -> None:
+    """Toglie dal catalogo i nomi dati. Serve a chi disinstalla, e alle prove."""
+    for nome in nomi or []:
+        if _PER_NOME.pop(str(nome), None) is None:
+            continue
+        TOOL_SCHEMAS[:] = [s for s in TOOL_SCHEMAS
+                           if s["function"]["name"] != str(nome)]
+
+
+def declared_tools() -> set:
+    """I nomi dei tool dichiarati in questo momento, provider compresi."""
+    return set(_PER_NOME)
 
 
 def schemas_for(allowed: Optional[Any] = None) -> List[Dict[str, Any]]:

@@ -8,6 +8,10 @@
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Set, Tuple
 
+from core.logger import get_logger
+
+log = get_logger("policy")
+
 #: alias -> nome canonico. Ricalca i gruppi accettati da `execute_admin_tool`:
 ALIASES: Dict[str, str] = {
     # lettura
@@ -74,30 +78,6 @@ ALIASES: Dict[str, str] = {
     "finish_task": "complete_goal",
     "task_complete": "complete_goal",
     "complete_goal": "complete_goal",
-    # KiCad — progettazione della scheda
-    "kicad_status": "kicad_status", "kicad_open": "kicad_open",
-    "kicad_board_read": "kicad_board_read", "kicad_list_parts": "kicad_list_parts",
-    "kicad_pads": "kicad_pads", "kicad_nets": "kicad_nets",
-    "kicad_trace_width": "kicad_trace_width",
-    "kicad_board_evaluate": "kicad_board_evaluate",
-    "kicad_placement_optimize": "kicad_placement_optimize",
-    "kicad_placement_apply": "kicad_placement_apply",
-    "kicad_add_track": "kicad_add_track", "kicad_add_route": "kicad_add_route",
-    "kicad_add_via": "kicad_add_via",
-    "kicad_add_footprint": "kicad_add_footprint",
-    "kicad_remove_footprint": "kicad_remove_footprint",
-    "kicad_undo": "kicad_undo",
-    "kicad_drc": "kicad_drc", "kicad_erc": "kicad_erc",
-    "kicad_export_gerbers": "kicad_export_gerbers",
-    "kicad_export_bom": "kicad_export_bom", "kicad_render": "kicad_render",
-    # pcbnew bridge: creazione e ispezione diretta via API pcbnew
-    "kicad_pcbnew_status": "kicad_pcbnew_status",
-    "kicad_libraries": "kicad_libraries",
-    "kicad_search_footprint": "kicad_search_footprint",
-    "kicad_new_board": "kicad_new_board",
-    "kicad_add_part": "kicad_add_part",
-    "kicad_read_board_full": "kicad_read_board_full",
-    "instrada": "kicad_add_route", "verifica_pcb": "kicad_drc",
     # EDA — disegno del circuito
     "eda_status": "eda_status",
     "eda_search_part": "eda_search_part",
@@ -149,29 +129,53 @@ EDA_WRITE_TOOLS: Set[str] = {
     "eda_pcb_outline", "eda_pcb_mounting_holes",
 }
 
-#: KiCad: guardare la scheda non e' toccarla. `kicad_drc` sta fra le letture
-#: perche' la prova che un layout regge deve poterla chiedere anche chi non ha
-#: il permesso di scrivere — e' cosi' che un revisore controlla.
-KICAD_READ_TOOLS: Set[str] = {
-    "kicad_status", "kicad_open", "kicad_board_read", "kicad_list_parts",
-    "kicad_pads", "kicad_nets", "kicad_trace_width", "kicad_board_evaluate",
-    "kicad_placement_optimize", "kicad_drc", "kicad_erc",
-    # pcbnew bridge: letture che non toccano i file di progetto
-    "kicad_pcbnew_status", "kicad_libraries", "kicad_search_footprint",
-    "kicad_read_board_full",
-}
-KICAD_WRITE_TOOLS: Set[str] = {
-    "kicad_placement_apply", "kicad_add_track", "kicad_add_route",
-    "kicad_add_via", "kicad_add_footprint", "kicad_remove_footprint",
-    "kicad_undo", "kicad_export_gerbers", "kicad_export_bom", "kicad_render",
-    # pcbnew bridge: questi due scrivono file di progetto
-    "kicad_new_board", "kicad_add_part",
-}
-
 READ_ONLY_TOOLS: Set[str] = {
     "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol",
     "screenshot", "pipeline", "queue_add", "complete_goal"
-} | EDA_READ_TOOLS | KICAD_READ_TOOLS
+} | EDA_READ_TOOLS
+
+
+def registra_provider(read_only: Iterable[str] = (), write: Iterable[str] = (),
+                      alias: Optional[Dict[str, str]] = None,
+                      label: str = "") -> None:
+    """Aggiorna i permessi con i tool di un provider che si e' appena registrato.
+
+    Il kernel non sa quali tool porti un modulo: lo dice il modulo, e questo e'
+    l'unico punto in cui quella dichiarazione entra nei permessi. Le letture si
+    aggiungono a `READ_ONLY_TOOLS`, cosi' che un profilo in sola lettura possa
+    guardare una scheda senza poterla toccare. Le scritture non entrano da
+    nessuna parte: il permesso di scrivere e' del ruolo, non del tool.
+    """
+    etichetta = label or "provider"
+    letture = {str(n).strip() for n in (read_only or ()) if str(n).strip()}
+    scritture = {str(n).strip() for n in (write or ()) if str(n).strip()}
+    doppi = letture & scritture
+    if doppi:
+        # Un tool in entrambe le liste e' un errore di chi lo dichiara: in sola
+        # lettura passerebbe per una svista. Vince la lettura, che e' il lato
+        # prudente, e chi ha sbagliato lo legge nel log.
+        log.warning("[Policy] %s: tool dichiarati sia in lettura sia in "
+                    "scrittura, trattati come letture: %s",
+                    etichetta, ", ".join(sorted(doppi)))
+        scritture -= doppi
+    for nome, canonico in (alias or {}).items():
+        nome_pulito = str(nome).strip().lower()
+        canonico_pulito = str(canonico).strip().lower()
+        if not nome_pulito or not canonico_pulito:
+            continue
+        esistente = ALIASES.get(nome_pulito)
+        if esistente is not None and esistente != canonico_pulito:
+            # Due provider che rivendicano la stessa parola per tool diversi:
+            # tenere l'ultimo arrivato cambierebbe il significato di una parola
+            # che qualcun altro ha dichiarato prima, e lo farebbe in silenzio.
+            # E' successo davvero con `pista` — pista di rame in EDA, traccia in
+            # KiCad — e se ne accorge solo chi trova l'alias cambiato sotto.
+            log.warning("[Policy] l'alias '%s' e' gia' di '%s': %s lo vorrebbe "
+                        "per '%s' e non lo ottiene",
+                        nome_pulito, esistente, etichetta, canonico_pulito)
+            continue
+        ALIASES[nome_pulito] = canonico_pulito
+    READ_ONLY_TOOLS.update(letture)
 
 PLAN_ONLY_TOOLS: Set[str] = {
     "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol",

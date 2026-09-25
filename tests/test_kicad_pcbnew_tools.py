@@ -6,10 +6,14 @@ non ha verificato niente. Se il ponte non parte, il test deve fallire.
 """
 import pytest
 
-from core.harness import kicad_tools as kt
 from core.harness import policy as pol
-from core.harness import roles as ruoli
 from core.harness import tool_schema as ts
+from core.harness.roles import DEV_ROLES
+from core.modules.sigma_kicad_lab import tools as kt
+
+# Come in `test_kicad_harness_tools`: la registrazione la fa il module loader
+# all'avvio, e una prova che importa il modulo direttamente deve chiederla.
+kt.registra()
 
 SEI = [
     "kicad_pcbnew_status",
@@ -39,7 +43,7 @@ def test_elenchi_coincidono():
 # --- 2. ogni tool concesso al ruolo ha uno schema ----------------------------
 
 def test_ogni_tool_del_ruolo_ha_schema():
-    ruolo = ruoli.ROLE_KICAD_ENGINEER
+    ruolo = DEV_ROLES["kicad_engineer"]
     tools = ruolo.tools
     for nome in SEI:
         assert nome in tools, f"{nome} non concesso al ruolo kicad_engineer"
@@ -55,13 +59,13 @@ def test_classificazione_read_write():
                "kicad_search_footprint", "kicad_read_board_full"}
     scritture = {"kicad_new_board", "kicad_add_part"}
     for nome in letture:
-        assert nome in pol.KICAD_READ_TOOLS, f"{nome} non in KICAD_READ_TOOLS"
+        assert nome in kt.READ_TOOLS, f"{nome} non in READ_TOOLS"
         assert nome in pol.READ_ONLY_TOOLS, f"{nome} non in READ_ONLY_TOOLS"
-        assert nome not in pol.KICAD_WRITE_TOOLS
+        assert nome not in kt.WRITE_TOOLS
     for nome in scritture:
-        assert nome in pol.KICAD_WRITE_TOOLS, f"{nome} non in KICAD_WRITE_TOOLS"
+        assert nome in kt.WRITE_TOOLS, f"{nome} non in WRITE_TOOLS"
         assert nome not in pol.READ_ONLY_TOOLS
-        assert nome not in pol.KICAD_READ_TOOLS
+        assert nome not in kt.READ_TOOLS
 
 
 def test_aliases_contengono_sei():

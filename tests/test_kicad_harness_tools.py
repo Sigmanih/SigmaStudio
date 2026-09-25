@@ -22,12 +22,18 @@ import textwrap
 
 import pytest
 
-from core.harness import kicad_tools as K
 from core.harness import policy
 from core.harness.roles import DEV_ROLES
 from core.harness.tool_schema import TOOL_SCHEMAS, schemas_for
 from core.modules.sigma_kicad_lab import kicad_parser as parser
 from core.modules.sigma_kicad_lab import pcb_writer
+from core.modules.sigma_kicad_lab import tools as K
+
+# Il modulo si aggancia da solo all'avvio, quando il module loader chiama
+# `register_harness_tools()`. Una prova importa il codice senza passare di li',
+# quindi la registrazione si chiede qui: senza, gli schemi dei tool e i permessi
+# di lettura non esisterebbero e la prova misurerebbe un sistema che non c'e'.
+K.registra()
 
 
 PCB_PROVA = textwrap.dedent("""\
@@ -311,10 +317,10 @@ class TestCablaggio:
         assert esito["success"] is False
 
     def test_le_letture_sono_sola_lettura(self):
-        assert K.KICAD_READ_TOOLS <= policy.READ_ONLY_TOOLS
+        assert K.READ_TOOLS <= policy.READ_ONLY_TOOLS
 
     def test_le_scritture_non_lo_sono(self):
-        assert not (K.KICAD_WRITE_TOOLS & policy.READ_ONLY_TOOLS)
+        assert not (K.WRITE_TOOLS & policy.READ_ONLY_TOOLS)
 
     def test_drc_e_una_lettura(self):
         """Un revisore deve poter chiedere la prova senza poter scrivere."""

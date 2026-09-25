@@ -83,7 +83,8 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "prompt_layout", "risposta_bilingue", "sse",
     ),
     "motore": (
-        "backend_parity", "capacity_guard", "deletion", "download_controls",
+        "backend_parity", "capacity_guard", "cuda_load_failure", "deletion",
+        "download_controls",
         "engine_parity_benchmark", "engine_portability", "engine_runtime",
         "extra_models_dirs", "gguf_compatibility", "gpu_runtime_probe",
         "hf_uploader", "inference_wave1", "inference_wave2", "llama_runtime",
@@ -95,11 +96,13 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
     "moduli": (
         "capability_manager", "docker_fs", "dynamic_swarm", "eda_harness_tools",
         "eda_lab", "email_client", "frontend_diagnostics",
-        "fusione_a_tre_vie", "i18n_translator", "kicad_harness_tools",
+        "fusione_a_tre_vie", "i18n_translator", "kicad_agent",
+        "kicad_edit_tools", "kicad_editor_contract", "kicad_harness_tools",
         "kicad_lab", "kicad_pcbnew_tools", "module_registry_coerenza",
         "module_sync", "pcbnew_bridge", "pipeline_node_runner", "progetti",
         "progetto_in_container", "project_check", "project_rules",
-        "scheda_progetto", "task_pipeline", "visual_console_errors",
+        "scheda_progetto", "task_pipeline", "tool_providers",
+        "visual_console_errors",
     ),
     "rete": (
         "ai_integration", "cloud_native_tool_calling", "dev_provider_routing",

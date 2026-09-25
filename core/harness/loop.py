@@ -2633,19 +2633,24 @@ def _execute_admin_tool_impl(
             "criteria": grezzi,
         }
 
-    # I tool EDA vivono in `eda_tools.py`: qui c'e' solo la delega. Aggiungerli
-    # alla catena qui sopra avrebbe allungato di duecento righe un file che ne
-    # ha gia' quattromila, e il disegno di un circuito non ha niente a che
-    # vedere con la gestione del workspace.
+    # I tool EDA vivono ancora in `eda_tools.py`: qui c'e' solo la delega.
+    # Aggiungerli alla catena qui sopra avrebbe allungato di duecento righe un
+    # file che ne ha gia' quattromila, e il disegno di un circuito non ha niente
+    # a che vedere con la gestione del workspace. E' l'ultimo residuo in attesa
+    # di passare al registry, come ha gia' fatto KiCad.
     from core.harness import eda_tools
     esito_eda = eda_tools.esegui(tool_name, params)
     if esito_eda is not None:
         return esito_eda
 
-    from core.harness import kicad_tools
-    esito_kicad = kicad_tools.esegui(tool_name, params)
-    if esito_kicad is not None:
-        return esito_kicad
+    # I tool dei moduli registrati. Il kernel non ne conosce i nomi: un modulo
+    # si aggancia da solo con `tool_providers.register()` e li' deposita schemi,
+    # permessi e ruolo. Senza provider, un nome di tool che non esiste cade nel
+    # messaggio qui sotto come qualunque nome inventato.
+    from core.harness import tool_providers
+    esito_provider = tool_providers.dispatch(tool_name, params)
+    if esito_provider is not None:
+        return esito_provider
 
     return {"tool": tool_name, "success": False, "error": f"Tool sconosciuto: {tool_name}"}
 
