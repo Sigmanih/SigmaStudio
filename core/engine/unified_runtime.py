@@ -1596,6 +1596,7 @@ class UniversalSigmaEngine:
                 tool_choice=tool_choice,
                 cache_slot=cache_slot,
                 retried_after_oom=retried_after_oom,
+                target_hardware=target_hardware,
             )
         finally:
             self._generation_lock.release()
@@ -1615,6 +1616,7 @@ class UniversalSigmaEngine:
         tool_choice: Optional[Any] = None,
         cache_slot: Optional[str] = None,
         retried_after_oom: bool = False,
+        target_hardware: Optional[str] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Streams tokens from native inference with live throughput metrics.
@@ -1886,6 +1888,7 @@ class UniversalSigmaEngine:
                         tools=tools, tool_choice=tool_choice,
                         cache_slot=cache_slot,
                         retried_after_oom=True,
+                        target_hardware=target_hardware,
                     )
                     return
 
