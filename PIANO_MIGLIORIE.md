@@ -649,3 +649,17 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 
 
 
+
+---
+
+## 17. Tranche AK1-AK3 · Cache dei tool, prefetch delle letture e compressione elastica (Completata · 25 settembre 2026)
+
+| Task | Descrizione | Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **AK1** | **Cache dei risultati dei tool** (chiave per tool piu' parametri; validita' per `mtime`+`size` e digest BLAKE2b sotto i 256 KB; elenchi e ricerche legati a un'epoca che avanza a ogni scrittura riuscita; il comando non entra mai in cache; un successo in cache conta come turno **non** produttivo, cosi' la ripetizione resta penalizzata) | `core/harness/tool_cache.py` | **Fatto** | `pytest tests/test_cache_dei_tool.py` (tutto verde); 200 letture di un file da 16,9 KB: 0,72 ms dal disco, 0,11 ms dalla cache (**-85 %**) |
+| **AK2** | **Prefetch delle letture del turno** (pool a quattro thread per i soli tool di sola lettura; la decisione resta seriale e permessi, turno forzato, guardia anti-ripetizione e finestre di lettura non vengono toccati; futuro non pronto o fallito -> esecuzione in linea, quindi senza il prefetch il turno e' identico a prima) | `core/harness/prefetch.py` | **Fatto** | `pytest tests/test_letture_in_parallelo.py` (14 passati, con guardia AST che rende rosso il lotto se il cablaggio sparisce); quattro letture da 150 ms: 600 ms in fila -> **153 ms** (**-75 %**); quattro `search_code` su ~3000 file: 1285 -> 1077 ms (-16 %, li' il tempo e' lavoro di Python e la GIL quasi non lo lascia passare in due thread) |
+| **AK3** | **Compressione elastica dell'osservazione** (rimpicciolire il turno prima di scartarne il contenuto: testa, coda e righe d'ancoraggio — errori, traceback, righe di diff — sempre conservate, righe saltate dichiarate; l'eviction resta la seconda fase, non la prima) | `core/harness/compaction.py` | **Fatto** | `pytest tests/test_compressione_elastica.py` (tutto verde); osservazione di terminale da 7981 caratteri con traceback e `FAILED` -> **627 caratteri** (**-92 %**), 4 righe d'errore su 4 conservate |
+
+**Verifica Globale**: `python -m pytest -m harness -q` -> **1039 passati, 3 saltati, 2 rossi pre-esistenti** (`test_chiamata_malformata::TestIlRiepilogoRifiutatoOttoVolte`, `test_tool_policy::TestCoerenzaConIRuoli`). Corsa ampia con 29 prove escluse (quelle che aprono la porta 8000 o caricano un modello vero): **2604 passati, 2 saltati, 9 rossi**. Gli otto rossi non-SSE si riproducono identici al commit 731b34d con `core/harness/loop.py` e `tests/lotti.py` riportati indietro, quindi non vengono da questa tranche: sono la `cryptography` assente nell'ambiente, la compilazione di una grammatica senza modello, un budget di slot letto dalla configurazione, la scheda di progetto e i ruoli letti dai file locali ignorati da git. Il nono, `test_sse::TestUnaSolaImplementazione::test_nessun_handler_si_riscrive_il_writer`, e' un controllo di stile sui sorgenti che trova `def _sse(` in `core/modules/sigma_kicad_lab/orchestrator.py:122`: un modulo pubblicato a parte e ignorato da git, presente solo in questo albero, e sparisce da un albero che non lo contiene.
+
+**File toccati**: `core/harness/tool_cache.py`, `prefetch.py`, `compaction.py`, `loop.py`, `tests/lotti.py`, `tests/test_cache_dei_tool.py`, `tests/test_letture_in_parallelo.py`, `tests/test_compressione_elastica.py`.
