@@ -579,13 +579,23 @@ class LlamaServerBackend(InferenceBackend):
             log.info("[LlamaServer] Avvio: %s", " ".join(comando[1:]))
 
             from core.engine.llama_runtime import runtime_env
+            sub_env = runtime_env()
+            if cur_settings.get("forced_single_gpu") or (cur_settings.get("split_mode") == "none" and not cur_settings.get("tensor_split")):
+                mg = cur_settings.get("main_gpu")
+                if mg is not None:
+                    sub_env["CUDA_VISIBLE_DEVICES"] = str(mg)
+                    for idx_arg, arg_val in enumerate(comando):
+                        if arg_val == "-mg" and idx_arg + 1 < len(comando):
+                            comando[idx_arg + 1] = "0"
+                            break
+
             try:
                 self._processo = subprocess.Popen(
                     comando,
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, encoding="utf-8", errors="replace",
                     cwd=str(server.parent),
-                    env=runtime_env(),
+                    env=sub_env,
                 )
                 _assign_kill_on_close(self._processo)
                 atexit.register(self.unload)
@@ -918,17 +928,16 @@ class LlamaServerBackend(InferenceBackend):
         # prompt lascia margine, sottostimarlo lo toglie proprio dove serve.
         prompt_token = len(testo) // 4
 
-        # Un quinto della finestra tenuto libero: il template di chat aggiunge
-        # token di controllo, e llama.cpp vuole margine per il proprio lavoro.
-        margine = max(256, slot_ctx // 5)
+        # Margine realistico per il template di chat Jinja (delimitatori di turno e token speciali)
+        margine = min(max(64, slot_ctx // 20), 128)
         spazio = slot_ctx - prompt_token - margine
         if spazio <= 0:
+            spazio_residuo = max(16, slot_ctx - prompt_token - 32)
             log.warning(
-                "[LlamaServer] Il prompt (~%d token) riempie lo slot da %d: "
-                "resta spazio per una risposta minima. Ricarica il modello con "
-                "un contesto piu' ampio.", prompt_token, slot_ctx,
+                "[LlamaServer] Il prompt (~%d token) occupa gran parte dello slot da %d: "
+                "concedo spazio residuo di %d token.", prompt_token, slot_ctx, spazio_residuo,
             )
-            return 128
+            return min(limite, max(spazio_residuo, 256))
         if limite > spazio:
             log.info(
                 "[LlamaServer] Budget ridotto da %d a %d token: lo slot ne ha "

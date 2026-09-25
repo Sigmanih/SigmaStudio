@@ -388,12 +388,12 @@ def _plan_settings(
             if _kv_quant_pays_off(plain, halved, layers):
                 kv_quant = _KV_QUANT_TYPE
 
-        # Se siamo a pochissimi layer dal full offload (es. 1-3 layer su CPU),
-        # vale sempre la pena ridurre leggermente la finestra di contesto
-        # (es. da 32k a 24k o 16k) per ottenere l'offload completo (-1):
-        # la differenza di velocita' e' di oltre 10x (35 tok/s invece di 2-3 tok/s).
+        # Se siamo vicini al full offload o su GPU singola, vale sempre la pena
+        # negoziare la finestra di contesto (es. da 32k a 16k, 8k, 6k o 4k) e/o
+        # quantizzare la cache KV (q8_0 / q4_0) per ottenere l'offload completo (-1):
+        # la differenza di velocita' e' di oltre 20x (80+ tok/s invece di 2-3 tok/s).
         if plain != -1 and halved != -1 and layers > 0 and not env_ceiling:
-            for candidate_ctx in (24576, 16384, 12288, 8192):
+            for candidate_ctx in (24576, 16384, 12288, 8192, 6144, 4096):
                 if candidate_ctx >= n_ctx:
                     continue
                 cand_kv_f16 = ModelInspector.estimate_kv_cache_gb(facts, candidate_ctx)
@@ -409,8 +409,14 @@ def _plan_settings(
                     halved = -1
                     kv_quant = _KV_QUANT_TYPE
                     break
+                if _layers_that_fit(weights_gb, layers, total_usable, cand_kv_f16 / 4) == -1:
+                    n_ctx = candidate_ctx
+                    kv_gb_f16 = cand_kv_f16
+                    halved = -1
+                    kv_quant = "q4_0"
+                    break
 
-        kv_gb = round(kv_gb_f16 / 2, 3) if kv_quant else kv_gb_f16
+        kv_gb = round(kv_gb_f16 / 4, 3) if kv_quant == "q4_0" else (round(kv_gb_f16 / 2, 3) if kv_quant else kv_gb_f16)
         n_gpu_layers = halved if kv_quant else plain
 
 
@@ -442,6 +448,7 @@ def _plan_settings(
 
     split_mode = None
     main_gpu = None
+    flash_attn = True
     if forced_single_gpu and gpus:
         target_usable = usable[0] if usable else 0.0
         tensor_split = None
@@ -449,7 +456,33 @@ def _plan_settings(
         main_gpu = forced_gpu_id if forced_gpu_id is not None else int(gpus[0].get("device_id", 0))
         # Se entra interamente nella GPU selezionata usa -1, altrimenti alloca i layer massimi ammessi
         fits_single = _layers_that_fit(weights_gb, layers, target_usable, kv_gb)
+        if fits_single != -1 and not env_ceiling:
+            # Ricerca finestra/quantizzazione ottimale per raggiungere il full offload sulla scheda selezionata
+            for cand_c in (16384, 12288, 8192, 6144, 4096):
+                if cand_c > n_ctx:
+                    continue
+                c_kv = ModelInspector.estimate_kv_cache_gb(facts, cand_c)
+                if _layers_that_fit(weights_gb, layers, target_usable, c_kv) == -1:
+                    fits_single = -1
+                    n_ctx = cand_c
+                    kv_quant = None
+                    kv_gb = c_kv
+                    break
+                if _layers_that_fit(weights_gb, layers, target_usable, c_kv / 2) == -1:
+                    fits_single = -1
+                    n_ctx = cand_c
+                    kv_quant = _KV_QUANT_TYPE
+                    kv_gb = round(c_kv / 2, 3)
+                    break
+                if _layers_that_fit(weights_gb, layers, target_usable, c_kv / 4) == -1:
+                    fits_single = -1
+                    n_ctx = cand_c
+                    kv_quant = "q4_0"
+                    kv_gb = round(c_kv / 4, 3)
+                    break
         n_gpu_layers = fits_single
+        if n_gpu_layers == 0:
+            flash_attn = False
     elif len(gpus) > 1:
         # Se la sola GPU primaria dispone di memoria LIBERA sufficiente per accogliere
         # l'intero modello e la cache KV (_layers_that_fit == -1), concentriamo l'offload
@@ -471,12 +504,14 @@ def _plan_settings(
         "tensor_split": tensor_split,
         "split_mode": split_mode,
         "main_gpu": main_gpu,
+        "forced_single_gpu": forced_single_gpu,
+        "target_hardware": target if target else "auto",
         "n_ctx": n_ctx,
         "n_threads": n_threads,
         "n_threads_batch": n_threads_batch,
         "n_batch": n_batch,
         "n_ubatch": min(n_batch, 256),
-        "flash_attn": True,
+        "flash_attn": flash_attn,
         "kv_quant": kv_quant,
         "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
         "device": "cuda",
