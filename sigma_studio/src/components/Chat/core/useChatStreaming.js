@@ -112,6 +112,7 @@ export function useChatStreaming({
   fetchOllamaModels,
   refreshConfig,
   activeManifesto,
+  selectedHardware,
   devModeEnabled = false,
   workspaceRoot = '',
 }) {
@@ -1138,6 +1139,7 @@ export function useChatStreaming({
           user_name: userProfile.name || 'Utente',
           user_title: userProfile.title || '',
           user_profile: userProfile,
+          target_hardware: selectedHardware || 'auto',
           context: { open_files: contextFiles, history: updatedMessages.slice(-10).map(m => ({ role: m.role, content: m.content })) },
           uploaded_files: pcFiles.length > 0 ? pcFiles : undefined
         };

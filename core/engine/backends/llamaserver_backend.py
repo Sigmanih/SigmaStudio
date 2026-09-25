@@ -519,7 +519,10 @@ class LlamaServerBackend(InferenceBackend):
             log.warning("[llama-server] caricamento rifiutato: %s", impossibile)
             return {"success": False, "stage": "capacity", "error": impossibile}
 
-        settings = gguf_planner._plan_settings(facts, hardware, context_tokens)
+        settings = gguf_planner._plan_settings(
+            facts, hardware, context_tokens,
+            target_hardware=options.get("target_hardware"),
+        )
         from core.engine.load_overrides import apply_to
         settings = apply_to(settings, facts.name)
 

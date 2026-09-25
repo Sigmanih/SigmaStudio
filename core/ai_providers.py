@@ -1251,7 +1251,7 @@ def call_anthropic(
 def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, api_key,
                          temperature, max_tokens, top_p, request_timeout,
                          params=None, cancel=None, tools=None, tool_choice=None,
-                         thinking=None):
+                         thinking=None, target_hardware=None):
     """
     Unified generator yielding chunks of tokens.
 
@@ -1271,15 +1271,8 @@ def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, a
             messages=messages, temperature=temperature,
             max_tokens=max_tokens, model_name=model,
             params=params, cancel=cancel,
-            # `thinking` esisteva gia' fino in fondo — `generate_stream` lo
-            # accetta e il backend lo traduce in
-            # `chat_template_kwargs.enable_thinking` per llama-server — ma
-            # nessun chiamante lo passava. Risultato: il template Qwen3
-            # restava in modalita' ragionamento anche per i profili che
-            # chiedono una risposta diretta, e il modello ragionava **senza
-            # tag**: quel monologo finiva nella bolla della risposta e
-            # mangiava il budget di token prima di arrivare alla risposta.
             thinking=thinking,
+            target_hardware=target_hardware,
         )
 
     route_provider = provider

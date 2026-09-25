@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders, Square, ChevronDown } from 'lucide-react';
+import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders, Square, ChevronDown, Cpu } from 'lucide-react';
 import { setVoiceConfig as saveVoiceConfigToSpeechEngine, getVoiceConfig } from '../audioSpeech';
 import ModelSelector from '../ModelSelector';
 
@@ -21,6 +21,8 @@ export default function ChatInput({
   // Manifesto / Role Selector props
   activeManifesto, manifestos,
   showManifestoDropdown, setShowManifestoDropdown, onSelectManifesto,
+  // Hardware Selector props
+  selectedHardware, onSelectHardware, availableHardware,
   children,
 }) {
   const [showVoicePopover, setShowVoicePopover] = useState(false);
@@ -126,6 +128,46 @@ export default function ChatInput({
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* 3. Extended Hardware / Accelerator Selector */}
+          <div className="chat-control-field">
+            <span className="chat-control-label">Hardware:</span>
+            <div className="manifesto-selector-wrapper" style={{ position: 'relative' }}>
+              <select
+                className="manifesto-selector-btn"
+                value={selectedHardware || 'auto'}
+                onChange={(e) => onSelectHardware && onSelectHardware(e.target.value)}
+                title="Seleziona la GPU o l'acceleratore dedicato per l'inferenza"
+                style={{
+                  cursor: 'pointer',
+                  appearance: 'none',
+                  WebkitAppearance: 'none',
+                  paddingRight: '24px',
+                  background: 'rgba(15, 20, 32, 0.75)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  color: '#ffffff',
+                  fontSize: '0.74rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                  borderRadius: '6px',
+                  height: '28px',
+                  padding: '2px 24px 2px 8px',
+                }}
+              >
+                {(availableHardware && availableHardware.length > 0 ? availableHardware : [
+                  { id: 'auto', name: '⚡ Auto (Tutto)' },
+                  { id: 'gpu:0', name: '🟢 GPU 0 (Principale)' },
+                  { id: 'gpu:1', name: '🔵 GPU 1 (Secondaria)' },
+                  { id: 'cpu', name: '💻 Solo CPU' }
+                ]).map(hw => (
+                  <option key={hw.id} value={hw.id} style={{ background: '#0f1420', color: '#fff' }}>
+                    {hw.name}
+                  </option>
+                ))}
+              </select>
+              <Cpu size={12} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#10b981' }} />
             </div>
           </div>
         </div>

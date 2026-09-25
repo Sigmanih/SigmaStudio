@@ -98,6 +98,7 @@ export default function useChatCore(extraProps = {}) {
     fetchOllamaModels: configHook.fetchOllamaModels,
     refreshConfig: configHook.refreshConfig,
     activeManifesto: configHook.activeManifesto,
+    selectedHardware: configHook.selectedHardware,
     devModeEnabled: devModeHook.devModeEnabled,
     workspaceRoot: devModeHook.workspaceRoot
   });
@@ -418,6 +419,9 @@ export default function useChatCore(extraProps = {}) {
     setQuickConfig: configHook.setQuickConfig,
     showQuickConfig: configHook.showQuickConfig,
     setShowQuickConfig: configHook.setShowQuickConfig,
+    selectedHardware: configHook.selectedHardware,
+    setSelectedHardware: configHook.setSelectedHardware,
+    availableHardware: configHook.availableHardware,
     activeManifesto: configHook.activeManifesto,
     setActiveManifesto: configHook.setActiveManifesto,
     manifestos: configHook.manifestos,

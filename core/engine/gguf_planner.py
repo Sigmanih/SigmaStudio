@@ -215,7 +215,9 @@ def is_usb_or_removable_drive(path: Any, hardware: Dict[str, Any]) -> bool:
 
 # ------------------------------------------------------------------ pianificazione
 
-def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: int
+def _plan_settings(
+    facts: ModelFacts, hardware: Dict[str, Any], context_tokens: int,
+    target_hardware: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Chooses offload depth, split and threading for this machine.
@@ -237,6 +239,20 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
         key=lambda a: (a.get("multi_processor_count", 0), a.get("free_vram_gb", 0)),
         reverse=True,
     )
+
+    # Filtraggio Hardware selettivo richiesto dall'utente (es. "gpu:0", "gpu:1", "cpu")
+    target = str(target_hardware or os.environ.get("SIGMA_TARGET_HARDWARE") or "").strip().lower()
+    forced_single_gpu = False
+    forced_gpu_id = None
+    if target in ("cpu", "host", "ram"):
+        gpus = []
+    elif target.startswith("gpu:") or target in ("0", "1", "gpu0", "gpu1"):
+        dev_id = target.replace("gpu:", "").replace("gpu", "")
+        matching = [g for g in gpus if str(g.get("device_id", 0)) == dev_id]
+        if matching:
+            gpus = matching
+            forced_single_gpu = True
+            forced_gpu_id = int(dev_id) if dev_id.isdigit() else 0
 
     weights_gb = facts.total_bytes / 2**30
     n_ctx = _clamp_context(facts, context_tokens)
@@ -426,24 +442,40 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
 
     split_mode = None
     main_gpu = None
-    if len(gpus) > 1:
+    if forced_single_gpu and gpus:
+        target_vram = float(gpus[0].get("total_vram_gb", 0.0) or 0.0)
+        target_usable = usable[0] if usable else 0.0
+        target_cap = max(target_vram, target_usable)
+        tensor_split = None
+        split_mode = "none"
+        main_gpu = forced_gpu_id if forced_gpu_id is not None else int(gpus[0].get("device_id", 0))
+        if target_cap > 0 and weights_gb <= target_cap * 1.05:
+            n_gpu_layers = -1
+            if weights_gb + kv_gb_f16 > target_cap * 0.95:
+                kv_quant = _KV_QUANT_TYPE
+                kv_gb = round(kv_gb_f16 / 2, 3)
+    elif len(gpus) > 1:
         # Se la GPU primaria più potente/capiente (gpus[0]) è in grado di
         # accogliere interamente il modello (i byte reali dei pesi + KV entrano
         # nella memoria della scheda primaria), NON dividiamo sui bus PCIe secondari:
         # il tensor_split tra GPU asimmetriche costringe la scheda veloce ad attendere
         # la scheda lenta a ogni layer. Concentrare il modello su una sola GPU
-        # garantisce il massimo throughput nativo.
+        # garantisce il massimo throughput nativo (46+ tok/s).
         g0_total = float(gpus[0].get("total_vram_gb", 0.0) or 0.0)
         gpu0_usable = usable[0] if usable else 0.0
+        g0_cap = max(g0_total, gpu0_usable)
         gpu0_fits = (
             _layers_that_fit(weights_gb, layers, gpu0_usable, kv_gb) == -1
-            or (g0_total > 0 and (weights_gb + kv_gb) <= g0_total * 0.98)
+            or (g0_cap > 0 and weights_gb <= g0_cap * 0.98)
         )
         if gpu0_fits:
             tensor_split = None
             split_mode = "none"
             main_gpu = 0
             n_gpu_layers = -1
+            if g0_cap > 0 and (weights_gb + kv_gb_f16 > g0_cap * 0.95):
+                kv_quant = _KV_QUANT_TYPE
+                kv_gb = round(kv_gb_f16 / 2, 3)
         elif tensor_split is not None:
             # Quando il multi-GPU è necessario, 'layer' (pipelined) evita
             # la sincronizzazione continua ad ogni moltiplicazione matriciale

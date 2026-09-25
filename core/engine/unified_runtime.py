@@ -708,6 +708,7 @@ class UniversalSigmaEngine:
         model_identifier: Optional[str] = None,
         context_tokens: int = 32768,
         force_quantization: Optional[str] = None,
+        target_hardware: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Loads a local model across all available memory tiers.
@@ -717,7 +718,7 @@ class UniversalSigmaEngine:
         """
         with self._load_lock:
             return self._load_native_model_locked(
-                model_identifier, context_tokens, force_quantization
+                model_identifier, context_tokens, force_quantization, target_hardware=target_hardware
             )
 
     def _load_native_model_locked(
@@ -725,6 +726,7 @@ class UniversalSigmaEngine:
         model_identifier: Optional[str],
         context_tokens: int,
         force_quantization: Optional[str],
+        target_hardware: Optional[str] = None,
     ) -> Dict[str, Any]:
         model_info = self.find_valid_model_directory(model_identifier)
         if not model_info:
@@ -776,7 +778,9 @@ class UniversalSigmaEngine:
         from core.engine.backends import select_backend
         backend_cls = select_backend(facts, self.refresh_vram())
         if backend_cls is not None and facts.weight_format != "safetensors":
-            return self._load_via_backend(facts, display_name, context_tokens)
+            return self._load_via_backend(
+                facts, display_name, context_tokens, target_hardware=target_hardware
+            )
 
         # Check completeness before attempting PyTorch / Transformers loading
         if not getattr(facts, "is_complete", True) or getattr(facts, "has_part_files", False):
@@ -1040,7 +1044,8 @@ class UniversalSigmaEngine:
         }
 
     def _load_via_backend(
-        self, facts: ModelFacts, display_name: str, context_tokens: int
+        self, facts: ModelFacts, display_name: str, context_tokens: int,
+        target_hardware: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Loads a non-safetensors checkpoint through the backend registry."""
         from core.engine.backends import select_backend, explain_unsupported
@@ -1053,7 +1058,10 @@ class UniversalSigmaEngine:
             return {"success": False, "error": error, "stage": "backend"}
 
         backend = backend_cls()
-        result = backend.load(facts, self.hardware_profile, context_tokens=context_tokens)
+        result = backend.load(
+            facts, self.hardware_profile, context_tokens=context_tokens,
+            target_hardware=target_hardware,
+        )
         if not result.get("success"):
             self.last_load_error = result.get("error")
             log.error(
@@ -1074,6 +1082,7 @@ class UniversalSigmaEngine:
             "format": facts.weight_format,
             "size_gb": round(facts.total_bytes / 2**30, 2),
             "backend": backend_cls.name,
+            "target_hardware": target_hardware,
             "placement": result.get("placement", {}),
             "settings": result.get("settings", {}),
             "load_seconds": result.get("load_seconds"),
@@ -1520,6 +1529,7 @@ class UniversalSigmaEngine:
         tool_choice: Optional[Any] = None,
         cache_slot: Optional[str] = None,
         retried_after_oom: bool = False,
+        target_hardware: Optional[str] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """
         Serialises access to the engine, then streams the answer.
@@ -1641,8 +1651,11 @@ class UniversalSigmaEngine:
             if not name: return ""
             return str(name).strip().lower().replace(".gguf", "").replace("--", "/").split("/")[-1].split("\\")[-1]
 
+        current_hw = (self.loaded_model or {}).get("target_hardware")
+        hw_changed = (target_hardware is not None and current_hw != target_hardware)
+
         is_already_resident = (
-            self.has_resident_model and (
+            self.has_resident_model and not hw_changed and (
                 _clean_m_name(self.loaded_model_name) == _clean_m_name(target_model) or
                 _clean_m_name(self.loaded_model_name) == _clean_m_name(model_name) or
                 (model_info and self.loaded_model and os.path.abspath(self.loaded_model.get("path", "")) == os.path.abspath(model_info[0]))
@@ -1650,17 +1663,19 @@ class UniversalSigmaEngine:
         )
 
         if not is_already_resident:
+            if hw_changed and self.has_resident_model:
+                self.unload()
             yield {
                 "token": "",
                 "status": True,
                 "type": "status",
-                "model_status": f"⏳ Caricamento pesi modello `{target_model}` in memoria/VRAM...",
+                "model_status": f"⏳ Caricamento pesi modello `{target_model}` ({target_hardware or 'Auto'})...",
                 "text": f"⏳ Caricamento pesi modello `{target_model}` in memoria/VRAM...",
                 "loading": True,
                 "notice": True,
                 "done": False,
             }
-            result = self.load_native_model(target_model)
+            result = self.load_native_model(target_model, target_hardware=target_hardware)
             if not result.get("success"):
                 err_text = self._format_load_failure(target_model, result)
                 yield {

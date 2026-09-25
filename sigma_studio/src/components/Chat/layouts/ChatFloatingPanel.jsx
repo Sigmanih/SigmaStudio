@@ -184,6 +184,9 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           activeManifesto={core.activeManifesto}
           onSelectManifesto={core.handleSelectManifesto}
           manifestos={core.manifestos}
+          selectedHardware={core.selectedHardware}
+          onSelectHardware={core.setSelectedHardware}
+          availableHardware={core.availableHardware}
         />
       )}
 
@@ -223,6 +226,9 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         showManifestoDropdown={core.showManifestoDropdown}
         setShowManifestoDropdown={core.setShowManifestoDropdown}
         onSelectManifesto={core.handleSelectManifesto}
+        selectedHardware={core.selectedHardware}
+        onSelectHardware={core.setSelectedHardware}
+        availableHardware={core.availableHardware}
         onOpenConfig={onOpenConfig}
         refs={core.refs}
         providerColors={core.providerColors}

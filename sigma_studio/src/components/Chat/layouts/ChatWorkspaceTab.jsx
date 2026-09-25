@@ -181,6 +181,9 @@ export default function ChatWorkspaceTab() {
           activeManifesto={core.activeManifesto}
           onSelectManifesto={core.handleSelectManifesto}
           manifestos={core.manifestos}
+          selectedHardware={core.selectedHardware}
+          onSelectHardware={core.setSelectedHardware}
+          availableHardware={core.availableHardware}
         />
       )}
 
@@ -220,6 +223,9 @@ export default function ChatWorkspaceTab() {
         showManifestoDropdown={core.showManifestoDropdown}
         setShowManifestoDropdown={core.setShowManifestoDropdown}
         onSelectManifesto={core.handleSelectManifesto}
+        selectedHardware={core.selectedHardware}
+        onSelectHardware={core.setSelectedHardware}
+        availableHardware={core.availableHardware}
         onOpenConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
         refs={core.refs}
         providerColors={core.providerColors}

@@ -46,6 +46,50 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showQuickConfig, setShowQuickConfig] = useState(false);
 
+  // --- Hardware target selection ---
+  const [selectedHardware, setSelectedHardwareState] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_selected_hardware') || 'auto';
+    } catch (e) {
+      return 'auto';
+    }
+  });
+  const [availableHardware, setAvailableHardware] = useState([
+    { id: 'auto', name: '⚡ Auto (Tutto)' },
+    { id: 'gpu:0', name: '🟢 GPU 0 (Principale)' },
+    { id: 'gpu:1', name: '🔵 GPU 1 (Secondaria)' },
+    { id: 'cpu', name: '💻 Solo CPU' }
+  ]);
+
+  const handleSelectHardware = useCallback((hwId) => {
+    setSelectedHardwareState(hwId);
+    try {
+      localStorage.setItem('sigma_selected_hardware', hwId);
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/hardware/status')
+      .then(res => res.json())
+      .then(data => {
+        const gpus = data?.hardware?.gpu || [];
+        const hwList = [{ id: 'auto', name: '⚡ Auto (Tutto)' }];
+        gpus.forEach((g) => {
+          if (!g.is_integrated && g.index !== undefined) {
+            const gb = g.vram_total_mb ? Math.round(g.vram_total_mb / 1024) : 0;
+            const shortName = (g.name || 'GPU').replace('NVIDIA GeForce ', '').replace('NVIDIA ', '');
+            hwList.push({
+              id: `gpu:${g.index}`,
+              name: `${g.index === 0 ? '🟢' : '🔵'} GPU ${g.index}: ${shortName}${gb ? ` (${gb} GB)` : ''}`
+            });
+          }
+        });
+        hwList.push({ id: 'cpu', name: '💻 Solo CPU' });
+        setAvailableHardware(hwList);
+      })
+      .catch(() => {});
+  }, []);
+
   // --- Quick config ---
   const [quickConfig, setQuickConfig] = useState({
     temperature: 0.7,
@@ -446,6 +490,9 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
     setShowQuickConfig,
     quickConfig,
     setQuickConfig,
+    selectedHardware,
+    setSelectedHardware: handleSelectHardware,
+    availableHardware,
     fetchOllamaModels,
     fetchConfigAndModels,
     refreshConfig,

@@ -9,7 +9,10 @@ export default function QuickConfigPanel({
   availableModels = [],
   activeManifesto,
   onSelectManifesto,
-  manifestos = []
+  manifestos = [],
+  selectedHardware = 'auto',
+  onSelectHardware,
+  availableHardware = []
 }) {
   const [hoveredKey, setHoveredKey] = useState(null);
 
@@ -125,6 +128,39 @@ export default function QuickConfigPanel({
               </select>
             </div>
           )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#10b981', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span>⚙️ Acceleratore Hardware:</span>
+            </label>
+            <select
+              value={selectedHardware || 'auto'}
+              onChange={(e) => onSelectHardware && onSelectHardware(e.target.value)}
+              style={{
+                padding: '7px 10px',
+                borderRadius: '8px',
+                background: 'rgba(15, 20, 32, 0.95)',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
+                color: '#ffffff',
+                fontSize: '0.78rem',
+                outline: 'none',
+                cursor: 'pointer',
+                width: '100%',
+                boxSizing: 'border-box'
+              }}
+            >
+              {(availableHardware && availableHardware.length > 0 ? availableHardware : [
+                { id: 'auto', name: '⚡ Auto (Tutto)' },
+                { id: 'gpu:0', name: '🟢 GPU 0 (Principale)' },
+                { id: 'gpu:1', name: '🔵 GPU 1 (Secondaria)' },
+                { id: 'cpu', name: '💻 Solo CPU' }
+              ]).map(hw => (
+                <option key={hw.id} value={hw.id} style={{ background: '#0f1420', color: '#fff' }}>
+                  {hw.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 

@@ -507,7 +507,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                           top_p, timeout, message, bot_name, manifesto_path,
                           allow_actions, agent_id=None, agent_role=None, agent_image=None,
                           routing_time_ms=None, hardware_note=None,
-                          sampling=None, wants_reasoning=True):
+                          sampling=None, wants_reasoning=True, target_hardware=None):
     """Stream a chat completion as SSE, then run file extraction on the full text.
 
     `sampling` is the resolved SamplingParams for this turn; when None each
@@ -644,10 +644,8 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 _msgs, ai_cfg, model, provider, endpoint, api_url, api_key,
                 temperature, max_tokens, top_p, timeout,
                 params=sampling, cancel=cancel,
-                # Il profilo decide se il modello deve ragionare. Senza questo
-                # il template non lo sapeva e Qwen3 ragionava comunque, ma
-                # senza tag: il monologo usciva come risposta.
                 thinking=wants_reasoning,
+                target_hardware=target_hardware,
             ):
                 if cancel is not None and cancel.cancelled:
                     return False
@@ -1572,6 +1570,7 @@ Contenuto completo...
             prov_max_tokens = tuned_cfg.get("max_tokens", 4096)
             prov_top_p = tuned_cfg.get("top_p", 0.9)
 
+        target_hardware = req.get("target_hardware") or req.get("hardware") or req.get("target_gpu")
         # Token-by-token SSE: the user reads the answer as it is produced instead of
         # waiting for the whole generation. Planning mode stays on the JSON path
         # because the frontend needs the complete plan object before rendering it.
@@ -1585,6 +1584,7 @@ Contenuto completo...
                 agent_id=agent_id, agent_role=real_agent_role, agent_image=real_agent_image,
                 routing_time_ms=routing_time_ms, hardware_note=hardware_note,
                 sampling=sampling, wants_reasoning=wants_reasoning,
+                target_hardware=target_hardware,
             )
 
         if active_provider in ("sigma_engine", "sigma"):
