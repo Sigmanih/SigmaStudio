@@ -44,6 +44,8 @@ from core.harness.cicli import RilevatoreCicli, comando_bloccato_in_ciclo
 from core.think_channel import RouterPensiero
 from core.harness.compaction import compact_history_with_memory
 from core.harness.roles import GENERIC_MODEL_ALIASES
+from core.harness.tool_cache import ToolResultCache
+from core.harness.prefetch import PrefetchLetture, tutte_anticipabili
 from core.harness.tool_schema import (
     schemas_for,
     tool_calls_to_invocations,
@@ -2948,7 +2950,15 @@ def _stream_agent_turn_impl(
         "turns_detail": [],
         "started_at": time.time(),
         "resumed": ripreso,
+        # Quante volte una risposta e' arrivata dalla cache invece che dal
+        # disco. Sono nella telemetria del run perche' un hit-rate che resta a
+        # zero dice che la cache non e' innestata, e uno che sale dice quanto
+        # la ricognizione dell'agente era ripetitiva.
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "prefetch_consumati": 0,
     }
+    tool_cache = ToolResultCache()
 
     full_messages = [{"role": "system", "content": base_system_prompt}]
     for m in messages:
@@ -3559,6 +3569,10 @@ def _stream_agent_turn_impl(
             last_pipeline_signature = signature
             serialised.append(t)
         acting = [t for t in tools_found if t["tool"] not in bookkeeping]
+        # Creato qui, e non dove serve, perche' la sua chiusura sta a fine
+        # turno: un turno che esce da un ramo anticipato lascerebbe il nome
+        # indefinito nel punto in cui il pool va rilasciato.
+        prefetch = PrefetchLetture()
         if not serialised and not acting:
             unproductive_turns += 1
             if unproductive_turns >= MAX_UNPRODUCTIVE_TURNS * 3:
@@ -3582,7 +3596,24 @@ def _stream_agent_turn_impl(
             full_messages = trim_history(full_messages)
             last_user_prompt = nudge
             continue
-        if acting:
+        # Un turno di sola ricognizione non ha un'azione da preferire alle
+        # altre: sono tutte letture, e la prima non vale piu' della seconda.
+        # Il motivo della serializzazione qui sopra — «l'edit e' scritto prima
+        # che la lettura sia tornata» — non esiste in un turno in cui nessuno
+        # scrive: non c'e' nessun edit da scrivere. Le altre restavano rimandate
+        # al turno successivo, cioe' un giro di modello intero in piu' per un
+        # lavoro che stava in un giro solo. Un turno che contiene una scrittura
+        # resta invece serializzato a una azione, identico a prima.
+        nome_azioni = [t["tool"] for t in acting]
+        if (acting and tutte_anticipabili(nome_azioni)
+                and prefetch.avvia(acting, workspace_root, should_cancel, session_cwd)):
+            serialised.extend(acting)
+            yield {
+                "type": "status",
+                "text": f"⚡ {len(acting)} letture in parallelo: "
+                        f"{', '.join(nome_azioni)}",
+            }
+        elif acting:
             serialised.append(acting[0])
             if len(acting) > 1:
                 deferred = ", ".join(t["tool"] for t in acting[1:])
@@ -3919,21 +3950,42 @@ def _stream_agent_turn_impl(
                 except Exception as exc:
                     log.debug("[Review] istantanea non riuscita: %s", exc)
 
-            # Route through MCP Hub for Git/Lint/Test tools, local for FS/Terminal
-            try:
-                from core.modules.sigma_developer_lab.mcp_tools.bridge import is_mcp_tool, execute_via_mcp
-                if is_mcp_tool(t_name):
-                    result = execute_via_mcp(t_name, t_params)
-                else:
+            # La risposta che l'harness ha gia' in memoria si serve da li': gli
+            # stessi byte, senza aprire il file. Vedi core/harness/tool_cache.py.
+            result = tool_cache.get(t_name, t_params)
+            if result is not None:
+                # Marcato: un hit non e' progresso, e' la stessa risposta di
+                # prima. Se contasse come tale, ripetere una lettura tornerebbe
+                # a essere il modo di azzerare il contatore dei turni
+                # improduttivi — che e' esattamente il difetto che la guardia
+                # sulle chiamate inerte era stata scritta per chiudere.
+                result["cached"] = True
+                run_metrics["cache_hits"] += 1
+            else:
+                run_metrics["cache_misses"] += 1
+                # La lettura puo' essere gia' in volo: vedi
+                # core/harness/prefetch.py. Se non e' pronta si esegue qui,
+                # identico a prima.
+                result = prefetch.risultato(t_name, t_params)
+                if result is not None:
+                    result["prefetch"] = True
+            if result is None:
+                # Route through MCP Hub for Git/Lint/Test tools, local for FS/Terminal
+                try:
+                    from core.modules.sigma_developer_lab.mcp_tools.bridge import is_mcp_tool, execute_via_mcp
+                    if is_mcp_tool(t_name):
+                        result = execute_via_mcp(t_name, t_params)
+                    else:
+                        result = execute_admin_tool(t_name, t_params, workspace_root,
+                                                 should_cancel=should_cancel,
+                                                 dimensioni_viste=dimensioni_viste,
+                                                 active_cwd=session_cwd)
+                except ImportError:
                     result = execute_admin_tool(t_name, t_params, workspace_root,
-                                             should_cancel=should_cancel,
-                                             dimensioni_viste=dimensioni_viste,
-                                             active_cwd=session_cwd)
-            except ImportError:
-                result = execute_admin_tool(t_name, t_params, workspace_root,
-                                             should_cancel=should_cancel,
-                                             dimensioni_viste=dimensioni_viste,
-                                             active_cwd=session_cwd)
+                                                 should_cancel=should_cancel,
+                                                 dimensioni_viste=dimensioni_viste,
+                                                 active_cwd=session_cwd)
+                tool_cache.put(t_name, t_params, result)
 
             if result.get("new_cwd") and os.path.isdir(result["new_cwd"]):
                 session_cwd = result["new_cwd"]
@@ -3997,10 +4049,17 @@ def _stream_agent_turn_impl(
             # senza che il recupero entrasse in scena nemmeno una volta.
             firma_inerte = (t_name, json.dumps(t_params, sort_keys=True, default=str)[:400])
             ripetizione_inerte = firma_inerte in inert_call_signatures
-            if result.get("success") and not ripetizione_inerte:
+            # Un hit della cache e' la stessa risposta di prima, quindi non ha
+            # fatto avanzare niente: conta come le ripetizioni inerte.
+            if (result.get("success") and not ripetizione_inerte
+                    and not result.get("cached")):
                 turn_was_productive = True
             if result.get("success") and t_name in PRODUCTIVE_TOOLS:
                 consecutive_truncations = 0
+                # Elenchi e ricerche descrivono un workspace che non c'e' piu';
+                # le letture restano, validate dalla loro impronta. Il percorso
+                # c'e' quando il ciclo sa quale file ha scritto.
+                tool_cache.invalida(result.get("path"))
                 # Il workspace e' cambiato: nessuna chiamata fallita prima di
                 # ora e' piu' garantita fallire, e tenerne memoria bloccherebbe
                 # proprio i tentativi che la correzione ha reso sensati.
@@ -4351,6 +4410,9 @@ def _stream_agent_turn_impl(
                 )
 
             tool_observations.append(obs_str)
+
+        run_metrics["prefetch_consumati"] += prefetch.consumati
+        prefetch.chiudi()
 
         yield {"type": "turn_end", "turn": current_turn, "has_tools": True}
 

@@ -223,6 +223,146 @@ def summarize_and_record_eviction(
     return summary_text
 
 
+#: Quante righe tenere in testa e in coda a un'osservazione compressa. L'inizio
+#: dice cosa e' stato chiesto, la fine dice com'e' finita: sono le due posizioni
+#: in cui un output di terminale mette l'informazione, e in mezzo c'e' il
+#: rumore. Le righe in mezzo che contano davvero le salvano le ancore.
+INTESTAZIONE_RIGHE = 8
+CODA_RIGHE = 12
+
+#: Sotto questa dimensione comprimere non conviene: si pagherebbe una nota di
+#: omissione per risparmiare qualche riga.
+MINIMO_COMPRIMIBILE = 1200
+
+#: Le finestre di testa e coda, in ordine di generosita'. La prima e' quella
+#: normale; le altre si aprono solo se il budget non si raggiunge con quella, e
+#: servono a non dover buttare via un turno intero per venti righe di margine.
+#: Sotto le tre righe non si scende: un'osservazione senza inizio ne' fine non
+#: e' piu' riconoscibile come il risultato di quel comando.
+FINESTRE = ((INTESTAZIONE_RIGHE, CODA_RIGHE), (5, 6), (3, 3))
+
+#: Le righe che **non si perdono mai**. Un errore compresso via e' peggio di un
+#: turno in piu' nella finestra: l'agente crede di aver capito e riscrive il
+#: codice da capo. E' questo insieme che rende la compressione un'operazione
+#: sicura invece di una scommessa.
+PATRONI_ANCORA = re.compile(
+    r"(error|errore|errori|exception|traceback|assert|failed|failure|fallit|fatal"
+    r"|panic|denied|refus|impossibile|non trovato|not found|missing|manca"
+    r"|exit_code|exit code|exit status|nonzero|returned non-zero|signal"
+    r"|E[0-9]{3}\b|✗|✘|❌|FAILED|Traceback"
+    # Le righe di cornice di un traceback Python («  File "x.py", line 12») non
+    # contengono nessuno dei termini qui sopra, e senza di esse la traccia resta
+    # senza il punto in cui il guasto e' avvenuto: e' la riga che l'agente
+    # guarda per prima.
+    r'|File "[^"]+", line \d+)',
+    re.IGNORECASE,
+)
+
+#: Una riga di diff aggiunta o tolta vale come ancora: e' cio' che l'agente ha
+#: appena scritto, e ricostruirlo dal riassunto non si puo'.
+PATRONI_DIFF = re.compile(r"^[+-]{1,3} (?!\+\+|--)")
+
+
+def _e_ancora(riga: str) -> bool:
+    """Vero se questa riga va tenuta comunque."""
+    return bool(PATRONI_ANCORA.search(riga)) or bool(PATRONI_DIFF.match(riga))
+
+
+def _cuci(righe: List[str], testa: int, coda: int) -> str:
+    """Riunisce testa, coda e ancore, dichiarando le righe saltate."""
+    tenute = set(range(min(testa, len(righe))))
+    tenute |= set(range(max(0, len(righe) - coda), len(righe)))
+    tenute |= {i for i, riga in enumerate(righe) if _e_ancora(riga)}
+
+    pezzi: List[str] = []
+    saltate = 0
+    for i, riga in enumerate(righe):
+        if i in tenute:
+            if saltate:
+                pezzi.append(f"[... {saltate} righe omesse: nessun errore fra queste ...]")
+                saltate = 0
+            pezzi.append(riga)
+        else:
+            saltate += 1
+    if saltate:
+        pezzi.append(f"[... {saltate} righe omesse: nessun errore fra queste ...]")
+    return "\n".join(pezzi)
+
+
+def comprimi_testo(testo: str, max_chars: int) -> Tuple[str, int]:
+    """Riduce un'osservazione al suo significato. Restituisce (testo, risparmio).
+
+    Il risparmio e' zero quando comprimere non conviene: testo gia' corto, o
+    un'osservazione fatta quasi solo di ancore — un diff enorme, un log in cui
+    ogni riga e' un errore. In quel caso non si tocca niente e decide lo stadio
+    successivo, lo sfratto. Non comprimere e' sempre una risposta valida:
+    l'alternativa, perdere righe, non lo e'.
+
+    Si prova prima con la finestra generosa, poi con finestre piu' strette solo
+    se il budget non e' ancora rispettato. E' la differenza fra comprimere e
+    comprimere abbastanza: un tentativo solo lascerebbe la finestra sopra il
+    limite, lo sfratto scatterebbe lo stesso, e il turno perso sarebbe stato
+    pagato con una compressione inutile.
+    """
+    if max_chars <= 0 or len(testo) <= max_chars or len(testo) < MINIMO_COMPRIMIBILE:
+        return testo, 0
+    righe = testo.splitlines()
+    if len(righe) < INTESTAZIONE_RIGHE + CODA_RIGHE + 4:
+        return testo, 0
+
+    migliore: Optional[str] = None
+    for testa, coda in FINESTRE:
+        compresso = _cuci(righe, testa, coda)
+        if len(compresso) >= len(testo):
+            continue
+        if migliore is None or len(compresso) < len(migliore):
+            migliore = compresso
+        if len(compresso) <= max_chars:
+            break
+    if migliore is None:
+        return testo, 0
+    return migliore, len(testo) - len(migliore)
+
+
+def comprimi_osservazioni(messaggi: List[Dict[str, str]],
+                          max_chars: int) -> Tuple[List[Dict[str, str]], int]:
+    """Comprime i messaggi piu' grossi finche' il totale sta nel budget.
+
+    Si parte dal piu' grosso perche' e' quello che rende di piu' a parita' di
+    righe; fermarsi appena il totale rientra evita di comprimere anche cio' che
+    non serviva. Restituisce la lista nuova e i caratteri risparmiati.
+    """
+    totale = sum(len(m.get("content", "")) for m in messaggi)
+    if totale <= max_chars:
+        return list(messaggi), 0
+
+    lavoro = list(messaggi)
+    risparmiati = 0
+    indici = sorted(range(len(lavoro)),
+                    key=lambda i: -len(lavoro[i].get("content", "")))
+    for i in indici:
+        eccedenza = totale - risparmiati - max_chars
+        if eccedenza <= 0:
+            break
+        contenuto = lavoro[i].get("content", "")
+        if len(contenuto) < MINIMO_COMPRIMIBILE:
+            continue
+        # L'obiettivo e' scendere esattamente di quanto eccede. Non c'e' un
+        # pavimento: il pavimento e' la struttura del testo — testa, coda e
+        # ancore — e `comprimi_testo` non scende sotto quella. Un tetto
+        # artificiale («non oltre la meta'») avrebbe l'effetto opposto a quello
+        # voluto: la finestra non rientrerebbe, lo sfratto scatterebbe lo
+        # stesso, e si sarebbe perso un turno *dopo* averlo comprato con una
+        # compressione.
+        nuovo, risparmio = comprimi_testo(contenuto, len(contenuto) - eccedenza)
+        if risparmio > 0:
+            aggiornato = dict(lavoro[i])
+            aggiornato["content"] = nuovo
+            lavoro[i] = aggiornato
+            risparmiati += risparmio
+    return lavoro, risparmiati
+
+
 def compact_history_with_memory(
     messages: List[Dict[str, str]],
     ledger: Optional[DevSessionLedger],
@@ -246,6 +386,20 @@ def compact_history_with_memory(
     rest = list(messages[2:])
 
     to_evict: List[Dict[str, str]] = []
+
+    # Prima di togliere turni si prova a rimpicciolirli. Sono due operazioni
+    # diverse e finora ce n'era una sola: sfrattare butta via un turno intero —
+    # la richiesta, la risposta, gli errori — mentre comprimere toglie le righe
+    # che nessuno rileggera' e tiene quelle che servono. Su un run di
+    # esplorazione la maggior parte del transcript e' output di terminale, e la
+    # parte che vale e' una frazione: buttarne il turno intero era la scelta
+    # piu' costosa fra le due. Lo sfratto resta, ma diventa il secondo stadio.
+    rest, risparmiati = comprimi_osservazioni(rest, max_history_chars)
+    if risparmiati:
+        # Nel log perche' e' l'unico posto dove si vede la differenza fra «la
+        # finestra stava dentro» e «e' stata fatta stare».
+        log.info("[Compaction] osservazioni compresse: %d caratteri risparmiati "
+                 "senza sfrattare nessun turno", risparmiati)
 
     # 1. Controllo limite di caratteri totali
     while len(rest) > 1 and sum(len(m.get("content", "")) for m in rest) > max_history_chars:
