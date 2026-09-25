@@ -769,6 +769,7 @@ def handle_models_hf_card_update(self):
             custom_notes=body.get("custom_notes") or None,
             include_benchmarks=bool(body.get("include_benchmarks", True)),
             include_hardware=bool(body.get("include_hardware", True)),
+            benchmark_summary=body.get("benchmark_summary") or None,
         )
         self.send_json_response(esito, 200 if esito.get("success") else 400)
     except Exception as e:

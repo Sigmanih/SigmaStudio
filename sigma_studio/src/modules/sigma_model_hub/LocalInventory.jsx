@@ -385,7 +385,8 @@ export default function LocalInventory({
           local_path: model.path || model.filename,
           model_id: model.model_id || model.filename,
           clean_name: model.clean_name || '',
-          repo_id: repoId
+          repo_id: repoId,
+          benchmark_summary: model.benchmark_summary || undefined,
         })
       });
       const json = await res.json();

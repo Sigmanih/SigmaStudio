@@ -135,9 +135,7 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
   }, [model, targetNamespace, repoSlug, customCardNotes, includeBenchmarks, includeHardware]);
 
   useEffect(() => {
-    if (activeModalTab === 'preview') {
-      fetchCardPreview();
-    }
+    fetchCardPreview();
   }, [activeModalTab, fetchCardPreview]);
 
   // Poll active task status
@@ -241,6 +239,7 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
           custom_notes: customCardNotes.trim() || undefined,
           include_benchmarks: includeBenchmarks,
           include_hardware: includeHardware,
+          benchmark_summary: model.benchmark_summary || undefined,
           token: manualToken.trim() || undefined
         })
       });
