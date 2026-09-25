@@ -230,5 +230,40 @@ class TestFlagRealmenteEsistenti(unittest.TestCase):
                 self.assertIn(argomento, self.aiuto)
 
 
+class TestLoStageDiUnAvvioFallito(unittest.TestCase):
+    """Un motore piu' vecchio del modello non e' un problema di memoria.
+
+    Il testo lo produce `_attendi_pronto` leggendo il log di llama.cpp; lo stage
+    lo deduce `_stage_del_motivo`, ed e' quello che decide se in chat compare o
+    no il consiglio di ridurre il contesto. Consigliarlo davanti a
+    un'architettura sconosciuta e' la stessa diagnosi sbagliata gia' corretta
+    per l'istruzione illegale.
+    """
+
+    def test_architettura_sconosciuta_e_un_guasto_del_runtime(self):
+        from core.engine.backends.llamaserver_backend import _stage_del_motivo
+
+        for motivo in (
+            "La build di llama.cpp installata (b10682) non conosce l'architettura "
+            "'spark2_5'. Il file GGUF e' valido: aggiorna il runtime dal pannello "
+            "del motore e riprova.",
+            "error loading model: unknown model architecture: 'spark2_5'",
+        ):
+            with self.subTest(motivo=motivo[:40]):
+                self.assertEqual(_stage_del_motivo(motivo), "runtime")
+
+    def test_un_guasto_qualsiasi_resta_del_caricamento(self):
+        from core.engine.backends.llamaserver_backend import _stage_del_motivo
+
+        for motivo in (
+            "llama-server non ha risposto entro 300s",
+            "llama-server e' terminato (codice 1)",
+            "",
+            None,
+        ):
+            with self.subTest(motivo=str(motivo)[:40]):
+                self.assertEqual(_stage_del_motivo(motivo), "load")
+
+
 if __name__ == "__main__":
     unittest.main()

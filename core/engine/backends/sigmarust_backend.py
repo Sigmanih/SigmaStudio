@@ -629,12 +629,17 @@ class SigmaRustBackend(InferenceBackend):
         self._facts = facts
         model_name = facts.name or os.path.basename(facts.path or "unknown")
 
-        # 1. Caricamento del worker di calcolo CUDA delegato
+        # 1. Caricamento del worker di calcolo delegato
+        delega: Dict[str, Any] = {
+            "success": False,
+            "stage": "load",
+            "error": "il worker di calcolo non e' partito",
+        }
         try:
             from core.engine.backends.llamaserver_backend import LlamaServerBackend
             self._compute_delegate = LlamaServerBackend()
-            del_res = self._compute_delegate.load(facts, hardware, **options)
-            if del_res.get("success"):
+            delega = self._compute_delegate.load(facts, hardware, **options) or delega
+            if delega.get("success"):
                 porta = getattr(self._compute_delegate, "_porta", 57540)
                 # Registra l'upstream worker nel micro-kernel Rust (sia host.docker.internal che localhost)
                 try:
@@ -649,9 +654,28 @@ class SigmaRustBackend(InferenceBackend):
                 except Exception as up_exc:
                     log.warning("[SigmaRustBackend] Impossibile notificare upstream al kernel Rust: %s", up_exc)
             else:
-                log.warning("[SigmaRustBackend] Caricamento worker delegato non riuscito: %s", del_res.get("error"))
+                log.error("[SigmaRustBackend] Caricamento worker delegato non riuscito: %s", delega.get("error"))
         except Exception as exc:
-            log.warning("[SigmaRustBackend] Fallito avvio compute delegate: %s", exc)
+            delega = {"success": False, "stage": "load",
+                      "error": f"{type(exc).__name__}: {exc}"}
+            log.error("[SigmaRustBackend] Fallito avvio compute delegate: %s", exc)
+
+        # Senza worker non c'e' calcolo, e il kernel non lo inventa: e' un
+        # orchestratore, e la rotta `/v1/chat/completions` risponde 503 quando
+        # nessun upstream risponde (e' la scelta dichiarata in coda_inferenza.json:
+        # meglio un rifiuto che testo finto — il forward pass in Rust e' la voce
+        # i2, non ancora scritta). Mappare il modello nel piano di tiering e
+        # dichiarare il caricamento riuscito lascerebbe la chat con un modello
+        # elencato fra quelli attivi che non produce un token: e' esattamente
+        # cio' che l'utente vede come "non funziona nemmeno l'inferenza".
+        if not delega.get("success"):
+            self._compute_delegate = None
+            return {
+                "success": False,
+                "backend": self.name,
+                "error": str(delega.get("error") or "il worker di calcolo non e' partito"),
+                "stage": delega.get("stage") or "load",
+            }
 
         # 2. Registrazione partizione zero-copy nel kernel Rust
         payload = {

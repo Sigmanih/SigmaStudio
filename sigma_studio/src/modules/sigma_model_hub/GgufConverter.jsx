@@ -665,6 +665,40 @@ export default function GgufConverter({ isLight, addToast, initialModel, jobs = 
           <span>{activeJob ? 'Conversione in corso…' : '⚡ Avvia Conversione in GGUF'}</span>
         </button>
 
+        {/* Un pulsante spento senza spiegazione sembra un guasto, ed e' il modo
+            in cui "il convertitore non funziona" viene percepito quando invece
+            la conversione e' impossibile: la ragione il server la sa gia'
+            (compatibility.summary) e resta scritta qui sotto finche' non cambia
+            la scelta del modello. */}
+        {!!model?.compatibility?.blocked_by?.length && (
+          <div style={{
+            padding: '12px 14px', borderRadius: '10px',
+            background: 'rgba(245, 158, 11, 0.10)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            display: 'flex', flexDirection: 'column', gap: '8px'
+          }}>
+            <div style={{
+              fontSize: '0.76rem', fontWeight: 800, color: '#f59e0b',
+              display: 'flex', alignItems: 'center', gap: '6px'
+            }}>
+              <AlertTriangle size={14} color="#f59e0b" />
+              Conversione non disponibile per questo modello
+            </div>
+            <div style={{ fontSize: '0.74rem', color: textPrimary, lineHeight: 1.5 }}>
+              {model?.compatibility?.summary
+                || 'Il runtime installato non sa leggere questa architettura.'}
+            </div>
+            {model?.compatibility?.upstream_missing && (
+              <div style={{ fontSize: '0.70rem', color: textMuted, lineHeight: 1.5 }}>
+                Non dipende da questa macchina né da strumenti più recenti: il
+                supporto manca a monte, e finché non arriva nessuna build saprà
+                caricare il file. Il modello resta usabile dai pesi Safetensors,
+                che non passano da llama.cpp.
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Perche' l'avvio e' stato rifiutato. Resta finche' non cambia la scelta. */}
         {startError && (
           <div style={{

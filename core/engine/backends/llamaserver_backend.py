@@ -123,6 +123,22 @@ _SLOT_CTX_MINIMO = 8192
 _SLOT_MASSIMI = 4
 
 
+def _stage_del_motivo(motivo: str) -> str:
+    """Lo stage di un avvio fallito, dedotto dal motivo.
+
+    Un runtime che non conosce l'architettura e' un guasto del motore, non della
+    memoria: e' lo stesso stage che il backend llama.cpp usa per l'istruzione
+    illegale, ed e' quello che chi compone il messaggio in chat legge per non
+    consigliare di ridurre il contesto davanti a un problema che il contesto non
+    tocca. Il testo che lo distingue lo produce `_attendi_pronto`, ed e' scritto
+    li' perche' li' si sa quale riga del log di llama.cpp lo ha generato.
+    """
+    testo = str(motivo or "").lower()
+    if "non conosce l'architettura" in testo or "unknown model architecture" in testo:
+        return "runtime"
+    return "load"
+
+
 def _slot_richiesti_da_ambiente() -> Optional[int]:
     """Il numero di slot imposto da SIGMA_PARALLEL_SLOTS, se valido."""
     grezzo = os.environ.get("SIGMA_PARALLEL_SLOTS", "").strip()
@@ -557,7 +573,8 @@ class LlamaServerBackend(InferenceBackend):
             break
 
         if not pronto:
-            return {"success": False, "stage": "load", "error": ultimo_errore,
+            return {"success": False, "stage": _stage_del_motivo(ultimo_errore),
+                    "error": ultimo_errore,
                     "stderr": ultima_uscita, "settings": settings_correnti}
 
         # Se e' servito il ripiego senza mmap, quel modello se lo tiene. Il
