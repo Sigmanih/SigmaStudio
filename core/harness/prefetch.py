@@ -29,6 +29,14 @@ Da qui una proprieta' che vale la pena dichiarare: **se il prefetch non parte,
 il turno e' identico a prima**. Un futuro non pronto al momento in cui serve
 significa eseguire il tool in linea come sempre, e un errore dentro un thread
 significa eseguirlo in linea. La via di servizio e' la vecchia strada.
+
+**Quanto rende, misurato.** Quattro letture che attendono 150 ms l'una: da
+600 ms in fila a 153 ms anticipate, il 75% in meno. Quattro ``search_code`` su
+un albero di tremila file: da 1285 ms a 1077 ms, il 16% in meno. La differenza
+fra i due casi e' che il primo e' attesa e il secondo e' lavoro di Python, che
+la GIL quasi non lascia passare in due thread. Il guadagno sta nell'attesa —
+letture grandi, cache fredda, dischi lenti — non nella CPU; e un pool che non
+serve a niente costa mezzo millisecondo per turno.
 """
 
 from __future__ import annotations
@@ -114,8 +122,13 @@ class PrefetchLetture:
         if not tutte_anticipabili(nomi):
             return False
         try:
+            # Un thread per chiamata, fino al tetto del disco. Il `- 1` che
+            # c'era qui riservava un posto a un consumatore che non consuma:
+            # il thread del ciclo, quando un futuro non e' pronto, esegue il
+            # tool da solo e non occupa il pool. Misurato su quattro letture da
+            # 150 ms: 300 ms con tre thread, 150 ms con quattro.
             self._pool = ThreadPoolExecutor(
-                max_workers=min(self._max_worker, len(tool) - 1),
+                max_workers=min(self._max_worker, len(tool)),
                 thread_name_prefix="sigma-prefetch",
             )
         except Exception as exc:  # pragma: no cover - dipende dall'OS

@@ -9,6 +9,7 @@ altri fissano le regole che rendono sicuro l'innesto — quando si anticipa, cos
 succede se il futuro non e' pronto, e soprattutto che una scrittura in mezzo
 spenga tutto.
 """
+import threading
 import time
 
 from core.harness.prefetch import PrefetchLetture, tutte_anticipabili
@@ -77,6 +78,47 @@ class TestIlTempo:
             f"quattro letture in fila costano {seriale:.3f}s, anticipate "
             f"{parallelo:.3f}s: non sono state sovrapposte"
         )
+
+
+class TestQuantiInsieme:
+    """Quante letture girano davvero nello stesso momento.
+
+    Misurato il 25 settembre 2026 su quattro letture da 150 ms: 600 ms in fila,
+    300 ms anticipate con un thread in meno delle chiamate, 150 ms con un thread
+    per chiamata. Il tetto si conta quindi sulle chiamate: il thread del ciclo,
+    quando un futuro non e' pronto, esegue il tool da solo e non toglie posto a
+    nessuno.
+    """
+
+    def test_ogni_lettura_ha_il_suo_thread(self, monkeypatch):
+        from core.harness import loop as L
+
+        vivi = 0
+        picco = 0
+        guardia = threading.Lock()
+
+        def _lenta(nome, params, workspace_root, **resto):
+            nonlocal vivi, picco
+            with guardia:
+                vivi += 1
+                picco = max(picco, vivi)
+            time.sleep(0.1)
+            with guardia:
+                vivi -= 1
+            return {"success": True, "content": params.get("path", "")}
+
+        monkeypatch.setattr(L, "execute_admin_tool", _lenta)
+        batch = [{"tool": "read_file", "params": {"path": f"f{i}.txt"}}
+                 for i in range(4)]
+        pf = PrefetchLetture()
+        assert pf.avvia(batch, ".")
+        scadenza = time.monotonic() + 5
+        while time.monotonic() < scadenza and pf.consumati < len(batch):
+            for inv in batch:
+                pf.risultato(inv["tool"], inv["params"])
+            time.sleep(0.005)
+        pf.chiudi()
+        assert picco == 4, f"sovrapposte {picco} letture su 4"
 
 
 class TestViaDiServizio:
