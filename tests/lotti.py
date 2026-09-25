@@ -42,6 +42,7 @@ LENTI: Tuple[str, ...] = (
 #: rapide per colpa di poche, e il file verrebbe eseguito solo di rado.
 LENTI_PER_CLASSE: Tuple[str, ...] = (
     "TestBatchedGenerationAgainstRealModel",
+    "TestCheckpointReale",
 )
 
 #: lotto -> file di prova che gli appartengono.
@@ -89,7 +90,7 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "mmap_avvio", "model_hub_scores", "model_specs_precision",
         "moe_placement", "numeri_del_provider", "objective_inference",
         "prefix_cache_slots", "quantize_diagnosi", "radix_cache_integration",
-        "rust_kernel_simd", "sigmarust_backend",
+        "rust_kernel_simd", "sigmarust_backend", "transformers_5_compat",
     ),
     "moduli": (
         "capability_manager", "docker_fs", "dynamic_swarm", "eda_harness_tools",

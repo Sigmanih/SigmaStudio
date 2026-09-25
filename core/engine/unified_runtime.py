@@ -96,6 +96,117 @@ def _unrecognised_architecture(error: str) -> bool:
             or "unrecognized configuration class" in lowered)
 
 
+def _catena_di_eccezioni(exc: BaseException):
+    """L'eccezione e quelle da cui e' nata, una volta ciascuna.
+
+    `_describe_exception` percorre la stessa catena per raccontarla; qui serve
+    per esaminarla, e i cicli vanno chiusi a mano perche' `__context__` puo'
+    rimandare indietro.
+    """
+    viste = set()
+    corrente = exc
+    while isinstance(corrente, BaseException) and id(corrente) not in viste:
+        viste.add(id(corrente))
+        yield corrente
+        corrente = corrente.__cause__ or corrente.__context__
+
+
+def _e_errore_di_memoria(exc: BaseException) -> bool:
+    """OutOfMemory, MemoryError, o il testo che CUDA scrive quando non c'e' posto."""
+    for singola in _catena_di_eccezioni(exc):
+        if isinstance(singola, MemoryError):
+            return True
+        if "outofmemory" in type(singola).__name__.lower():
+            return True
+        testo = str(singola).lower()
+        if ("out of memory" in testo or "cannot allocate memory" in testo
+                or "cuda_error_out_of_memory" in testo or "not enough memory" in testo):
+            return True
+    return False
+
+
+def _errore_nel_codice_del_runtime(exc: BaseException, percorso_modello: str = "") -> bool:
+    """Se il guasto e' nato nella libreria o nel codice del checkpoint, non qui.
+
+    Serve a non consigliare meno contesto o piu' quantizzazione quando la
+    memoria non c'entra: un checkpoint scritto per un'altra versione di
+    transformers esplode dentro `site-packages/transformers` o dentro il proprio
+    `modeling_x.py`, e nessuna quantizzazione cambia una firma di funzione.
+
+    Il posto conta meno della causa per un errore di memoria, che resta un
+    errore di memoria anche quando esplode dentro la libreria: e' il primo caso
+    che la diagnosi deve continuare a riconoscere come tale.
+
+    Un errore di collocazione (accelerate che non sa dove mettere i pesi) non ha
+    frame nella libreria, quindi resta "load" e riceve il consiglio sulla
+    memoria, che li' e' quello giusto.
+    """
+    if _e_errore_di_memoria(exc):
+        return False
+
+    modello = str(percorso_modello or "").replace("\\", "/").rstrip("/")
+    for singola in _catena_di_eccezioni(exc):
+        traccia = singola.__traceback__
+        while traccia is not None:
+            nome_file = str(traccia.tb_frame.f_code.co_filename or "").replace("\\", "/")
+            traccia = traccia.tb_next
+            if not nome_file:
+                continue
+            if "/transformers/" in nome_file or "/transformers_modules/" in nome_file:
+                return True
+            if modello and nome_file.startswith(modello + "/"):
+                return True
+    return False
+
+
+def _advice_codice_del_checkpoint(result: Dict[str, Any]) -> str:
+    """Cosa dire quando a rompersi e' il codice che il checkpoint porta con se'.
+
+    Il consiglio sulla memoria, qui, manda a cercare dalla parte sbagliata. Il
+    motivo vero e' che quel codice e' stato scritto per un'altra versione di
+    transformers, e le due versioni si possono mettere una accanto all'altra
+    invece di indovinare.
+    """
+    info = result.get("facts") or {}
+    percorso = str(info.get("path") or result.get("path") or "")
+
+    salvata = ""
+    try:
+        import json
+
+        with open(os.path.join(percorso, "config.json"), "r", encoding="utf-8") as fh:
+            salvata = str(json.load(fh).get("transformers_version") or "")
+    except Exception:
+        salvata = ""
+
+    installata = ""
+    try:
+        import transformers
+
+        installata = str(getattr(transformers, "__version__", ""))
+    except Exception:
+        pass
+
+    if salvata and installata:
+        versioni = (f"Questo codice e' stato scritto per transformers **{salvata}**, "
+                    f"qui e' installata la **{installata}**.")
+    else:
+        versioni = ("Questo codice e' stato scritto per una versione di transformers "
+                    "diversa da quella installata.")
+
+    return (
+        f"⚠️ **Non e' un problema di memoria**: il guasto e' nato dentro transformers "
+        f"o dentro il codice che il checkpoint porta con se' (`modeling_*.py`), "
+        f"prima che i pesi entrassero in gioco. {versioni} Le API che usa non sono "
+        f"piu' quelle, e nessuna quantizzazione piu' aggressiva cambia una firma di "
+        f"funzione.\n\n"
+        f"Due vie reali: usa la variante **GGUF** dello stesso modello (la "
+        f"conversione sta nel Model Hub) e non passa da transformers; oppure "
+        f"segnala l'incompatibilita' al repository del modello, che e' l'unico "
+        f"posto dove si puo' correggere per tutti."
+    )
+
+
 def _version_mismatch_advice(model_path: str) -> str:
     """
     Names the real cause when a checkpoint is newer than the library reading it.
@@ -265,6 +376,9 @@ class UniversalSigmaEngine:
         self.model_facts: Optional[ModelFacts] = None
         self.placement_plan: Optional[PlacementPlan] = None
         self.last_load_error: Optional[str] = None
+        #: Da dove viene l'ultimo guasto di caricamento: "codice_modello" quando
+        #: e' nato nella libreria o nel codice del checkpoint, vuoto altrimenti.
+        self.last_load_origin: str = ""
         self.last_device_map_report: Optional[Dict[str, Any]] = None
         self._load_lock = threading.Lock()
         # Whether the resident checkpoint's chat template reads
@@ -781,11 +895,16 @@ class UniversalSigmaEngine:
         except Exception as exc:
             error = _describe_exception(exc)
             self.last_load_error = error
+            # La preparazione tocca `AutoConfig` e il tokenizer, cioe' proprio il
+            # codice del checkpoint: se esplode la', non e' la memoria.
+            origine = "codice_modello" if _errore_nel_codice_del_runtime(exc, target_path) else ""
+            self.last_load_origin = origine
             log.error("[SigmaEngine] Preparation failed: %s", error, exc_info=True)
             return {
                 "success": False,
                 "error": error,
-                "stage": "preparation",
+                "stage": "runtime" if origine else "preparation",
+                "origine": origine or None,
                 "facts": facts.to_dict(),
             }
 
@@ -840,13 +959,18 @@ class UniversalSigmaEngine:
 
         if model is None:
             self.last_load_error = load_error
+            origine = getattr(self, "last_load_origin", "")
             log.error(
                 "[SigmaEngine] Failed to load '%s': %s", display_name, load_error
             )
             return {
                 "success": False,
                 "error": load_error,
-                "stage": "load",
+                # Un guasto nato nella libreria non e' un problema di memoria, e
+                # il consiglio sulla memoria e' l'unica cosa che non va detta:
+                # lo stage lo dice a chi compone il messaggio.
+                "stage": "runtime" if origine else "load",
+                "origine": origine or None,
                 "plan": plan.to_dict(),
                 "facts": facts.to_dict(),
             }
@@ -1031,6 +1155,9 @@ class UniversalSigmaEngine:
             plan.offload_folder,
         )
 
+        # Ogni tentativo riparte da qui: e' questo che dice di chi e' la colpa se
+        # fallisce, e un valore lasciato dal tentativo precedente mentirebbe.
+        self.last_load_origin = ""
         try:
             model = model_cls.from_pretrained(target_path, **load_kwargs)
             if not isinstance(device_map, str) and device_map:
@@ -1064,6 +1191,8 @@ class UniversalSigmaEngine:
                     model = model_cls.from_pretrained(target_path, **load_kwargs)
             return model, None
         except Exception as exc:
+            if _errore_nel_codice_del_runtime(exc, target_path):
+                self.last_load_origin = "codice_modello"
             return None, f"{type(exc).__name__}: {exc}"
 
     def _resolve_device_map(
@@ -2927,8 +3056,14 @@ class UniversalSigmaEngine:
         # (0xC000001D), che si e' presentata all'utente con il consiglio di
         # ridurre il contesto.
         if result.get("stage") == "runtime" or _causa_gia_spiegata(error):
-            return (f"❌ **SigmaEngine non ha potuto caricare `{target_model}`**\n\n"
-                    f"{error}")
+            message = (f"❌ **SigmaEngine non ha potuto caricare `{target_model}`**\n\n"
+                       f"{error}")
+            # Un guasto nato nella libreria o nel codice del checkpoint ha una
+            # spiegazione, e non e' la memoria: il ramo qui sopra ha tolto il
+            # consiglio sbagliato, questo mette quello giusto.
+            if result.get("origine") == "codice_modello":
+                message += "\n\n" + _advice_codice_del_checkpoint(result)
+            return message
 
         hints = {
             "discovery": (

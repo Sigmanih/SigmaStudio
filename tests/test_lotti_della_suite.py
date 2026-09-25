@@ -79,11 +79,16 @@ def test_le_prove_lente_esistono_ancora():
         assert (CARTELLA / ("test_%s.py" % nome)).exists(), (
             "il file lento dichiarato non esiste: test_%s.py" % nome)
 
-    contenuto = (CARTELLA / "test_objective_inference.py").read_text(encoding="utf-8")
-    trovate = sum(1 for classe in LENTI_PER_CLASSE if "class %s" % classe in contenuto)
-    assert trovate == len(LENTI_PER_CLASSE), (
-        "una classe dichiarata lenta non esiste piu' in test_objective_inference.py: "
-        "il marcatore non la troverebbe, e il file resterebbe escluso senza motivo")
+    # Le classi lente vivono dentro a file veloci, e possono stare in piu' di
+    # uno: si cerca in tutta la cartella invece che in un file solo, altrimenti
+    # questo controllo diventa il secondo posto in cui tenere l'elenco dei file.
+    contenuti = "\n".join(p.read_text(encoding="utf-8", errors="ignore")
+                          for p in _file_di_prova())
+    mancanti = [classe for classe in LENTI_PER_CLASSE
+                if "class %s" % classe not in contenuti]
+    assert not mancanti, (
+        "una classe dichiarata lenta non esiste piu': %s. Il marcatore non la "
+        "troverebbe, e il file resterebbe escluso senza motivo." % ", ".join(mancanti))
 
 
 def test_il_lotto_di_un_file_si_calcola_dalle_regole():

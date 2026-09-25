@@ -162,5 +162,141 @@ class TestImpostazioniManuali(unittest.TestCase):
                               f"'{nome}' non compare fra le impostazioni del backend")
 
 
+def _solleva_da(percorso_finto: str, sorgente: str) -> BaseException:
+    """L'eccezione sollevata da un frame che dichiara di stare in `percorso_finto`.
+
+    `compile` accetta un nome di file arbitrario, quindi la prova puo' mettersi
+    nei panni di un frame dentro transformers senza aspettare che quella
+    libreria si rompa davvero: quale riga esplode cambia a ogni versione, il
+    posto in cui esplode no.
+    """
+    codice = compile(sorgente, percorso_finto, "exec")
+    try:
+        exec(codice, {})
+    except BaseException as exc:
+        return exc
+    raise AssertionError("il frammento non ha sollevato niente")
+
+
+class TestDiagnosiDelCodiceDelCheckpoint(unittest.TestCase):
+    """Un guasto nato nella libreria non e' un problema di memoria.
+
+    Stessa origine della prova qui sopra, un giro di versioni dopo: un
+    checkpoint con codice proprio, scritto per transformers 4.57.1, esplode
+    dentro `site-packages/transformers` prima che i pesi entrino in gioco. Il
+    messaggio che l'utente riceveva consigliava di ridurre il contesto.
+    """
+
+    @staticmethod
+    def _percorso_in_transformers(nome_file: str) -> str:
+        from pathlib import Path
+
+        import transformers
+
+        return str(Path(transformers.__file__).parent / nome_file)
+
+    def test_un_errore_dentro_transformers_e_del_runtime(self):
+        """La forma vera: AttributeError sollevato da `validate_rope`."""
+        from core.engine.unified_runtime import _errore_nel_codice_del_runtime
+
+        errore = _solleva_da(
+            self._percorso_in_transformers("modeling_rope_utils.py"),
+            "raise AttributeError(\"'float' object has no attribute 'get'\")",
+        )
+        self.assertTrue(_errore_nel_codice_del_runtime(errore))
+
+    def test_un_errore_nel_codice_del_checkpoint_e_del_runtime(self):
+        """Il `modeling_x.py` del checkpoint, importato dalla cache dei moduli."""
+        from core.engine.unified_runtime import _errore_nel_codice_del_runtime
+
+        errore = _solleva_da(
+            "C:/utente/.cache/huggingface/modules/transformers_modules/"
+            "XHToken--Spark-X2.5-4B/modeling_spark.py",
+            "raise TypeError('create_causal_mask() got an unexpected keyword argument')",
+        )
+        self.assertTrue(_errore_nel_codice_del_runtime(errore))
+
+    def test_un_errore_di_memoria_dentro_transformers_resta_di_memoria(self):
+        """Il posto conta meno della causa: un OOM e' un OOM anche dentro la libreria."""
+        from core.engine.unified_runtime import _errore_nel_codice_del_runtime
+
+        for sorgente in (
+            "raise MemoryError('CUDA out of memory. Tried to allocate 230.00 MiB')",
+            "raise RuntimeError('CUDA out of memory. Tried to allocate 230.00 MiB')",
+        ):
+            with self.subTest(sorgente=sorgente):
+                errore = _solleva_da(
+                    self._percorso_in_transformers("modeling_utils.py"), sorgente
+                )
+                self.assertFalse(_errore_nel_codice_del_runtime(errore))
+
+    def test_un_guasto_di_collocazione_resta_del_piano(self):
+        """accelerate che non sa dove mettere i pesi non e' un guasto di codice."""
+        from core.engine.unified_runtime import _errore_nel_codice_del_runtime
+
+        errore = _solleva_da(__file__, "raise RuntimeError('nessun dispositivo con spazio')")
+        self.assertFalse(_errore_nel_codice_del_runtime(errore))
+
+    def test_il_messaggio_nomina_le_due_versioni_e_non_la_memoria(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        from core.engine.unified_runtime import sigma_engine
+
+        with tempfile.TemporaryDirectory() as cartella:
+            Path(cartella, "config.json").write_text(
+                json.dumps({"transformers_version": "4.57.1"}), encoding="utf-8"
+            )
+            messaggio = sigma_engine._format_load_failure(
+                "XHToken--Spark-X2.5-4B",
+                {
+                    "stage": "runtime",
+                    "origine": "codice_modello",
+                    "error": "AttributeError: 'float' object has no attribute 'get'",
+                    "facts": {"path": cartella},
+                },
+            )
+        self.assertIn("Non e' un problema di memoria", messaggio)
+        self.assertIn("4.57.1", messaggio)
+        self.assertNotIn("riduci il contesto", messaggio)
+
+    def test_un_guasto_di_collocazione_riceve_ancora_il_consiglio_sulla_memoria(self):
+        from core.engine.unified_runtime import sigma_engine
+
+        messaggio = sigma_engine._format_load_failure(
+            "un-modello",
+            {"stage": "load",
+             "error": "torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 230.00 MiB"},
+        )
+        self.assertIn("riduci il contesto", messaggio)
+
+    def test_il_tentativo_di_caricamento_segna_da_dove_viene_il_guasto(self):
+        """Il posto del frame decide lo stage, e il caricatore lo registra."""
+        import types
+
+        from core.engine.unified_runtime import sigma_engine
+
+        percorso = self._percorso_in_transformers("modeling_utils.py")
+
+        class ModelloCheEsplode:
+            @staticmethod
+            def from_pretrained(*_args, **_kwargs):
+                # `_solleva_da` restituisce l'eccezione con la sua traccia: qui
+                # va rilanciata, perche' e' il caricatore a doverla classificare.
+                raise _solleva_da(percorso, "raise AttributeError('boom')")
+
+        precedente = sigma_engine.last_load_origin
+        modello, errore = sigma_engine._attempt_load(
+            ModelloCheEsplode, "percorso-finto",
+            types.SimpleNamespace(offload_folder=None, quantization="bf16"),
+            "float32", False,
+        )
+        self.assertIsNone(modello)
+        self.assertIn("AttributeError", errore)
+        self.assertEqual(sigma_engine.last_load_origin, "codice_modello")
+        sigma_engine.last_load_origin = precedente
+
+
 if __name__ == "__main__":
     unittest.main()
