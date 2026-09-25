@@ -136,7 +136,45 @@ def _stage_del_motivo(motivo: str) -> str:
     testo = str(motivo or "").lower()
     if "non conosce l'architettura" in testo or "unknown model architecture" in testo:
         return "runtime"
+    # Anche una GPU che cede e' un guasto che il contesto non tocca: lo dice
+    # `cuda_failure_report`, e questo lo tiene fuori dal ramo che consiglia di
+    # ridurre il contesto o di cambiare quantizzazione.
+    if "scheda video ha smesso di rispondere" in testo:
+        return "runtime"
     return "load"
+
+
+def _scalini_cuda(settings: Dict[str, Any], facts: Optional[ModelFacts] = None) -> List[Tuple[Dict[str, Any], str]]:
+    """Le configurazioni da provare dopo che la scheda video ha ceduto.
+
+    Prima **meta' dei layer** — la scheda puo' semplicemente non avere la VRAM
+    che il piano le attribuiva — poi **zero layer**: il modello si carica,
+    piano piano, e si puo' lavorare invece di guardare un errore.
+
+    Non si aggiunge mai `flash_attn` a una configurazione che non ce l'ha: qui
+    si toglie soltanto, perche' il piano sa decidere e queste sono riduzioni.
+
+    Le due voci sono le stesse del backend in-process (`llamacpp_backend`), che
+    da tempo scala a -25% e poi alla CPU: due scale diverse per lo stesso
+    guasto farebbero comportare lo stesso modello in due modi a seconda di come
+    si carica.
+    """
+    layer = int(settings.get("n_gpu_layers") or 0)
+    scalini: List[Tuple[Dict[str, Any], str]] = []
+
+    effettivi = getattr(facts, "num_hidden_layers", 0) or 0
+    if layer < 0 and effettivi > 0:
+        meta = max(1, effettivi // 2)
+        scalini.append((dict(settings, n_gpu_layers=meta, flash_attn=False),
+                        f"{meta} layer sulla GPU invece di tutti ({effettivi})"))
+    elif layer > 1:
+        meta = max(1, layer // 2)
+        scalini.append((dict(settings, n_gpu_layers=meta, flash_attn=False),
+                        f"{meta} layer sulla GPU invece di {layer}"))
+    if layer != 0:
+        scalini.append((dict(settings, n_gpu_layers=0, flash_attn=False),
+                        "nessun layer sulla GPU (tutto in CPU)"))
+    return scalini
 
 
 def _slot_richiesti_da_ambiente() -> Optional[int]:
@@ -225,8 +263,12 @@ def plan_to_args(settings: Dict[str, Any]) -> List[str]:
 
     aggiungi("-c", settings.get("n_ctx"))
     aggiungi("-b", settings.get("n_batch"))
+    aggiungi("-ub", settings.get("n_ubatch"))
     aggiungi("-t", settings.get("n_threads"))
     aggiungi("-tb", settings.get("n_threads_batch"))
+
+    aggiungi("-sm", settings.get("split_mode"))
+    aggiungi("-mg", settings.get("main_gpu"))
 
     split = settings.get("tensor_split")
     if split:
@@ -358,6 +400,10 @@ class LlamaServerBackend(InferenceBackend):
         #: server si ferma, e non c'e' modo di accorgersene dall'esterno.
         self._uscita: "deque[str]" = deque(maxlen=_RIGHE_LOG_TENUTE)
         self._lettore: Optional[threading.Thread] = None
+        #: Le riduzioni di offload gia' tentate in questo caricamento, in parole:
+        #: finiscono nel messaggio d'errore, perche' chi legge deve sapere cosa
+        #: e' stato provato al posto suo prima di riprovare a mano.
+        self._riduzioni_gpu: List[str] = []
 
     # --------------------------------------------------------- capabilities
 
@@ -481,6 +527,12 @@ class LlamaServerBackend(InferenceBackend):
         if settings.get("use_mmap") is not False:
             tentativi_settings.append(dict(settings, use_mmap=False))
 
+        #: Le riduzioni di offload che si aggiungono *strada facendo*, quando a
+        #: cedere e' la scheda video. Non si mettono in fila dall'inizio: un
+        #: modello che sulla GPU parte benissimo non deve pagare due avvii in
+        #: piu' solo perche' su un'altra macchina non partiva.
+        self._riduzioni_gpu = []
+
         t0 = time.perf_counter()
         ultimo_errore = ""
         ultima_uscita = ""
@@ -488,7 +540,12 @@ class LlamaServerBackend(InferenceBackend):
         porta = 0
         pronto = False
 
-        for indice_tentativo, cur_settings in enumerate(tentativi_settings):
+        # Un `while` e non un `for`: la scala dei tentativi si puo' allungare
+        # mentre la si percorre, quando il guasto e' di quelli che si curano
+        # abbassando l'offload.
+        indice_tentativo = 0
+        while indice_tentativo < len(tentativi_settings):
+            cur_settings = tentativi_settings[indice_tentativo]
             settings_correnti = cur_settings
             self.unload()
 
@@ -505,6 +562,8 @@ class LlamaServerBackend(InferenceBackend):
                 "-np", str(int(cur_settings.get("parallel_slots")
                                 or slot_per_contesto(cur_settings.get("n_ctx")))),
                 "-cb",
+                "--cache-reuse", "64",
+                "--slot-prompt-similarity", "0.5",
                 *plan_to_args(cur_settings),
             ]
 
@@ -552,10 +611,34 @@ class LlamaServerBackend(InferenceBackend):
             if pronto:
                 break
 
+            # Il codice d'uscita si legge **prima** di staccare il processo:
+            # `unload()` azzera `self._processo`, e senza di lui non si
+            # distingue un crash della scheda video da qualunque altro guasto.
+            codice_uscita = self._processo.poll() if self._processo else None
             uscita = self._raccogli_uscita()
             self.unload()
             ultimo_errore = motivo
             ultima_uscita = uscita
+
+            from core.engine.runtime_probe import is_cuda_failure
+
+            if is_cuda_failure(returncode=codice_uscita, testo=uscita):
+                # La scheda video ha ceduto mentre i pesi salivano. Le tre cause
+                # possibili non si distinguono da qui: quello che si puo' fare e'
+                # togliere carico alla GPU e riprovare, e alla fine arrendersi
+                # alla CPU. Ogni gradino costa un avvio intero, ed e' il motivo
+                # per cui si aggiungono uno alla volta e solo quando servono.
+                for ridotto, etichetta in _scalini_cuda(settings, facts):
+                    if ridotto not in tentativi_settings:
+                        tentativi_settings.append(ridotto)
+                        self._riduzioni_gpu.append(etichetta)
+                log.warning(
+                    "[LlamaServer] Caricamento fallito sulla GPU (codice %s): "
+                    "riprovo con %s", codice_uscita,
+                    "; ".join(self._riduzioni_gpu) or "nessuna riduzione possibile")
+                if self._riduzioni_gpu:
+                    indice_tentativo += 1
+                    continue
 
             is_mmap_page_error = (
                 cur_settings.get("use_mmap") is not False and (
@@ -569,6 +652,7 @@ class LlamaServerBackend(InferenceBackend):
                     "[LlamaServer] Caricamento fallito per errore di paginazione mmap (STATUS_IN_PAGE_ERROR). "
                     "Tentativo di ripristino automatico con --no-mmap..."
                 )
+                indice_tentativo += 1
                 continue
             break
 
@@ -594,6 +678,28 @@ class LlamaServerBackend(InferenceBackend):
                     "i prossimi caricamenti ci vanno diretti.", facts.name)
             except Exception as exc:
                 log.debug("[LlamaServer] annotazione mmap non riuscita: %s", exc)
+
+        # Se il modello e' partito solo con meno GPU, quel numero diventa il suo.
+        # Vale la stessa ragione dell'mmap: un avvio fallito costa minuti, e
+        # riprovare la configurazione piena a ogni caricamento per rivedere la
+        # scheda cedere e' minuti buttati. Il numero si legge nel pannello del
+        # motore come «Layer sulla GPU», e si toglie da li' quando la scheda
+        # torna a funzionare — per questo non si annota mai nulla di invisibile.
+        if self._riduzioni_gpu:
+            annotazioni: Dict[str, Any] = {
+                "n_gpu_layers": settings_correnti.get("n_gpu_layers"),
+            }
+            if "flash_attn" in settings:
+                annotazioni["flash_attn"] = bool(settings_correnti.get("flash_attn"))
+            try:
+                from core.engine import load_overrides
+                load_overrides.set_for(facts.name, annotazioni)
+                log.info(
+                    "[LlamaServer] '%s' e' partito solo con %s: annotato, i "
+                    "prossimi caricamenti ci vanno diretti.", facts.name,
+                    "; ".join(self._riduzioni_gpu))
+            except Exception as exc:
+                log.debug("[LlamaServer] annotazione GPU non riuscita: %s", exc)
 
         slot = int(settings_correnti.get("parallel_slots")
                    or slot_per_contesto(settings_correnti.get("n_ctx")))
@@ -943,7 +1049,8 @@ class LlamaServerBackend(InferenceBackend):
             if self._processo is None or self._processo.poll() is not None:
                 uscita = self._raccogli_uscita()
                 from core.engine.runtime_probe import (
-                    illegal_instruction_report, is_illegal_instruction)
+                    cuda_failure_report, illegal_instruction_report,
+                    is_cuda_failure, is_illegal_instruction)
                 codice = self._processo.poll() if self._processo else None
                 if is_illegal_instruction(returncode=codice, testo=uscita):
                     return (False, illegal_instruction_report())
@@ -977,6 +1084,14 @@ class LlamaServerBackend(InferenceBackend):
                         f"il trasferimento dei tensori. Avvia il modello con --no-mmap "
                         f"(use_mmap: false)."
                     )
+                if is_cuda_failure(returncode=codice, testo=uscita):
+                    # Ultimo dei casi specifici: il codice d'uscita e le firme
+                    # CUDA. Prima degli altri due non si poteva mettere, perche'
+                    # un errore di paginazione su un processo CUDA contiene
+                    # entrambe le cose, e la diagnosi piu' stretta va ascoltata
+                    # per prima.
+                    return (False, cuda_failure_report(
+                        uscita, getattr(self, "_riduzioni_gpu", [])))
                 return (False, f"llama-server e' terminato (codice {codice}).\n{uscita[-800:]}")
 
             try:
@@ -1127,12 +1242,17 @@ class LlamaServerBackend(InferenceBackend):
             "messages": conversazione,
             "stream": True,
         }
+        tk_kwargs: Dict[str, Any] = {}
         if thinking is not None:
+            tk_kwargs["enable_thinking"] = bool(thinking)
+        tb = getattr(params, "thinking_budget", None)
+        if tb is not None and str(tb).isdigit() and int(tb) > 0:
+            tk_kwargs["reasoning_budget"] = int(tb)
+            corpo["reasoning_budget"] = int(tb)
+        if tk_kwargs:
             # llama-server passa questo blocco al template Jinja del GGUF: e'
-            # la stessa leva di `apply_chat_template`, esposta via HTTP. Un
-            # template che non la conosce la ignora, quindi inviarla non puo'
-            # rompere un modello che non ragiona.
-            corpo["chat_template_kwargs"] = {"enable_thinking": bool(thinking)}
+            # la stessa leva di `apply_chat_template`, esposta via HTTP.
+            corpo["chat_template_kwargs"] = tk_kwargs
         if params.temperature is not None and params.temperature >= 0:
             corpo["temperature"] = float(params.temperature)
         if params.top_p is not None and 0.0 < params.top_p <= 1.0:

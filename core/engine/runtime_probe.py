@@ -32,7 +32,7 @@ import platform
 import subprocess
 import sys
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 from core import paths
 from core.logger import get_logger
@@ -320,4 +320,104 @@ def illegal_instruction_report(cpu: Dict[str, Any] = None) -> str:
         f"{rimedio}\n\n"
         "In alternativa, usa un provider Cloud da **Impostazioni AI**, oppure "
         "Ollama, che porta il proprio runtime."
+    )
+
+
+# ==============================================================================
+# LA GPU CHE SMETTE DI RISPONDERE
+# ==============================================================================
+#
+# Segnalazione reale, 25 settembre 2026, caricando sigmanih--Qwen3.8-27B:
+#
+#     llama-server e' terminato (codice 3221226505).
+#     ... E CUDA error: unspecified launch failure
+#     ... in function ggml_backend_cuda_buffer_set_tensor
+#     ... cudaMemcpyAsync((char *) tensor->data + offset, data, size,
+#                          cudaMemcpyHostToDevice, stream)
+#
+# Il messaggio che l'utente ha ricevuto in coda consigliava di ridurre il
+# contesto o di forzare una quantizzazione piu' aggressiva. E' lo stesso
+# consiglio sbagliato che questo file e' nato per togliere di mezzo nel caso
+# dell'istruzione illegale, e sbaglia allo stesso modo: il guasto e' una copia
+# di memoria host->device, quindi avviene **prima** che esistano un contesto e
+# una cache KV. Ridurre il contesto non tocca una cudaMemcpyAsync.
+#
+# Cio' che si puo' fare davvero e' togliere carico alla scheda: e' quello che fa
+# `LlamaServerBackend.load` con la scala di ripieghi, e il motivo per cui la
+# lista dei tentativi finisce in questo messaggio.
+
+#: Il codice con cui Windows chiude il processo quando la scheda video cede
+#: sotto di lui: STATUS_STACK_BUFFER_OVERRUN, che nell'uso reale arriva dai
+#: processi CUDA che crashano — non da uno stack davvero corrotto. A 32 bit con
+#: segno e' -1073740791.
+_WIN_CUDA_CRASH = 3221226505
+
+#: Le firme che llama.cpp lascia nell'uscita quando e' la GPU a cedere.
+_FIRME_CUDA = ("cuda error", "cudaerror", "ggml_backend_cuda", "cudamemcpy",
+               "cublas", "cuda driver")
+
+
+def is_cuda_failure(returncode: Optional[int] = None, testo: str = "") -> bool:
+    """Se il processo e' morto perche' la scheda video ha smesso di rispondere.
+
+    Decide il **testo**: le firme che llama.cpp scrive quando e' la GPU a
+    cedere. Il codice d'uscita da solo non basta — 0xC0000409 e' anche l'esito
+    di uno stack davvero corrotto, e consigliare di abbassare l'offload a chi ha
+    un altro guasto e' il modo di far perdere una serata. Vale pero' quando il
+    testo non c'e': un processo morto **senza dire niente**, con quel codice, e'
+    una scheda che si e' portata via il driver prima di poterlo raccontare.
+    """
+    uscita = str(testo or "").lower()
+    if any(firma in uscita for firma in _FIRME_CUDA):
+        return True
+    return (not uscita.strip()
+            and returncode in (_WIN_CUDA_CRASH, _WIN_CUDA_CRASH - 2 ** 32))
+
+
+def cuda_failure_report(dettaglio: str = "",
+                        riduzioni: Sequence[str] = ()) -> str:
+    """Cosa dire a chi ha visto la GPU cedere durante il caricamento.
+
+    **Non e' il contesto.** Il guasto avviene mentre i pesi vengono copiati
+    nella scheda — `ggml_backend_cuda_buffer_set_tensor`, una `cudaMemcpyAsync`
+    — cioe' prima che una cache KV esista. Il consiglio «riduci il contesto»
+    manda dalla parte sbagliata esattamente come faceva davanti all'istruzione
+    illegale, e per la stessa ragione: nessuna quantita' di contesto cambia
+    cio' che e' successo alla scheda.
+
+    La lista `riduzioni` sono i tentativi automatici gia' fatti: chi legge deve
+    sapere cosa e' stato provato al posto suo, o li rifara' a mano.
+    """
+    provate = "\n".join(f"- {voce}" for voce in riduzioni) or (
+        "- nessuna riduzione registrata da questo percorso")
+    estratto = str(dettaglio or "").strip()
+    if len(estratto) > 600:
+        estratto = "(...)\n" + estratto[-600:]
+
+    return (
+        "**La scheda video ha smesso di rispondere mentre i pesi venivano "
+        "copiati in VRAM.**\n\n"
+        "Il guasto arriva da `ggml_backend_cuda_buffer_set_tensor`, cioe' dal "
+        "trasferimento dei pesi: e' **prima** che il contesto e la cache KV "
+        "esistano, quindi ridurre il contesto o cambiare quantizzazione non "
+        "cambia niente.\n\n"
+        "**Le tre cause possibili, in ordine di frequenza**\n"
+        "1. La VRAM non basta per il piano di offload: la scheda dichiara piu' "
+        "memoria libera di quella che ha davvero, perche' un altro programma la "
+        "occupa o il driver la frammenta.\n"
+        "2. Il driver o la scheda sono instabili sotto carico: reset del driver "
+        "(TDR), overclock, alimentazione insufficiente.\n"
+        "3. La build CUDA installata non combacia con il driver.\n\n"
+        "**Cosa e' stato gia' provato**\n"
+        f"{provate}\n\n"
+        "**Cosa fare adesso**\n"
+        "- Nel pannello del motore abbassa **Layer sulla GPU**, o mettilo a 0: "
+        "il modello si carica comunque, piu' lentamente.\n"
+        "- Chiudi gli altri programmi che usano la scheda e riprova: la VRAM "
+        "che il piano contava era occupata.\n"
+        "- Se il guasto si ripete a ogni tentativo, aggiorna o reinstalla il "
+        "driver: un TDR lascia la scheda in uno stato da cui non si esce senza "
+        "un reset.\n\n"
+        "**Uscita di llama.cpp**\n"
+        "```\n" + estratto + "\n```"
     )

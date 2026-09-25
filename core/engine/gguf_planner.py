@@ -424,13 +424,41 @@ def _plan_settings(facts: ModelFacts, hardware: Dict[str, Any], context_tokens: 
             break
         n_ctx = fit["n_ctx"]
 
+    split_mode = None
+    main_gpu = None
+    if len(gpus) > 1:
+        # Se la GPU primaria più potente/capiente (gpus[0]) è in grado di
+        # accogliere interamente il modello (i byte reali dei pesi + KV entrano
+        # nella memoria della scheda primaria), NON dividiamo sui bus PCIe secondari:
+        # il tensor_split tra GPU asimmetriche costringe la scheda veloce ad attendere
+        # la scheda lenta a ogni layer. Concentrare il modello su una sola GPU
+        # garantisce il massimo throughput nativo.
+        g0_total = float(gpus[0].get("total_vram_gb", 0.0) or 0.0)
+        gpu0_usable = usable[0] if usable else 0.0
+        gpu0_fits = (
+            _layers_that_fit(weights_gb, layers, gpu0_usable, kv_gb) == -1
+            or (g0_total > 0 and (weights_gb + kv_gb) <= g0_total * 0.98)
+        )
+        if gpu0_fits:
+            tensor_split = None
+            split_mode = "none"
+            main_gpu = 0
+            n_gpu_layers = -1
+        elif tensor_split is not None:
+            # Quando il multi-GPU è necessario, 'layer' (pipelined) evita
+            # la sincronizzazione continua ad ogni moltiplicazione matriciale
+            split_mode = "layer"
+
     settings = {
         "n_gpu_layers": n_gpu_layers,
         "tensor_split": tensor_split,
+        "split_mode": split_mode,
+        "main_gpu": main_gpu,
         "n_ctx": n_ctx,
         "n_threads": n_threads,
         "n_threads_batch": n_threads_batch,
         "n_batch": n_batch,
+        "n_ubatch": min(n_batch, 256),
         "flash_attn": True,
         "kv_quant": kv_quant,
         "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
@@ -1226,9 +1254,11 @@ def _cap_batch(desired: int, facts: ModelFacts) -> int:
         # Refusing to guess upward is the only safe direction here.
         return min(desired, _N_BATCH_DEFAULT)
     affordable = _SCORES_BUDGET_BYTES // (vocab * 4)
+    # Allinea su multipli di 128 (potenze di due per Tensor Core / cuBLAS)
+    aligned = max(128, (int(affordable) // 128) * 128)
     # Never below llama.cpp's own floor: a batch smaller than 128 makes
     # prefill slower than the memory it saves is worth.
-    return max(min(desired, int(affordable)), 128)
+    return max(min(desired, aligned), 128)
 
 
 def _clamp_context(facts: ModelFacts, requested: int) -> int:

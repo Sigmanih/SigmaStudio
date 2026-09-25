@@ -216,6 +216,16 @@ def _diagnose_load_error(exc: Exception, captured_stderr: str, gguf_info: Dict[s
             f"Su architetture con poca RAM (es. Raspberry Pi o macchine senza GPU), usa un modello quantizzato più compatto (es. 1B Q4 o Q2) o riduci n_ctx."
         )
 
+    # La scheda video che cede mentre i pesi salgono non e' memoria e non e' il
+    # contesto: e' lo stesso guasto che `llama-server` vede dal di fuori, e la
+    # spiegazione dev'essere la stessa. Sta dopo il ramo della memoria perche'
+    # un «CUDA error: out of memory» e' davvero memoria, e li' il consiglio di
+    # ridurre il contesto e' quello giusto.
+    from core.engine.runtime_probe import cuda_failure_report, is_cuda_failure
+
+    if is_cuda_failure(testo=combined):
+        return cuda_failure_report(captured_stderr or err_str)
+
     if "invalid magic" in combined or "failed to load model from file" in err_str.lower():
         if gguf_info.get("file_size_gb", 0) < 0.05:
             return (

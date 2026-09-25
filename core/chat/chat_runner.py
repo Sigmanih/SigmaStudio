@@ -151,7 +151,7 @@ def _new_cancellation_token():
         return None
 
 
-def _resolve_sampling(model, provider_key, provider_cfg, profile, reasoning):
+def _resolve_sampling(model, provider_key, provider_cfg, profile, reasoning, thinking_budget=None):
     """
     The sampler for this turn, or None to leave providers on their old defaults.
 
@@ -160,13 +160,16 @@ def _resolve_sampling(model, provider_key, provider_cfg, profile, reasoning):
     """
     try:
         from core.engine.sampling import SamplingParams
-        return SamplingParams.resolve(
+        params = SamplingParams.resolve(
             model_name=model,
             provider_key=provider_key,
             provider_cfg=provider_cfg or {},
             profile=profile,
             reasoning=reasoning,
         )
+        if thinking_budget is not None and str(thinking_budget).isdigit() and int(thinking_budget) > 0:
+            params = params.with_overrides(thinking_budget=int(thinking_budget))
+        return params
     except Exception as exc:
         log.debug("SamplingParams unavailable (%s); using provider defaults.", exc)
         return None
@@ -584,7 +587,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     _PREFILL_PROVIDERS = {"ollama", "sigma_engine", "sigma"}
     _prefill_injected = wants_reasoning and provider in _PREFILL_PROVIDERS
     if _prefill_injected:
-        # Ollama continues generation from any partial assistant message
+        # Continua la generazione forzando l'apertura del blocco di ragionamento
         messages = list(messages) + [{"role": "assistant", "content": "<think>\n"}]
         # Il modello continua dentro il blocco e non emette nessun tag di
         # apertura: il router deve partire gia' in stato di pensiero.
@@ -1246,9 +1249,17 @@ def handle_chat(self):
         # to think before answering.
         profile_key = detect_execution_profile(message)
         profile = EXECUTION_PROFILES.get(profile_key, {})
-        wants_reasoning = bool(profile.get("reasoning", True))
+        req_thinking = req.get("thinking")
+        if req_thinking is None:
+            req_thinking = req.get("reasoning")
+        if req_thinking is not None:
+            wants_reasoning = bool(req_thinking)
+        else:
+            wants_reasoning = bool(profile.get("reasoning", True))
+        req_thinking_budget = req.get("thinking_budget") or req.get("max_thinking_tokens")
         sampling = _resolve_sampling(
-            model, active_provider, active_prov_cfg, profile, wants_reasoning
+            model, active_provider, active_prov_cfg, profile, wants_reasoning,
+            thinking_budget=req_thinking_budget,
         )
         log.info(
             "Profilo '%s' (reasoning=%s) | %s",

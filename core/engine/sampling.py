@@ -113,6 +113,7 @@ def _match_family(model_name: str) -> Optional[str]:
 TUNABLE = (
     "temperature", "top_p", "top_k", "min_p",
     "repeat_penalty", "max_tokens", "num_ctx", "seed",
+    "thinking_budget",
 )
 
 
@@ -126,6 +127,7 @@ class SamplingParams:
     min_p: float = 0.0
     repeat_penalty: float = 1.1
     max_tokens: int = 4096
+    thinking_budget: Optional[int] = None
 
     # Requested context window. Carried for reporting and for the Ollama path,
     # which accepts it per request. It is deliberately NOT forwarded to the
@@ -189,9 +191,11 @@ class SamplingParams:
 
         locked = bool((provider_cfg or {}).get("sampling_locked"))
         if profile and not locked:
-            for key in ("temperature", "max_tokens", "num_ctx"):
+            for key in ("temperature", "max_tokens", "num_ctx", "thinking_budget"):
                 if profile.get(key) is not None:
                     base[key] = profile[key]
+            if profile.get("max_thinking_tokens") is not None and "thinking_budget" not in base:
+                base["thinking_budget"] = profile["max_thinking_tokens"]
             if profile.get("label"):
                 origin.append(f"profile:{profile['label']}")
         elif locked:
@@ -201,6 +205,9 @@ class SamplingParams:
         if isinstance(stop, str):
             stop = [stop]
 
+        tb = base.get("thinking_budget")
+        tb_val = int(tb) if tb is not None and str(tb).isdigit() else None
+
         return cls(
             temperature=float(base.get("temperature", 0.7)),
             top_p=float(base.get("top_p", 0.95)),
@@ -208,6 +215,7 @@ class SamplingParams:
             min_p=float(base.get("min_p", 0.0)),
             repeat_penalty=float(base.get("repeat_penalty", 1.1)),
             max_tokens=int(base.get("max_tokens", 4096) or 4096),
+            thinking_budget=tb_val,
             num_ctx=int(base.get("num_ctx", 0) or 0),
             seed=_coerce_seed(base.get("seed")),
             stop=tuple(s for s in (stop or []) if isinstance(s, str) and s),
