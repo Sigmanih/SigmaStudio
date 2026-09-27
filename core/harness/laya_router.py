@@ -241,6 +241,26 @@ def diagnose_tool_failure(tool_name: str, error_text: str, output_text: str = ""
             "fallback": True,
         }
 
+    err_low = (error_text or "").lower()
+    if tool_name in ("edit_file", "edit") and ("non hai ancora letto" in err_low or "prima di modificare" in err_low):
+        return {
+            "category": "syntax_or_diff",
+            "action": "replan",
+            "hint": "Esegui prima 'read_file' sul file target per ottenere il testo esatto da rimpiazzare senza numeri di riga.",
+            "confidence": 1.0,
+            "elapsed_ms": 0.1,
+            "fallback": False,
+        }
+    if tool_name in ("read_file", "read") and ("gia' presenti" in err_low or "offset" in err_low):
+        return {
+            "category": "repetition",
+            "action": "replan",
+            "hint": "Non ripetere la lettura dall'inizio: usa 'offset' e 'limit' per leggere una porzione successiva, o passa all'azione con 'edit_file'.",
+            "confidence": 1.0,
+            "elapsed_ms": 0.1,
+            "fallback": False,
+        }
+
     prompt = f"Tool: {tool_name}\nError: {error_text[:300]}\nOutput: {output_text[:300]}"
     try:
         raw = agent.predict(prompt, {"failure_diagnosis": ROUTER_QUESTIONS["failure_diagnosis"]})

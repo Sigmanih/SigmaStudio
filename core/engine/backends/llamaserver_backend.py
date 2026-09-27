@@ -299,17 +299,33 @@ def plan_to_args(settings: Dict[str, Any]) -> List[str]:
     spec_tokens = settings.get("prompt_lookup_tokens") or settings.get("spec_draft_tokens")
 
     if spec_model and os.path.exists(str(spec_model)):
-        aggiungi("--spec-type", "draft-simple")
-        aggiungi("--spec-draft-model", spec_model)
-        if settings.get("spec_draft_ngl") is not None:
-            aggiungi("--spec-draft-ngl", settings.get("spec_draft_ngl"))
-        if settings.get("spec_draft_device"):
-            aggiungi("--spec-draft-device", settings.get("spec_draft_device"))
-        if spec_tokens:
-            aggiungi("--spec-draft-n-max", spec_tokens)
-    elif spec_tokens and int(spec_tokens) > 0:
+        # Controlla compatibilità: se il target è Qwen e il draft è MiniCPM,
+        # il vocabolario non combacia (152k vs 73k) e llama-server fallirebbe.
+        is_minicpm = "minicpm" in str(spec_model).lower()
+        is_target_qwen = "qwen" in str(settings.get("model_path") or settings.get("name") or "").lower()
+        if is_minicpm and is_target_qwen:
+            log.warning(
+                "[LlamaServer] MiniCPM draft model ha vocabolario incompatibile con Qwen (73k vs 152k): "
+                "attivo N-Gram Prompt Lookup Speculative Decoding."
+            )
+            aggiungi("--spec-type", "ngram-simple")
+            aggiungi("--spec-ngram-simple-size-n", "3")
+            aggiungi("--spec-ngram-simple-size-m", spec_tokens or "8")
+        else:
+            aggiungi("--spec-type", "draft-simple")
+            aggiungi("--spec-draft-model", spec_model)
+            if settings.get("spec_draft_ngl") is not None:
+                aggiungi("--spec-draft-ngl", settings.get("spec_draft_ngl"))
+            if settings.get("spec_draft_device"):
+                aggiungi("--spec-draft-device", settings.get("spec_draft_device"))
+            if spec_tokens:
+                aggiungi("--spec-draft-n-max", spec_tokens)
+    else:
+        # Prompt-Lookup / N-Gram speculative decoding predefinito:
+        # zero VRAM addizionale, fino a 1.5x-2x speedup su codice e tool loops
         aggiungi("--spec-type", "ngram-simple")
-        aggiungi("--spec-ngram-simple-size-m", spec_tokens)
+        aggiungi("--spec-ngram-simple-size-n", "3")
+        aggiungi("--spec-ngram-simple-size-m", spec_tokens or "8")
 
     return argomenti
 
@@ -794,6 +810,9 @@ class LlamaServerBackend(InferenceBackend):
         t_start = time.perf_counter()
         primo_token_a = None
         contatore = 0
+        timings_reused = 0
+        prompt_tokens_server = None
+        prefill_ms_server = None
 
         scadenza = time.perf_counter() + _limite_generazione(params.max_tokens)
         scaduto = False
@@ -826,6 +845,20 @@ class LlamaServerBackend(InferenceBackend):
                     break
 
                 genere = pezzo.get("kind")
+                if genere == "timings":
+                    timings = pezzo.get("timings") or {}
+                    usage = pezzo.get("usage") or {}
+                    timings_reused = int(timings.get("cache_n") or 0)
+                    prompt_tokens_server = timings.get("prompt_n") or usage.get("prompt_tokens")
+                    prefill_ms_server = timings.get("prompt_ms")
+                    yield {
+                        "prefix_reused_tokens": timings_reused,
+                        "prompt_tokens": prompt_tokens_server,
+                        "prefill_ms": prefill_ms_server,
+                        "done": False,
+                    }
+                    continue
+
                 if genere == "tool_calls":
                     # Non e' testo e non va contato come token generato: e'
                     # struttura, e chi la riceve la ricompone.
@@ -872,6 +905,8 @@ class LlamaServerBackend(InferenceBackend):
                 "total_tokens": contatore,
                 "finish_reason": "timeout" if scaduto else "stop",
                 "truncated": scaduto,
+                "prefix_reused_tokens": timings_reused,
+                "prompt_tokens": prompt_tokens_server,
             }
         except Exception as exc:
             log.error("[LlamaServer] Generazione fallita: %s", exc, exc_info=True)
@@ -1270,6 +1305,8 @@ class LlamaServerBackend(InferenceBackend):
         corpo: Dict[str, Any] = {
             "messages": conversazione,
             "stream": True,
+            "cache_prompt": True,
+            "stream_options": {"include_usage": True},
         }
         tk_kwargs: Dict[str, Any] = {}
         if thinking is not None:
@@ -1437,6 +1474,13 @@ class LlamaServerBackend(InferenceBackend):
                     evento = json.loads(carico)
                 except ValueError:
                     continue
+
+                if "timings" in evento or "usage" in evento:
+                    yield {
+                        "kind": "timings",
+                        "timings": evento.get("timings"),
+                        "usage": evento.get("usage"),
+                    }
 
                 contenuto = ""
                 ragionamento = None
