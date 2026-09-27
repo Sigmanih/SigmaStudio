@@ -136,10 +136,44 @@ def get_publication(local_ref: str) -> Optional[Dict[str, Any]]:
     # bastano: `vecchio/nome` e `nuovo/nome` finiscono entrambe in `nome`, e
     # sono due modelli diversi.
     if "/" in chiave:
-        return next((v for k, v in dati.items()
+        riga = next((v for k, v in dati.items()
                      if "/" not in k and k == chiave.split("/")[-1]), None)
-    return next((v for k, v in dati.items()
+        if riga:
+            return riga
+    riga = next((v for k, v in dati.items()
                  if k.split("/")[-1] == chiave), None)
+    if riga:
+        return riga
+
+    # Riconoscimento automatico per modelli riscaricati da Hugging Face
+    # Quando un modello viene scaricato da HF la cartella è 'autore--repo' (es. sigmanih--Qwen-Qwen3-0.6B-GGUF-Q4_K_S)
+    raw_str = str(local_ref or "").strip()
+    cartella = os.path.basename(raw_str.rstrip("/\\")) if (os.path.isabs(raw_str) or os.path.exists(raw_str)) else raw_str
+    if "--" in cartella:
+        parti = cartella.split("--", 1)
+        autore, repo = parti[0], parti[1]
+        if autore and repo and not repo.endswith((".tmp", ".download", ".part")):
+            repo_id = f"{autore}/{repo}"
+            try:
+                record_publication(
+                    local_ref=local_ref,
+                    repo_id=repo_id,
+                    url=f"https://huggingface.co/{repo_id}",
+                    private=False,
+                )
+            except Exception as e_rec:
+                log.debug("[Publications] auto-record fallito per %s: %s", repo_id, e_rec)
+            return {
+                "repo_id": repo_id,
+                "url": f"https://huggingface.co/{repo_id}",
+                "private": False,
+                "local_ref": local_ref,
+                "first_published_at": time.time(),
+                "last_published_at": time.time(),
+                "publish_count": 1,
+                "discovered": True,
+            }
+    return None
 
 
 def all_publications() -> Dict[str, Any]:
