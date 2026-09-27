@@ -556,8 +556,99 @@ def _detect_all_gpus(cpu_pct: float) -> List[Dict[str, Any]]:
                     if item.get("telemetry_source") != "nvidia-smi":
                         item["telemetry_source"] = "windows-pdh"
 
+    # Associa a ogni GPU il modello LLM residente che la occupa, se presente.
+    # La fonte e' sigma_engine.loaded_model_name, incrociata con la mappa
+    # device del modello (last_device_map_report o model_instance) per capire
+    # su quale indice di scheda sono effettivamente i pesi. Senza mappa
+    # disponibile (es. backend GGUF/llama.cpp) il modello viene attribuito
+    # alla prima GPU dedicata rilevata, che e' quella che lo serve.
+    active_model_name = _get_active_model_name()
+    if active_model_name:
+        gpu_indices_with_model = _resolve_gpu_indices_for_model()
+        for item in gpus_list:
+            idx = item.get("index")
+            if idx is not None and idx in gpu_indices_with_model:
+                item["active_model"] = active_model_name
+            else:
+                item.setdefault("active_model", None)
+    else:
+        for item in gpus_list:
+            item.setdefault("active_model", None)
+
     return gpus_list
 
+
+def _get_active_model_name() -> Optional[str]:
+    """Restituisce il nome del modello LLM residente, se c'è.
+
+    Legge sigma_engine.loaded_model_name senza importare nulla di pesante:
+    l'engine è un singleton già in memoria quando questo modulo viene usato,
+    quindi basta un getattr difensivo. Se l'engine non è stato inizializzato
+    o il modello è stato scaricato, restituisce None.
+    """
+    try:
+        from core.engine import sigma_engine
+    except Exception:
+        return None
+    name = getattr(sigma_engine, "loaded_model_name", None)
+    if name and str(name).strip():
+        return str(name).strip()
+    return None
+
+
+def _resolve_gpu_indices_for_model() -> set:
+    """Individua gli indici di GPU su cui risiedono i pesi del modello.
+
+    Strategie, in ordine di affidabilità:
+      1. last_device_map_report: contiene la mappa esplicita module->device
+         costruita da DeviceMapBuilder al momento del load. Estraiamo i
+         dispositivi interi (0, 1, 2...) che compaiono come valori.
+      2. model_instance: se il modello transformers è ancora in memoria,
+         interroghiamo i tensori per i loro .device e raccogliamo gli indici
+         cuda.
+      3. Fallback: prima GPU dedicata (indice 0), che è quella che serve il
+         backend GGUF/llama.cpp quando non c'è una mappa esplicita.
+    """
+    try:
+        from core.engine import sigma_engine
+    except Exception:
+        return {0}
+
+    # Strategia 1: report della device map esplicita. Il report di
+    # DeviceMapBuilder ha una chiave 'per_device' con le chiavi che sono i
+    # nomi dei dispositivi ("0", "1", "cpu", ...). Raccogliamo gli indici
+    # numerici, che corrispondono alle GPU dedicate.
+    report = getattr(sigma_engine, "last_device_map_report", None)
+    if isinstance(report, dict):
+        per_device = report.get("per_device")
+        if isinstance(per_device, dict):
+            indices = set()
+            for key in per_device.keys():
+                try:
+                    idx = int(key)
+                    if idx >= 0:
+                        indices.add(idx)
+                except (TypeError, ValueError):
+                    pass
+            if indices:
+                return indices
+
+    # Strategia 2: interroga i tensori del modello in memoria
+    model = getattr(sigma_engine, "model_instance", None)
+    if model is not None:
+        try:
+            indices = set()
+            for param in model.parameters():
+                dev = param.device
+                if dev.type == "cuda" and dev.index is not None:
+                    indices.add(dev.index)
+            if indices:
+                return indices
+        except Exception:
+            pass
+
+    # Strategia 3: fallback sulla prima GPU dedicata
+    return {0}
 
 
 def _get_disks_info() -> Dict[str, Any]:

@@ -689,6 +689,23 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
                       <div style={{ fontSize: '10px', color: textDim, fontFamily: 'monospace' }}>
                         Driver {gpu.driver_version || 'N/A'} • {gpu.temp_c ? `${gpu.temp_c}°C` : 'N/A'} • {pwrDraw}W
                       </div>
+                      {gpu.active_model && (
+                        <span className="hw-badge" style={{
+                          marginTop: '4px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '10px',
+                          padding: '2px 8px',
+                          background: isLight ? 'rgba(124, 58, 237, 0.1)' : 'rgba(188, 140, 255, 0.12)',
+                          color: isLight ? '#7c3aed' : '#bc8cff',
+                          border: isLight ? '1px solid rgba(124, 58, 237, 0.3)' : '1px solid rgba(188, 140, 255, 0.3)',
+                          borderRadius: '6px',
+                          fontWeight: 700
+                        }}>
+                          🧠 {gpu.active_model}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span className="hw-badge" style={{ 
