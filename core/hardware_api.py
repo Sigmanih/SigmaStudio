@@ -112,6 +112,201 @@ def _is_virtual_display(name: str) -> bool:
     ))
 
 
+
+# ==============================================================================
+# Windows Real-Time GPU Telemetry (PDH & DXGI Native Sampler)
+# ==============================================================================
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+    import threading
+
+    class _LUID(ctypes.Structure):
+        _fields_ = [
+            ("LowPart", wintypes.DWORD),
+            ("HighPart", wintypes.LONG),
+        ]
+
+    class _GUID(ctypes.Structure):
+        _fields_ = [
+            ("Data1", wintypes.DWORD),
+            ("Data2", wintypes.WORD),
+            ("Data3", wintypes.WORD),
+            ("Data4", wintypes.BYTE * 8),
+        ]
+
+    _IID_IDXGIFactory1 = _GUID(
+        0x770aae78, 0xf26f, 0x4dba,
+        (wintypes.BYTE * 8)(0xa8, 0x29, 0x25, 0x3c, 0x83, 0xd1, 0xb3, 0x87)
+    )
+
+    class _DXGI_ADAPTER_DESC1(ctypes.Structure):
+        _fields_ = [
+            ("Description", wintypes.WCHAR * 128),
+            ("VendorId", wintypes.UINT),
+            ("DeviceId", wintypes.UINT),
+            ("SubSysId", wintypes.UINT),
+            ("Revision", wintypes.UINT),
+            ("DedicatedVideoMemory", ctypes.c_size_t),
+            ("DedicatedSystemMemory", ctypes.c_size_t),
+            ("SharedSystemMemory", ctypes.c_size_t),
+            ("AdapterLuid", _LUID),
+            ("Flags", wintypes.UINT),
+        ]
+
+    class _PDH_FMT_COUNTERVALUE_DOUBLE(ctypes.Structure):
+        _fields_ = [
+            ("CStatus", wintypes.DWORD),
+            ("doubleValue", ctypes.c_double),
+        ]
+
+    class _PDH_FMT_COUNTERVALUE_LARGE(ctypes.Structure):
+        _fields_ = [
+            ("CStatus", wintypes.DWORD),
+            ("largeValue", ctypes.c_int64),
+        ]
+
+    class _WindowsGpuLiveMonitor:
+        def __init__(self):
+            self.pdh = getattr(ctypes.windll, "pdh", None)
+            self.dxgi = getattr(ctypes.windll, "dxgi", None)
+            self.live_stats: Dict[str, Dict[str, Any]] = {}
+            self.lock = threading.Lock()
+            self.running = True
+            self.adapters = self._enumerate_adapters()
+            if self.pdh and self.adapters:
+                self.thread = threading.Thread(target=self._run_loop, daemon=True, name="SigmaWindowsGpuMonitor")
+                self.thread.start()
+
+        def _enumerate_adapters(self) -> List[Dict[str, Any]]:
+            if not self.dxgi:
+                return []
+            try:
+                CreateDXGIFactory1 = self.dxgi.CreateDXGIFactory1
+                CreateDXGIFactory1.argtypes = [ctypes.POINTER(_GUID), ctypes.POINTER(ctypes.c_void_p)]
+                CreateDXGIFactory1.restype = ctypes.c_long
+                factory = ctypes.c_void_p()
+                if CreateDXGIFactory1(ctypes.byref(_IID_IDXGIFactory1), ctypes.byref(factory)) != 0:
+                    return []
+
+                vtable = ctypes.cast(factory, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+                EnumAdapters1 = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, wintypes.UINT, ctypes.POINTER(ctypes.c_void_p))(vtable[12])
+                Release = ctypes.WINFUNCTYPE(wintypes.ULONG, ctypes.c_void_p)(vtable[2])
+
+                adapters = []
+                i = 0
+                while True:
+                    adapter = ctypes.c_void_p()
+                    if EnumAdapters1(factory, i, ctypes.byref(adapter)) != 0:
+                        break
+                    ad_vtable = ctypes.cast(adapter, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+                    GetDesc1 = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(_DXGI_ADAPTER_DESC1))(ad_vtable[10])
+                    ad_release = ctypes.WINFUNCTYPE(wintypes.ULONG, ctypes.c_void_p)(ad_vtable[2])
+
+                    desc = _DXGI_ADAPTER_DESC1()
+                    if GetDesc1(adapter, ctypes.byref(desc)) == 0:
+                        luid_str = f"0x{desc.AdapterLuid.HighPart:08x}_0x{desc.AdapterLuid.LowPart:08x}".lower()
+                        adapters.append({
+                            "name": desc.Description,
+                            "vendor_id": desc.VendorId,
+                            "dedicated_vram_mb": int(desc.DedicatedVideoMemory // (1024**2)),
+                            "luid": luid_str,
+                            "flags": desc.Flags
+                        })
+                    ad_release(adapter)
+                    i += 1
+                Release(factory)
+                return adapters
+            except Exception as e:
+                log.debug("DXGI adapter enumeration failed: %s", e)
+                return []
+
+        def _run_loop(self):
+            while self.running:
+                try:
+                    for ad in self.adapters:
+                        luid = ad["luid"]
+                        name = ad["name"]
+
+                        # 1. Interroga la memoria VRAM dedicata effettiva tramite PDH
+                        hQ = wintypes.HANDLE()
+                        mem_mb = None
+                        if self.pdh.PdhOpenQueryW(None, 0, ctypes.byref(hQ)) == 0:
+                            hC = wintypes.HANDLE()
+                            c_path = f"\\GPU Adapter Memory(luid_{luid}_phys_0)\\Dedicated Usage"
+                            if self.pdh.PdhAddEnglishCounterW(hQ, c_path, 0, ctypes.byref(hC)) == 0:
+                                if self.pdh.PdhCollectQueryData(hQ) == 0:
+                                    cv = _PDH_FMT_COUNTERVALUE_LARGE()
+                                    if self.pdh.PdhGetFormattedCounterValue(hC, 0x400, None, ctypes.byref(cv)) == 0:
+                                        if cv.CStatus == 0 and cv.largeValue >= 0:
+                                            mem_mb = round(cv.largeValue / (1024**2), 1)
+                            self.pdh.PdhCloseQuery(hQ)
+
+                        # 2. Interroga l'utilizzo 3D e Compute tramite PDH
+                        util_pct = None
+                        wildcard = f"\\GPU Engine(*luid_{luid}*)\\Utilization Percentage"
+                        buf_sz = wintypes.DWORD(0)
+                        self.pdh.PdhExpandWildCardPathW(None, wildcard, None, ctypes.byref(buf_sz), 0)
+                        if buf_sz.value > 0:
+                            buf = ctypes.create_unicode_buffer(buf_sz.value)
+                            if self.pdh.PdhExpandWildCardPathW(None, wildcard, buf, ctypes.byref(buf_sz), 0) == 0:
+                                raw = ctypes.string_at(ctypes.byref(buf), buf_sz.value * 2).decode('utf-16le', errors='ignore')
+                                paths = [p for p in raw.split('\x00') if p.strip() and ('engtype_3D' in p or 'engtype_Compute' in p)]
+                                if paths:
+                                    hQ2 = wintypes.HANDLE()
+                                    if self.pdh.PdhOpenQueryW(None, 0, ctypes.byref(hQ2)) == 0:
+                                        counters = []
+                                        for p in paths:
+                                            hC2 = wintypes.HANDLE()
+                                            if self.pdh.PdhAddEnglishCounterW(hQ2, p, 0, ctypes.byref(hC2)) == 0:
+                                                counters.append(hC2)
+                                        if counters:
+                                            self.pdh.PdhCollectQueryData(hQ2)
+                                            time.sleep(0.1)
+                                            self.pdh.PdhCollectQueryData(hQ2)
+                                            tot = 0.0
+                                            cv_d = _PDH_FMT_COUNTERVALUE_DOUBLE()
+                                            for hC2 in counters:
+                                                if self.pdh.PdhGetFormattedCounterValue(hC2, 0x200, None, ctypes.byref(cv_d)) == 0:
+                                                    if cv_d.CStatus == 0 and cv_d.doubleValue > 0:
+                                                        tot += cv_d.doubleValue
+                                            util_pct = round(min(tot, 100.0), 1)
+                                        self.pdh.PdhCloseQuery(hQ2)
+
+                        with self.lock:
+                            self.live_stats[name] = {
+                                "luid": luid,
+                                "vram_used_mb": mem_mb,
+                                "gpu_util_pct": util_pct if util_pct is not None else 0.0,
+                                "timestamp": time.time(),
+                            }
+                except Exception as ex:
+                    log.debug("WindowsGpuLiveMonitor iteration error: %s", ex)
+                time.sleep(0.8)
+
+        def get_stats(self, name: str) -> Optional[Dict[str, Any]]:
+            if not name:
+                return None
+            name_low = name.lower()
+            with self.lock:
+                for k, v in self.live_stats.items():
+                    k_low = k.lower()
+                    if k_low == name_low or k_low in name_low or name_low in k_low:
+                        return v
+                    if "radeon" in name_low and "radeon" in k_low:
+                        return v
+            return None
+
+    _win_gpu_monitor: Optional[_WindowsGpuLiveMonitor] = None
+    try:
+        _win_gpu_monitor = _WindowsGpuLiveMonitor()
+    except Exception as _mon_e:
+        log.debug("Failed to initialize WindowsGpuLiveMonitor: %s", _mon_e)
+        _win_gpu_monitor = None
+else:
+    _win_gpu_monitor = None
+
+
 _cached_integrated_gpus: Optional[List[Dict[str, Any]]] = None
 
 def _get_integrated_gpus_cached(seen_names: set) -> List[Dict[str, Any]]:
@@ -218,7 +413,7 @@ def _get_integrated_gpus_cached(seen_names: set) -> List[Dict[str, Any]]:
                         "vram_used_mb": used_mb,
                         "vram_free_mb": vram_free,
                         "vram_usage_pct": usage_pct,
-                        "gpu_util_pct": 3.0 if is_integrated else None,
+                        "gpu_util_pct": 0.0 if is_integrated else None,
                         "temp_c": None,
                         "power_draw_w": 15.0 if is_integrated else None,
                         "fan_speed_pct": None,
@@ -334,8 +529,32 @@ def _detect_all_gpus(cpu_pct: float) -> List[Dict[str, Any]]:
         if not any(seen in name_low or name_low in seen for seen in seen_names):
             item = dict(igpu)
             item["index"] = len(gpus_list)
+
+            # Rileva compute e memoria live tramite monitor nativo PDH / DXGI se disponibile
+            if _win_gpu_monitor is not None:
+                live = _win_gpu_monitor.get_stats(item["name"])
+                if live:
+                    if live.get("gpu_util_pct") is not None:
+                        item["gpu_util_pct"] = live["gpu_util_pct"]
+                    if live.get("vram_used_mb") is not None:
+                        item["vram_used_mb"] = int(live["vram_used_mb"])
+                        if item.get("vram_total_mb"):
+                            item["vram_free_mb"] = max(0, item["vram_total_mb"] - item["vram_used_mb"])
+                            item["vram_usage_pct"] = round(item["vram_used_mb"] / item["vram_total_mb"] * 100, 1)
+                    item["telemetry_source"] = "windows-pdh"
+
             gpus_list.append(item)
             seen_names.add(name_low)
+
+    # Fallback per qualsiasi GPU che non ha gpu_util_pct misurato
+    if _win_gpu_monitor is not None:
+        for item in gpus_list:
+            if item.get("gpu_util_pct") is None or item["gpu_util_pct"] == 0.0:
+                live = _win_gpu_monitor.get_stats(item["name"])
+                if live and live.get("gpu_util_pct") is not None and live["gpu_util_pct"] > 0.0:
+                    item["gpu_util_pct"] = live["gpu_util_pct"]
+                    if item.get("telemetry_source") != "nvidia-smi":
+                        item["telemetry_source"] = "windows-pdh"
 
     return gpus_list
 
