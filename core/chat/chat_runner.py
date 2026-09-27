@@ -1739,7 +1739,3 @@ def handle_chat_extract_files(self):
     except Exception as exc:
         log.error("handle_chat_extract_files error: %s", exc, exc_info=True)
         return self.send_json_response({"error": str(exc)}, 500)
-        })
-    except Exception as exc:
-        log.error("handle_chat_extract_files error: %s", exc, exc_info=True)
-        return self.send_json_response({"error": str(exc)}, 500)
