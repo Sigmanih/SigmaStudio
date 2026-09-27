@@ -682,12 +682,18 @@ class DevSessionLedger:
             "aggiorna", "aggiornare", "integra", "integrare", "sviluppa", "sviluppare",
             "risolvi", "risolvere", "adatta", "adattare", "cambia", "cambiare",
             "sostituisci", "sostituire", "trasforma", "trasformare",
+            "deve avere", "deve mostrare", "deve contenere", "inserisci", "inserire",
+            "metti", "mettere", "collega", "collegare", "imposta", "impostare",
+            "fai in modo", "rendi", "rendere", "costruisci", "costruire", "attiva", "attivare",
+            "togli", "togliere", "sviluppo", "feature",
         )
         
         has_mod = any(k in g for k in modification_keywords)
+        if has_mod:
+            return False
+
         has_exp = any(k in g for k in exploration_keywords) or "?" in g
-        # Se non ci sono richieste esplicite di modifica file, è da considerarsi informativo
-        return (has_exp and not has_mod) or (not has_mod)
+        return bool(has_exp)
 
     def was_read_before_change(self, path: str) -> bool:
         with self._lock:

@@ -3596,7 +3596,7 @@ def _stream_agent_turn_impl(
             # cheaply than restarting it.
             gate = check_completion_allowed(ledger)
             if gate["allowed"] or not ledger.goal or (
-                not ledger.has_modifications() and (ledger.is_exploration_task() or ledger.has_reads()) and full_text.strip()
+                not ledger.has_modifications() and ledger.is_exploration_task() and full_text.strip()
             ):
                 goal_reached = True
                 break
@@ -3826,20 +3826,25 @@ def _stream_agent_turn_impl(
             if t_name in ("read_file", "read"):
                 probe = t_params.get("path") or ""
                 resolved = resolve_workspace_path(probe, workspace_root, strict=False)
-                marker = f"Contenuto di '{resolved.replace(chr(92), '/')}'"
+                res_clean = resolved.replace(chr(92), "/")
+                marker = f"Contenuto di '{res_clean}'"
                 still_visible = any(
                     marker in m.get("content", "") for m in full_messages[2:]
                 )
-                if still_visible:
+                req_offset = int(t_params.get("offset") or t_params.get("start_line") or 1)
+                buchi = _buchi_di_lettura(ledger, res_clean)
+
+                # Se l'agente sta leggendo dall'inizio (offset 1) e il file e' gia' visibile
+                # senza finestre mancanti nel contesto, solo allora evita la rilettura identica.
+                if still_visible and req_offset == 1 and not buchi:
                     turn_gave_direction = True
                     in_coda = _finestra_suggerita(
-                        ledger, resolved.replace(chr(92), "/"), probe)
+                        ledger, res_clean, probe)
                     msg = (
                         f"Tool 'read_file' NON eseguito: il contenuto di "
                         f"'{probe}' e gia presente qui sopra in questa "
                         "conversazione. Rileggerlo non aggiunge nulla e consuma "
-                        "il contesto. Passa all'azione: usa edit_file o "
-                        "write_file."
+                        "il contesto. Passa all'azione: usa edit_file o write_file."
                     )
                     if in_coda:
                         msg += " " + in_coda
@@ -4570,7 +4575,7 @@ def _stream_agent_turn_impl(
         if goal_reached:
             break
         else:
-            if ledger.is_exploration_task() or (ledger.has_reads() and not ledger.has_modifications()):
+            if ledger.is_exploration_task():
                 closing = (
                     f"{goal_reminder}\n\n"
                     "L'utente desidera informazioni, panoramica o spiegazioni dettagliate.\n"
