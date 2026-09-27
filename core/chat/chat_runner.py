@@ -33,7 +33,7 @@ from core.task_handler import _compute_diff
 from core.chat.response_parser import (
     _TAG_PATTERNS, _clean_all_tags, _extract_json_from_response,
     _extract_english_thinking, _extract_bullet_thinking, _extract_done_thinking,
-    _format_response, _split_by_language_transition,
+    _format_response,
 )
 from core.chat.prompt_builder import (
     _get_time_context, _get_manifesto_content, _build_filesystem_context,
@@ -835,27 +835,22 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                 # risposta: il risultato serve all'utente, non al modello.
                 strumenti_eseguiti = True
 
-                # Aggiorniamo la storia dei messaggi con la chiamata dello strumento
-                # e l'output restituito dall'MCP, affinché i turni successivi
-                # e l'eventuale sollecito abbiano l'intero contesto a disposizione.
-                messages = list(messages) + [
+                next_messages = list(messages) + [
                     {"role": "assistant", "content": full_text},
                     {"role": "user", "content": format_results_for_model(outcomes)},
                 ]
-                next_messages = messages
-
-                # Nei turni di continuazione dopo l'esecuzione dei tool NON re-iniettiamo
-                # forzatamente il prefill <think>: il modello ha già svolto il reasoning
-                # prima di chiamare il tool; ora deve formulare e trasmettere la risposta
-                # finale per l'utente. Forzare <think>\n avvia un lungo monologo interiore
-                # in inglese che consuma il budget di token (max_tokens) prima di iniziare
-                # la risposta in italiano, lasciando l'utente senza testo.
-                # Se il modello desidera comunque riflettere, emetterà <think> spontaneamente.
+                # Re-apply prefill for local providers on each tool continuation turn
+                if _prefill_injected:
+                    next_messages = next_messages + [{"role": "assistant", "content": "<think>\n"}]
+                # Nothing may straddle the reset: buffered text belongs to the
+                # answer that just ended, not to the continuation.
                 coalescer.flush()
                 tool_filter.flush()
                 tool_filter.reset()
                 full_text = ""
                 router = _ThinkTagRouter()
+                if _prefill_injected:
+                    router.inizia_nel_pensiero()
                 if not _run_model_turn(next_messages):
                     break
         except Exception as exc:
@@ -900,23 +895,20 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         # si chiede di completare, una volta sola, con il risultato gia' in
         # mano. Se anche questo giro non produce niente, si va avanti: meglio
         # una risposta breve che un ciclo.
-        parole_risposta = len(full_text.strip().split()) if full_text else 0
-        ha_annuncio_tronco = bool(re.search(r"(?:verifico|consulto|controllo|leggo|approfondisco|sto consultando|eseguo)\b", full_text, re.IGNORECASE)) and parole_risposta < 40
-        if strumenti_eseguiti and (parole_risposta < 20 or ha_annuncio_tronco):
-            log.info("[Chat] strumento eseguito senza riepilogo finale completo (parole: %d): chiedo di sintetizzare", parole_risposta)
-            _push({"model_status": "✨ Sintetizzo i dati raccolti nella risposta finale..."})
+        if strumenti_eseguiti and not full_text.strip():
+            log.info("[Chat] strumento eseguito senza risposta: chiedo di completare")
+            _push({"model_status": "✨ Compongo la risposta con i dati raccolti..."})
             coalescer.flush()
             tool_filter.flush()
             tool_filter.reset()
-            # Nel sollecito finale l'utente attende solo testo visibile, non altro ragionamento nascosto
             router = _ThinkTagRouter()
-            full_text = ""
+            if _prefill_injected:
+                router.inizia_nel_pensiero()
             sollecito = list(messages) + [
                 {"role": "user", "content": (
-                    "Hai raccolto tutti i dati necessari dagli strumenti eseguiti. "
-                    "Adesso scrivi la RISPOSTA FINALE, COMPLETA ED ESAUSTIVA per l'utente, "
-                    "strutturata con introduzione, punti chiave e conclusioni. "
-                    "NON emettere altri blocchi di strumento: rispondi esclusivamente con il testo della risposta."
+                    "Hai eseguito gli strumenti e hai i risultati. Adesso scrivi "
+                    "la risposta per l'utente: niente altri blocchi di strumento, "
+                    "solo il testo. Se i risultati non bastano, dillo in una riga."
                 )},
             ]
             _run_model_turn(sollecito)
@@ -930,12 +922,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         # Se il modello non ha chiuso il tag di pensiero e la risposta visibile è vuota,
         # promuoviamo il testo a risposta per garantire che l'utente non riceva una risposta vuota.
         if thinking_out.strip() and not clean_text.strip():
-            bozza_italiana, _ = _split_by_language_transition(thinking_out)
-            if bozza_italiana and len(bozza_italiana.strip()) > 30:
-                clean_text = bozza_italiana
-            else:
-                clean_text, thinking_out = thinking_out, ""
-            _push({"token": clean_text})
+            clean_text, thinking_out = thinking_out, ""
 
         created_files, actions_log = [], []
         if allow_actions and clean_text:
@@ -1748,6 +1735,10 @@ def handle_chat_extract_files(self):
             "success": True,
             "created_files": created_files,
             "actions_log": actions_log
+        })
+    except Exception as exc:
+        log.error("handle_chat_extract_files error: %s", exc, exc_info=True)
+        return self.send_json_response({"error": str(exc)}, 500)
         })
     except Exception as exc:
         log.error("handle_chat_extract_files error: %s", exc, exc_info=True)

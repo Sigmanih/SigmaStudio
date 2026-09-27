@@ -80,7 +80,7 @@ export default function ChatToolActionItem({
       navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (e) {}
+    } catch (e) { }
   }, []);
 
   const lineCount = content ? content.split('\n').length : 0;

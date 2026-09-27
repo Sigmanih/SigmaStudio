@@ -3826,46 +3826,27 @@ def _stream_agent_turn_impl(
             if t_name in ("read_file", "read"):
                 probe = t_params.get("path") or ""
                 resolved = resolve_workspace_path(probe, workspace_root, strict=False)
-                percorso_canon = resolved.replace(chr(92), "/")
-                
-                req_offset = t_params.get("offset") or t_params.get("start_line") or 1
-                try:
-                    req_offset = max(1, int(req_offset))
-                except (ValueError, TypeError):
-                    req_offset = 1
-
-                # Se l'offset richiesto è > 1, controlla se quel range è già stato letto
-                gia_vista_finestra = False
-                if req_offset == 1:
-                    marker = f"Contenuto di '{percorso_canon}'"
-                    gia_vista_finestra = any(
-                        marker in m.get("content", "") for m in full_messages[2:]
-                    )
-                else:
-                    lines_seen = []
-                    if ledger and hasattr(ledger, "seen_windows"):
-                        lines_seen = ledger.seen_windows(percorso_canon)
-                    # Già vista se l'offset cade dentro una finestra precedentemente letta
-                    gia_vista_finestra = any(
-                        s <= req_offset <= e for s, e in lines_seen
-                    )
-
-                if gia_vista_finestra:
+                marker = f"Contenuto di '{resolved.replace(chr(92), '/')}'"
+                still_visible = any(
+                    marker in m.get("content", "") for m in full_messages[2:]
+                )
+                if still_visible:
                     turn_gave_direction = True
                     in_coda = _finestra_suggerita(
-                        ledger, percorso_canon, probe)
+                        ledger, resolved.replace(chr(92), "/"), probe)
                     msg = (
-                        f"Tool 'read_file' NON eseguito: le righe a partire dall'offset {req_offset} di "
-                        f"'{probe}' sono gia' presenti qui sopra in questa "
-                        "conversazione. Rileggere la stessa finestra non aggiunge nulla e consuma "
-                        "il contesto."
+                        f"Tool 'read_file' NON eseguito: il contenuto di "
+                        f"'{probe}' e gia presente qui sopra in questa "
+                        "conversazione. Rileggerlo non aggiunge nulla e consuma "
+                        "il contesto. Passa all'azione: usa edit_file o "
+                        "write_file."
                     )
                     if in_coda:
                         msg += " " + in_coda
                     else:
                         msg += (
-                            " Quel file l'hai visto tutto: non c'e' un'altra "
-                            "parte da leggere, quindi la prossima mossa e' scrivere con edit_file."
+                            " Quel file l hai visto tutto: non c e un altra "
+                            "parte da leggere, quindi la prossima mossa e scrivere."
                         )
                     yield {
                         "type": "tool_result",
