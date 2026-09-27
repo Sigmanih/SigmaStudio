@@ -30,6 +30,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from core.harness.tool_providers import ToolProvider
 from core.logger import get_logger
 
 log = get_logger(__name__)
@@ -766,9 +767,9 @@ def kicad_render(output_path: str = "", mode: str = "3d") -> Dict[str, Any]:
             return _esito("kicad_render", True, **cli.export_svg(_pcb(), out))
         destinazione = Path(output_path) if output_path else (
             Path("var") / "kicad" / f"board-{int(time.time())}.png")
-        Destinazione.parent.mkdir(parents=True, exist_ok=True)
+        destinazione.parent.mkdir(parents=True, exist_ok=True)
         return _esito("kicad_render", True,
-                      **cli.render_3d(_pcb(), Destinazione))
+                      **cli.render_3d(_pcb(), destinazione))
     except Exception as exc:
         return _esito("kicad_render", False, error=str(exc))
 
