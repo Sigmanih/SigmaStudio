@@ -90,6 +90,17 @@ class TestIlRisultatoSiDescriveDaSolo:
             workspace_root=str(progetto))
         assert "Nessun file esaminato" in esito["message"]
 
+    def test_ricerca_su_file_singolo_funziona(self, progetto):
+        """Se path punta a un file singolo, cerca dentro quel file senza fallire."""
+        esito = execute_admin_tool(
+            "search_code", {"query": "carica_modello", "path": "src/app.py"},
+            workspace_root=str(progetto))
+        assert esito["success"] is True
+        assert esito["scanned_files"] == 1
+        assert len(esito["results"]) == 1
+        assert esito["results"][0]["line_number"] == 1
+        assert "1 corrispondenze" in esito["message"]
+
     def test_un_elenco_troncato_lo_dichiara(self):
         riga = _riassunto_ricerca({
             "query": "def", "results": [{"path": "a"}] * 25,
