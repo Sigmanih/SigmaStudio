@@ -900,19 +900,23 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         # si chiede di completare, una volta sola, con il risultato gia' in
         # mano. Se anche questo giro non produce niente, si va avanti: meglio
         # una risposta breve che un ciclo.
-        if strumenti_eseguiti and not full_text.strip():
-            log.info("[Chat] strumento eseguito senza risposta: chiedo di completare")
-            _push({"model_status": "✨ Compongo la risposta con i dati raccolti..."})
+        parole_risposta = len(full_text.strip().split()) if full_text else 0
+        ha_annuncio_tronco = bool(re.search(r"(?:verifico|consulto|controllo|leggo|approfondisco|sto consultando|eseguo)\b", full_text, re.IGNORECASE)) and parole_risposta < 40
+        if strumenti_eseguiti and (parole_risposta < 20 or ha_annuncio_tronco):
+            log.info("[Chat] strumento eseguito senza riepilogo finale completo (parole: %d): chiedo di sintetizzare", parole_risposta)
+            _push({"model_status": "✨ Sintetizzo i dati raccolti nella risposta finale..."})
             coalescer.flush()
             tool_filter.flush()
             tool_filter.reset()
             # Nel sollecito finale l'utente attende solo testo visibile, non altro ragionamento nascosto
             router = _ThinkTagRouter()
+            full_text = ""
             sollecito = list(messages) + [
                 {"role": "user", "content": (
-                    "Hai eseguito gli strumenti e hai i risultati. Adesso scrivi "
-                    "la risposta per l'utente: niente altri blocchi di strumento, "
-                    "solo il testo. Se i risultati non bastano, dillo in una riga."
+                    "Hai raccolto tutti i dati necessari dagli strumenti eseguiti. "
+                    "Adesso scrivi la RISPOSTA FINALE, COMPLETA ED ESAUSTIVA per l'utente, "
+                    "strutturata con introduzione, punti chiave e conclusioni. "
+                    "NON emettere altri blocchi di strumento: rispondi esclusivamente con il testo della risposta."
                 )},
             ]
             _run_model_turn(sollecito)

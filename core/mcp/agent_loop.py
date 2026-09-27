@@ -252,5 +252,7 @@ def format_results_for_model(outcomes: List[Dict[str, Any]]) -> str:
         blocks.append("```")
         blocks.append("")
     blocks.append("Prosegui la risposta all'utente usando questi risultati. "
+                  "Se le informazioni raccolte sono sufficienti per rispondere alla domanda, "
+                  "formula direttamente la risposta finale per l'utente senza emettere altri blocchi di strumento. "
                   "Non ripetere la stessa chiamata se è andata a buon fine.")
     return "\n".join(blocks)
