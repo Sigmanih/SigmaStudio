@@ -257,6 +257,32 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
   );
 }
 
+function ThinkingContent({ content, autoScroll, onFileClick }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (autoScroll && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [content, autoScroll]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="chat-thinking-content chat-md"
+      onClick={e => {
+        const link = e.target.closest('.chat-file-link');
+        if (link) {
+          e.preventDefault();
+          const path = link.getAttribute('data-path') || link.dataset.path;
+          onFileClick(path);
+        }
+      }}
+      dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(content) }}
+    />
+  );
+}
+
 export default function AgentMessage({
   msg,
   groupedMessages,
@@ -849,24 +875,17 @@ export default function AgentMessage({
                       </span>
                     </button>
                     {isThinkingOpen && (
-                      <div
-                        className="chat-thinking-content chat-md"
-                        onClick={e => {
-                          const link = e.target.closest('.chat-file-link');
-                          if (link) {
-                            e.preventDefault();
-                            const path = link.getAttribute('data-path') || link.dataset.path;
-                            handleFileClick(path);
-                          }
-                        }}
-                        dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(displayThinking) }}
+                      <ThinkingContent
+                        content={displayThinking}
+                        autoScroll={autoScroll}
+                        onFileClick={handleFileClick}
                       />
                     )}
                   </div>
                 )}
 
                 {/* Content & Actions */}
-                {(m.isAction || (m.actions_log && m.actions_log.length > 0)) ? (
+                {m.isAction ? (
                   <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {m.actions_log && m.actions_log.length > 0 ? (
                       m.actions_log.map((action, actionIdx) => {
