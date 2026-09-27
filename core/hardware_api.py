@@ -9,7 +9,7 @@ import json
 import time
 import platform
 import psutil
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from core import paths
 from core.logger import get_logger
 from core.engine.hardware_probe import UniversalHardwareProbe

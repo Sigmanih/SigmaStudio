@@ -231,7 +231,11 @@ def diagnose_tool_failure(tool_name: str, error_text: str, output_text: str = ""
     agent = _get_agent()
     t0 = time.perf_counter()
     if agent is None or not error_text:
-        is_transient = any(w in error_text.lower() for w in ("timeout", "timed out", "busy", "temporary", "connection reset"))
+        is_transient = any(w in error_text.lower() for w in (
+            "timeout", "timed out", "busy", "temporary", "connection reset",
+            "connection refused", "broken pipe", "resource temporarily unavailable",
+            "file locked", "sharing violation", "ebusy", "etimedout"
+        ))
         return {
             "category": "transient" if is_transient else "general",
             "action": "retry" if is_transient else "replan",
@@ -239,26 +243,6 @@ def diagnose_tool_failure(tool_name: str, error_text: str, output_text: str = ""
             "confidence": 0.5,
             "elapsed_ms": 0.0,
             "fallback": True,
-        }
-
-    err_low = (error_text or "").lower()
-    if tool_name in ("edit_file", "edit") and ("non hai ancora letto" in err_low or "prima di modificare" in err_low):
-        return {
-            "category": "syntax_or_diff",
-            "action": "replan",
-            "hint": "Esegui prima 'read_file' sul file target per ottenere il testo esatto da rimpiazzare senza numeri di riga.",
-            "confidence": 1.0,
-            "elapsed_ms": 0.1,
-            "fallback": False,
-        }
-    if tool_name in ("read_file", "read") and ("gia' presenti" in err_low or "offset" in err_low):
-        return {
-            "category": "repetition",
-            "action": "replan",
-            "hint": "Non ripetere la lettura dall'inizio: usa 'offset' e 'limit' per leggere una porzione successiva, o passa all'azione con 'edit_file'.",
-            "confidence": 1.0,
-            "elapsed_ms": 0.1,
-            "fallback": False,
         }
 
     prompt = f"Tool: {tool_name}\nError: {error_text[:300]}\nOutput: {output_text[:300]}"

@@ -257,32 +257,6 @@ function MemoizedContent({ displayContent, isPlaying, speechId, speechProgress, 
   );
 }
 
-function ThinkingContent({ content, autoScroll, onFileClick }) {
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    if (autoScroll && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-    }
-  }, [content, autoScroll]);
-
-  return (
-    <div
-      ref={containerRef}
-      className="chat-thinking-content chat-md"
-      onClick={e => {
-        const link = e.target.closest('.chat-file-link');
-        if (link) {
-          e.preventDefault();
-          const path = link.getAttribute('data-path') || link.dataset.path;
-          onFileClick(path);
-        }
-      }}
-      dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(content) }}
-    />
-  );
-}
-
 export default function AgentMessage({
   msg,
   groupedMessages,
@@ -369,7 +343,7 @@ export default function AgentMessage({
     if (!clean) return;
     try {
       localStorage.setItem('sigma_dev_pending_open_file', clean);
-    } catch (e) {}
+    } catch (e) { }
     window.dispatchEvent(new CustomEvent('sigma_dev_open_file', { detail: { path: clean } }));
     if (openTab) {
       openTab({ name: 'Developer Studio' }, 'developer');
@@ -454,7 +428,7 @@ export default function AgentMessage({
     try {
       const saved = localStorage.getItem('sigma_user_profile');
       if (saved) return JSON.parse(saved);
-    } catch (e) {}
+    } catch (e) { }
     return { name: 'Tu', avatar: '/images/default.png' };
   });
 
@@ -812,118 +786,90 @@ export default function AgentMessage({
             </div>
           ) : (
             messages.map((m, idx) => {
-            const mid = msgId || `msg-${idx}`;
-            const isLast = idx === messages.length - 1;
+              const mid = msgId || `msg-${idx}`;
+              const isLast = idx === messages.length - 1;
 
-            let displayContent = stripLiveToolBlocks(m.content || '');
-            let displayThinking = m.thinking || '';
+              let displayContent = stripLiveToolBlocks(m.content || '');
+              let displayThinking = m.thinking || '';
 
-            if (!isUser && !isSystem) {
-              // 1. Estrazione di tag espliciti residui (per messaggi storici o non in streaming)
-              if (!displayThinking && displayContent) {
-                const thinkMatch = displayContent.match(/<(?:think|thinking|thought)>([\s\S]*?)<\/(?:think|thinking|thought)>/i)
-                  || displayContent.match(/<\|channel\>thought([\s\S]*?)<channel\|>/i)
-                  || displayContent.match(/<\|thought\|>([\s\S]*?)<\/\|thought\|>/i);
-                if (thinkMatch) {
-                  displayThinking = (thinkMatch[1] || '').trim();
-                  displayContent = displayContent
-                    .replace(/<(?:think|thinking|thought)>[\s\S]*?<\/(?:think|thinking|thought)>/gi, '')
-                    .replace(/<\|channel\>thought[\s\S]*?<channel\|>/gi, '')
-                    .replace(/<\|thought\|>[\s\S]*?<\/\|thought\|>/gi, '')
-                    .replace(/<\|channel\>thought/gi, '')
-                    .replace(/<channel\|>/gi, '')
-                    .replace(/^thought\s*\n/i, '')
-                    .trim();
-                } else if (displayContent.startsWith('<|channel>thought') || displayContent.startsWith('<channel|>') || displayContent.startsWith('thought\n')) {
-                  displayContent = displayContent
-                    .replace(/<\|channel\>thought/gi, '')
-                    .replace(/<channel\|>/gi, '')
-                    .replace(/^thought\s*\n/i, '')
-                    .trim();
+              if (!isUser && !isSystem) {
+                // 1. Estrazione di tag espliciti residui (per messaggi storici o non in streaming)
+                if (!displayThinking && displayContent) {
+                  const thinkMatch = displayContent.match(/<(?:think|thinking|thought)>([\s\S]*?)<\/(?:think|thinking|thought)>/i)
+                    || displayContent.match(/<\|channel\>thought([\s\S]*?)<channel\|>/i)
+                    || displayContent.match(/<\|thought\|>([\s\S]*?)<\/\|thought\|>/i);
+                  if (thinkMatch) {
+                    displayThinking = (thinkMatch[1] || '').trim();
+                    displayContent = displayContent
+                      .replace(/<(?:think|thinking|thought)>[\s\S]*?<\/(?:think|thinking|thought)>/gi, '')
+                      .replace(/<\|channel\>thought[\s\S]*?<channel\|>/gi, '')
+                      .replace(/<\|thought\|>[\s\S]*?<\/\|thought\|>/gi, '')
+                      .replace(/<\|channel\>thought/gi, '')
+                      .replace(/<channel\|>/gi, '')
+                      .replace(/^thought\s*\n/i, '')
+                      .trim();
+                  } else if (displayContent.startsWith('<|channel>thought') || displayContent.startsWith('<channel|>') || displayContent.startsWith('thought\n')) {
+                    displayContent = displayContent
+                      .replace(/<\|channel\>thought/gi, '')
+                      .replace(/<channel\|>/gi, '')
+                      .replace(/^thought\s*\n/i, '')
+                      .trim();
+                  }
+                }
+
+                // 2. Garanzia di visibilità: se la risposta visibile è vuota ma esiste thinking e lo stream è terminato,
+                // mostriamo il contenuto come risposta per non lasciare la bolla vuota.
+                if (!displayContent.trim() && displayThinking.trim() && !m.streaming && !m.streamingThinking) {
+                  displayContent = displayThinking;
+                  displayThinking = '';
                 }
               }
 
-              // 2. Garanzia di visibilità: se la risposta visibile è vuota ma esiste thinking e lo stream è terminato,
-              // mostriamo il contenuto come risposta per non lasciare la bolla vuota.
-              if (!displayContent.trim() && displayThinking.trim() && !m.streaming && !m.streamingThinking) {
-                displayContent = displayThinking;
-                displayThinking = '';
-              }
-            }
+              const isThinkingOpen = expandedThinking?.[mid] !== undefined
+                ? Boolean(expandedThinking[mid])
+                : Boolean(m.streamingThinking);
 
-            const isThinkingOpen = expandedThinking?.[mid] !== undefined
-              ? Boolean(expandedThinking[mid])
-              : Boolean(m.streamingThinking);
-
-            return (
-              <div key={idx} className={isGrouped && !isLast ? 'chat-msg-grouped-item chat-msg-grouped-border' : 'chat-msg-grouped-item'}>
-                {/* Thinking toggle */}
-                {!isUser && !isSystem && displayThinking && (
-                  <div className={`chat-thinking ${m.streamingThinking && isThinkingOpen ? 'chat-thinking-streaming' : ''}`}>
-                    <button
-                      className="chat-thinking-toggle"
-                      onClick={() => onToggleThinking && onToggleThinking(mid, !isThinkingOpen)}
-                      title={isThinkingOpen ? "Richiudi ragionamento" : "Mostra ragionamento"}
-                    >
-                      <span>
-                        🧠 {!isThinkingOpen
-                          ? 'Mostra ragionamento'
-                          : (m.streamingThinking
+              return (
+                <div key={idx} className={isGrouped && !isLast ? 'chat-msg-grouped-item chat-msg-grouped-border' : 'chat-msg-grouped-item'}>
+                  {/* Thinking toggle */}
+                  {!isUser && !isSystem && displayThinking && (
+                    <div className={`chat-thinking ${m.streamingThinking && isThinkingOpen ? 'chat-thinking-streaming' : ''}`}>
+                      <button
+                        className="chat-thinking-toggle"
+                        onClick={() => onToggleThinking && onToggleThinking(mid, !isThinkingOpen)}
+                        title={isThinkingOpen ? "Richiudi ragionamento" : "Mostra ragionamento"}
+                      >
+                        <span>
+                          🧠 {!isThinkingOpen
+                            ? 'Mostra ragionamento'
+                            : (m.streamingThinking
                               ? <span className="chat-thinking-live"><span className="thinking-pulse"></span> Ragionando...</span>
                               : 'Nascondi ragionamento')
-                        }
-                      </span>
-                    </button>
-                    {isThinkingOpen && (
-                      <ThinkingContent
-                        content={displayThinking}
-                        autoScroll={autoScroll}
-                        onFileClick={handleFileClick}
-                      />
-                    )}
-                  </div>
-                )}
+                          }
+                        </span>
+                      </button>
+                      {isThinkingOpen && (
+                        <div
+                          className="chat-thinking-content chat-md"
+                          onClick={e => {
+                            const link = e.target.closest('.chat-file-link');
+                            if (link) {
+                              e.preventDefault();
+                              const path = link.getAttribute('data-path') || link.dataset.path;
+                              handleFileClick(path);
+                            }
+                          }}
+                          dangerouslySetInnerHTML={{ __html: renderMarkdownLatex(displayThinking) }}
+                        />
+                      )}
+                    </div>
+                  )}
 
-                {/* Content & Actions */}
-                {m.isAction ? (
-                  <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {m.actions_log && m.actions_log.length > 0 ? (
-                      m.actions_log.map((action, actionIdx) => {
-                        const isRollbackable = action.success && action.backup_id;
-                        const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
-                        const diffKey = `${mid}-${actionIdx}`;
-                        const isDiffExpanded = expandedDiffs[diffKey];
-                        return (
-                          <ChatToolActionItem
-                            key={actionIdx}
-                            action={action}
-                            onFileClick={handleFileClick}
-                            onOpenInDevStudio={handleOpenInDevStudio}
-                            diffKey={diffKey}
-                            isDiffExpanded={isDiffExpanded}
-                            onToggleDiff={toggleDiff}
-                            onRollback={handleRollback}
-                            isRollbackable={isRollbackable}
-                            hasBeenRolledBack={hasBeenRolledBack}
-                            riepilogoGoalVisibile={riepilogoGiaVisibile(displayContent, action)}
-                          />
-                        );
-                      })
-                    ) : (
-                      (m.content || '').split('\n').map((l, j) => (<div key={j} className="action-line">{l}</div>))
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    {(m.tool_calls?.length > 0 || m.tool_approvals?.length > 0) && (
-                      <div style={{ marginBottom: '8px' }}>
-                        <McpToolStrip calls={m.tool_calls} approvals={m.tool_approvals} />
-                      </div>
-                    )}
-
-                    {!m.isAction && m.actions_log && m.actions_log.length > 0 && (
-                      <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
-                        {m.actions_log.map((action, actionIdx) => {
+                  {/* Content & Actions */}
+                  {(m.isAction || (m.actions_log && m.actions_log.length > 0)) ? (
+                    <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {m.actions_log && m.actions_log.length > 0 ? (
+                        m.actions_log.map((action, actionIdx) => {
                           const isRollbackable = action.success && action.backup_id;
                           const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
                           const diffKey = `${mid}-${actionIdx}`;
@@ -943,222 +889,257 @@ export default function AgentMessage({
                               riepilogoGoalVisibile={riepilogoGiaVisibile(displayContent, action)}
                             />
                           );
-                        })}
-                      </div>
-                    )}
-
-                    {displayContent && (
-                      <MemoizedContent
-                        displayContent={displayContent}
-                        isPlaying={isPlayingAudio}
-                        speechId={speechId}
-                        speechProgress={speechProgress}
-                        messages={messages}
-                        idx={idx}
-                        onClick={handleMemoizedContentClick}
-                      />
-                    )}
-                    {(m.streaming || (isLoading && isLast && (!displayContent || displayContent.length < 10))) && (
-                      <div className="chat-generating-indicator" style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        marginTop: '8px',
-                        color: 'var(--primary)',
-                        fontSize: '0.78rem'
-                      }}>
-                        <span className="chat-loading-cursor">●</span>
-                        <span style={{ fontStyle: 'italic', fontWeight: '600', letterSpacing: '0.2px' }}>
-                          {m.statusMessage || (
-                            m.streamingThinking 
-                              ? '🧭 Elaborazione e ragionamento profondo in corso...' 
-                              : (displayContent && displayContent.length >= 10 
-                                  ? '✨ Generazione risposta in corso...' 
-                                  : '🧠 Caricamento modello e analisi contesto...')
-                          )}
-                        </span>
-                      </div>
-                    )}
-
-                    {m.created_files?.length > 0 && (
-                      <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
-                        {m.created_files?.map((filePath, fIdx) => {
-                          const pStr = getCleanPathStr(filePath);
-                          const isViz = pStr.toLowerCase().includes('/viz/') || pStr.toLowerCase().endsWith('.html');
-                          const isImg = isImagePath(pStr);
-                          const imgUrl = isImg ? (pStr.startsWith('/') ? pStr : `/${pStr}`) : null;
-                          return (
-                          <div key={`cf-${fIdx}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {isImg && imgUrl && (
-                              <div className="agent-image-preview" onClick={() => handleImagePreviewClick(imgUrl)} title="Clicca per ingrandire">
-                                <img src={imgUrl} alt={pStr.split('/').pop()} loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
-                                <div className="image-overlay"><span>🔍 Ingrandisci</span></div>
-                              </div>
-                            )}
-                            <div className="action-log-item" style={{
-                              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                              padding: '6px 8px', background: isImg ? 'rgba(124, 91, 240, 0.06)' : 'rgba(0, 210, 255, 0.04)',
-                              border: isImg ? '1px solid rgba(124, 91, 240, 0.2)' : '1px solid rgba(0, 210, 255, 0.15)',
-                              borderRadius: '6px', fontSize: '0.75rem'
-                            }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
-                                <span>{isImg ? '🎨' : '📁'}</span>
-                                <span style={{ fontWeight: '600', color: isImg ? '#7c5bf0' : 'var(--primary)', flexShrink: 0 }}>{isImg ? 'Immagine generata' : 'File salvato'}</span>
-                                <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{pStr}</span>
-                              </div>
-                              <div style={{ display: 'flex', gap: '5px' }}>
-                                <button onClick={() => handleFileClick(pStr)} style={{
-                                  background: isImg ? 'rgba(124,91,240,0.15)' : isViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.15)',
-                                  border: isImg ? '1px solid rgba(124,91,240,0.35)' : isViz ? '1px solid rgba(57,185,80,0.4)' : '1px solid rgba(0,210,255,0.3)',
-                                  color: isImg ? '#7c5bf0' : isViz ? '#3fb950' : 'var(--primary)', fontSize: '0.7rem', padding: '3px 10px',
-                                  borderRadius: '4px', cursor: 'pointer', fontWeight: '600'
-                                }}>{isImg ? 'Visualizza 🖼️' : isViz ? 'Anteprima 👁️' : 'Visualizza 📄'}</button>
-                                {!isImg && (
-                                  <button onClick={() => handleOpenInDevStudio(pStr)} title="Apri nell'IDE Developer Studio" style={{
-                                    background: 'rgba(0,210,255,0.08)', border: '1px solid rgba(0,210,255,0.25)',
-                                    color: '#00d2ff', fontSize: '0.7rem', padding: '3px 8px',
-                                    borderRadius: '4px', cursor: 'pointer', fontWeight: '600'
-                                  }}>Dev Studio 🛠️</button>
-                                )}
-                              </div>
-                            </div>
-                          </div>);
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {m.error && <div className="chat-error">⚠️ {m.error}</div>}
-
-                {/* Performance & Hardware Metrics in bottom right (excluded on errors) */}
-                {!isUser && !isSystem && !m.error && !first.error && !isErrorMessage(m.content) && !isErrorMessage(first.content) && (() => {
-                  const rawRouting = m.routing_time_ms ?? m.metrics?.routing_time_ms ?? first.routing_time_ms ?? first.metrics?.routing_time_ms;
-                  const routingDisplay = rawRouting !== undefined && rawRouting !== null
-                    ? (rawRouting >= 1000 ? `${(rawRouting / 1000).toFixed(2)}s` : `${Math.round(rawRouting)}ms`)
-                    : null;
-
-                  const rawLoad = m.load_duration_ms ?? m.metrics?.load_duration_ms ?? first.load_duration_ms ?? first.metrics?.load_duration_ms;
-                  const loadDisplay = rawLoad !== undefined && rawLoad !== null
-                    ? (rawLoad >= 1000 ? `${(rawLoad / 1000).toFixed(2)}s` : `${Math.round(rawLoad)}ms`)
-                    : null;
-
-                  const rawTokens = m.token_count ?? m.metrics?.token_count ?? m.eval_count ?? m.metrics?.eval_count ?? first.token_count ?? first.metrics?.token_count;
-                  const tokensDisplay = rawTokens !== undefined && rawTokens !== null
-                    ? `${rawTokens} tok`
-                    : null;
-
-                  const rawGenDuration = m.generation_time_ms ?? m.metrics?.generation_time_ms ?? m.eval_duration_ms ?? m.metrics?.eval_duration_ms ?? m.duration_ms ?? m.metrics?.duration_ms ?? first.generation_time_ms ?? first.metrics?.generation_time_ms;
-                  const genDurationDisplay = rawGenDuration !== undefined && rawGenDuration !== null
-                    ? (rawGenDuration >= 1000 ? `${(rawGenDuration / 1000).toFixed(2)}s` : `${Math.round(rawGenDuration)}ms`)
-                    : null;
-
-                  const rawTps = m.tokens_per_second ?? m.metrics?.tokens_per_second ?? first.tokens_per_second ?? first.metrics?.tokens_per_second;
-                  const pureTps = (rawTokens && rawGenDuration && rawGenDuration > 0)
-                    ? (rawTokens / (rawGenDuration / 1000.0))
-                    : (rawTps !== undefined && rawTps !== null ? (typeof rawTps === 'number' ? rawTps : parseFloat(rawTps)) : null);
-                  const tpsDisplay = pureTps !== undefined && pureTps !== null && !isNaN(pureTps)
-                    ? `${pureTps.toFixed(1)}`
-                    : null;
-
-                  const rawWps = m.words_per_second ?? m.metrics?.words_per_second ?? first.words_per_second ?? first.metrics?.words_per_second;
-                  const wpsDisplay = rawWps !== undefined && rawWps !== null
-                    ? `${typeof rawWps === 'number' ? rawWps.toFixed(1) : rawWps}`
-                    : null;
-
-                  const rawEngine = m.engine || m.metrics?.engine || first.engine || first.metrics?.engine;
-                  const engineDisplay = rawEngine || null;
-
-                  const rawTtft = m.ttft_ms ?? m.metrics?.ttft_ms ?? first.ttft_ms ?? first.metrics?.ttft_ms;
-                  const ttftDisplay = rawTtft !== undefined && rawTtft !== null
-                    ? `${Math.round(rawTtft)}ms`
-                    : null;
-
-                  const rawRadixHit = m.prompt_cache_hit ?? m.metrics?.prompt_cache_hit ?? first.prompt_cache_hit ?? first.metrics?.prompt_cache_hit;
-                  const rawRadixTokens = m.cached_tokens ?? m.metrics?.cached_tokens ?? first.cached_tokens ?? first.metrics?.cached_tokens;
-
-                  if (!routingDisplay && !loadDisplay && !tokensDisplay && !genDurationDisplay && !tpsDisplay && !engineDisplay && !ttftDisplay && !rawRadixHit) return null;
-
-                  return (
-                    <div className="chat-msg-footer-metrics" style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
-                      gap: '8px 14px',
-                      marginTop: '8px',
-                      paddingTop: '6px',
-                      fontSize: '0.67rem',
-                      color: '#8b8fa3',
-                      borderTop: '1px solid rgba(255, 255, 255, 0.04)',
-                      userSelect: 'none'
-                    }}>
-                      {rawRadixHit && (
-                        <span title={`Prefisso KV condiviso con lookup zero-copy O(1) (${rawRadixTokens || 0} token riutilizzati senza ricalcolo)`} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>⚡</span>
-                          <span>Radix: <strong style={{ color: '#c084fc', fontWeight: 700 }}>HIT (+{rawRadixTokens || 0} tok)</strong></span>
-                        </span>
+                        })
+                      ) : (
+                        (m.content || '').split('\n').map((l, j) => (<div key={j} className="action-line">{l}</div>))
                       )}
-                      {loadDisplay && (
-                        <span title="Tempo impiegato per caricare il modello in memoria / VRAM" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>⏳</span>
-                          <span>Caricamento: <strong style={{ color: '#eab308', fontWeight: 600 }}>{loadDisplay}</strong></span>
-                        </span>
-                      )}
-                      {engineDisplay && (
-                        <span title="Motore di inferenza utilizzato" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>⚙️</span>
-                          <span>Engine: <strong style={{ color: '#00f2fe', fontWeight: 700 }}>{engineDisplay}</strong></span>
-                        </span>
-                      )}
-                      {ttftDisplay && (
-                        <span title="Time To First Token (Latenza primo token)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>⏱️</span>
-                          <span>TTFT: <strong style={{ color: '#00f2fe', fontWeight: 600 }}>{ttftDisplay}</strong></span>
-                        </span>
-                      )}
-                      {routingDisplay && (
-                        <span title="Tempo impiegato dal centralino per analizzare l'intento e selezionare il ruolo" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>🎯</span>
-                          <span>Scelta centralino: <strong style={{ color: '#00d2ff', fontWeight: 600 }}>{routingDisplay}</strong></span>
-                        </span>
-                      )}
-                      {tokensDisplay && (
-                        <span title="Numero totale di token generati nella risposta" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>🔢</span>
-                          <span>Token: <strong style={{ color: '#38bdf8', fontWeight: 600 }}>{tokensDisplay}</strong></span>
-                        </span>
-                      )}
-                      {genDurationDisplay && (
-                        <span title="Tempo effettivo impiegato per la sola generazione / decodifica dei token (esclude caricamento e centralino)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>⏱️</span>
-                          <span>Tempo Generazione: <strong style={{ color: '#00d2ff', fontWeight: 600 }}>{genDurationDisplay}</strong></span>
-                        </span>
-                      )}
-                      {tpsDisplay && (
-                        <span title={tokensDisplay && genDurationDisplay ? `${tokensDisplay} in ${genDurationDisplay} (Velocità pura: ${tpsDisplay} t/s${wpsDisplay ? ` · ~${wpsDisplay} parole/s` : ''})` : "Velocità effettiva di generazione"} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                          <span>⚡</span>
-                          <span>Velocità: <strong style={{ color: '#4ade80', fontWeight: 600 }}>{tpsDisplay} t/s</strong>{wpsDisplay ? <span style={{ color: '#8b8fa3', fontWeight: 400, marginLeft: '3px' }}>({wpsDisplay} par/s)</span> : null}</span>
-                        </span>
-                      )}
-
                     </div>
-                  );
+                  ) : (
+                    <>
+                      {(m.tool_calls?.length > 0 || m.tool_approvals?.length > 0) && (
+                        <div style={{ marginBottom: '8px' }}>
+                          <McpToolStrip calls={m.tool_calls} approvals={m.tool_approvals} />
+                        </div>
+                      )}
+
+                      {!m.isAction && m.actions_log && m.actions_log.length > 0 && (
+                        <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                          {m.actions_log.map((action, actionIdx) => {
+                            const isRollbackable = action.success && action.backup_id;
+                            const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
+                            const diffKey = `${mid}-${actionIdx}`;
+                            const isDiffExpanded = expandedDiffs[diffKey];
+                            return (
+                              <ChatToolActionItem
+                                key={actionIdx}
+                                action={action}
+                                onFileClick={handleFileClick}
+                                onOpenInDevStudio={handleOpenInDevStudio}
+                                diffKey={diffKey}
+                                isDiffExpanded={isDiffExpanded}
+                                onToggleDiff={toggleDiff}
+                                onRollback={handleRollback}
+                                isRollbackable={isRollbackable}
+                                hasBeenRolledBack={hasBeenRolledBack}
+                                riepilogoGoalVisibile={riepilogoGiaVisibile(displayContent, action)}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {displayContent && (
+                        <MemoizedContent
+                          displayContent={displayContent}
+                          isPlaying={isPlayingAudio}
+                          speechId={speechId}
+                          speechProgress={speechProgress}
+                          messages={messages}
+                          idx={idx}
+                          onClick={handleMemoizedContentClick}
+                        />
+                      )}
+                      {(m.streaming || (isLoading && isLast && (!displayContent || displayContent.length < 10))) && (
+                        <div className="chat-generating-indicator" style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          marginTop: '8px',
+                          color: 'var(--primary)',
+                          fontSize: '0.78rem'
+                        }}>
+                          <span className="chat-loading-cursor">●</span>
+                          <span style={{ fontStyle: 'italic', fontWeight: '600', letterSpacing: '0.2px' }}>
+                            {m.statusMessage || (
+                              m.streamingThinking
+                                ? '🧭 Elaborazione e ragionamento profondo in corso...'
+                                : (displayContent && displayContent.length >= 10
+                                  ? '✨ Generazione risposta in corso...'
+                                  : '🧠 Caricamento modello e analisi contesto...')
+                            )}
+                          </span>
+                        </div>
+                      )}
+
+                      {m.created_files?.length > 0 && (
+                        <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
+                          {m.created_files?.map((filePath, fIdx) => {
+                            const pStr = getCleanPathStr(filePath);
+                            const isViz = pStr.toLowerCase().includes('/viz/') || pStr.toLowerCase().endsWith('.html');
+                            const isImg = isImagePath(pStr);
+                            const imgUrl = isImg ? (pStr.startsWith('/') ? pStr : `/${pStr}`) : null;
+                            return (
+                              <div key={`cf-${fIdx}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {isImg && imgUrl && (
+                                  <div className="agent-image-preview" onClick={() => handleImagePreviewClick(imgUrl)} title="Clicca per ingrandire">
+                                    <img src={imgUrl} alt={pStr.split('/').pop()} loading="lazy" onError={(e) => { e.target.style.display = 'none'; }} />
+                                    <div className="image-overlay"><span>🔍 Ingrandisci</span></div>
+                                  </div>
+                                )}
+                                <div className="action-log-item" style={{
+                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                  padding: '6px 8px', background: isImg ? 'rgba(124, 91, 240, 0.06)' : 'rgba(0, 210, 255, 0.04)',
+                                  border: isImg ? '1px solid rgba(124, 91, 240, 0.2)' : '1px solid rgba(0, 210, 255, 0.15)',
+                                  borderRadius: '6px', fontSize: '0.75rem'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                                    <span>{isImg ? '🎨' : '📁'}</span>
+                                    <span style={{ fontWeight: '600', color: isImg ? '#7c5bf0' : 'var(--primary)', flexShrink: 0 }}>{isImg ? 'Immagine generata' : 'File salvato'}</span>
+                                    <span style={{ color: '#8b8fa3', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{pStr}</span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '5px' }}>
+                                    <button onClick={() => handleFileClick(pStr)} style={{
+                                      background: isImg ? 'rgba(124,91,240,0.15)' : isViz ? 'rgba(57,185,80,0.15)' : 'rgba(0,210,255,0.15)',
+                                      border: isImg ? '1px solid rgba(124,91,240,0.35)' : isViz ? '1px solid rgba(57,185,80,0.4)' : '1px solid rgba(0,210,255,0.3)',
+                                      color: isImg ? '#7c5bf0' : isViz ? '#3fb950' : 'var(--primary)', fontSize: '0.7rem', padding: '3px 10px',
+                                      borderRadius: '4px', cursor: 'pointer', fontWeight: '600'
+                                    }}>{isImg ? 'Visualizza 🖼️' : isViz ? 'Anteprima 👁️' : 'Visualizza 📄'}</button>
+                                    {!isImg && (
+                                      <button onClick={() => handleOpenInDevStudio(pStr)} title="Apri nell'IDE Developer Studio" style={{
+                                        background: 'rgba(0,210,255,0.08)', border: '1px solid rgba(0,210,255,0.25)',
+                                        color: '#00d2ff', fontSize: '0.7rem', padding: '3px 8px',
+                                        borderRadius: '4px', cursor: 'pointer', fontWeight: '600'
+                                      }}>Dev Studio 🛠️</button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>);
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {m.error && <div className="chat-error">⚠️ {m.error}</div>}
+
+                  {/* Performance & Hardware Metrics in bottom right (excluded on errors) */}
+                  {!isUser && !isSystem && !m.error && !first.error && !isErrorMessage(m.content) && !isErrorMessage(first.content) && (() => {
+                    const rawRouting = m.routing_time_ms ?? m.metrics?.routing_time_ms ?? first.routing_time_ms ?? first.metrics?.routing_time_ms;
+                    const routingDisplay = rawRouting !== undefined && rawRouting !== null
+                      ? (rawRouting >= 1000 ? `${(rawRouting / 1000).toFixed(2)}s` : `${Math.round(rawRouting)}ms`)
+                      : null;
+
+                    const rawLoad = m.load_duration_ms ?? m.metrics?.load_duration_ms ?? first.load_duration_ms ?? first.metrics?.load_duration_ms;
+                    const loadDisplay = rawLoad !== undefined && rawLoad !== null
+                      ? (rawLoad >= 1000 ? `${(rawLoad / 1000).toFixed(2)}s` : `${Math.round(rawLoad)}ms`)
+                      : null;
+
+                    const rawTokens = m.token_count ?? m.metrics?.token_count ?? m.eval_count ?? m.metrics?.eval_count ?? first.token_count ?? first.metrics?.token_count;
+                    const tokensDisplay = rawTokens !== undefined && rawTokens !== null
+                      ? `${rawTokens} tok`
+                      : null;
+
+                    const rawGenDuration = m.generation_time_ms ?? m.metrics?.generation_time_ms ?? m.eval_duration_ms ?? m.metrics?.eval_duration_ms ?? m.duration_ms ?? m.metrics?.duration_ms ?? first.generation_time_ms ?? first.metrics?.generation_time_ms;
+                    const genDurationDisplay = rawGenDuration !== undefined && rawGenDuration !== null
+                      ? (rawGenDuration >= 1000 ? `${(rawGenDuration / 1000).toFixed(2)}s` : `${Math.round(rawGenDuration)}ms`)
+                      : null;
+
+                    const rawTps = m.tokens_per_second ?? m.metrics?.tokens_per_second ?? first.tokens_per_second ?? first.metrics?.tokens_per_second;
+                    const pureTps = (rawTokens && rawGenDuration && rawGenDuration > 0)
+                      ? (rawTokens / (rawGenDuration / 1000.0))
+                      : (rawTps !== undefined && rawTps !== null ? (typeof rawTps === 'number' ? rawTps : parseFloat(rawTps)) : null);
+                    const tpsDisplay = pureTps !== undefined && pureTps !== null && !isNaN(pureTps)
+                      ? `${pureTps.toFixed(1)}`
+                      : null;
+
+                    const rawWps = m.words_per_second ?? m.metrics?.words_per_second ?? first.words_per_second ?? first.metrics?.words_per_second;
+                    const wpsDisplay = rawWps !== undefined && rawWps !== null
+                      ? `${typeof rawWps === 'number' ? rawWps.toFixed(1) : rawWps}`
+                      : null;
+
+                    const rawEngine = m.engine || m.metrics?.engine || first.engine || first.metrics?.engine;
+                    const engineDisplay = rawEngine || null;
+
+                    const rawTtft = m.ttft_ms ?? m.metrics?.ttft_ms ?? first.ttft_ms ?? first.metrics?.ttft_ms;
+                    const ttftDisplay = rawTtft !== undefined && rawTtft !== null
+                      ? `${Math.round(rawTtft)}ms`
+                      : null;
+
+                    const rawRadixHit = m.prompt_cache_hit ?? m.metrics?.prompt_cache_hit ?? first.prompt_cache_hit ?? first.metrics?.prompt_cache_hit;
+                    const rawRadixTokens = m.cached_tokens ?? m.metrics?.cached_tokens ?? first.cached_tokens ?? first.metrics?.cached_tokens;
+
+                    if (!routingDisplay && !loadDisplay && !tokensDisplay && !genDurationDisplay && !tpsDisplay && !engineDisplay && !ttftDisplay && !rawRadixHit) return null;
+
+                    return (
+                      <div className="chat-msg-footer-metrics" style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        gap: '8px 14px',
+                        marginTop: '8px',
+                        paddingTop: '6px',
+                        fontSize: '0.67rem',
+                        color: '#8b8fa3',
+                        borderTop: '1px solid rgba(255, 255, 255, 0.04)',
+                        userSelect: 'none'
+                      }}>
+                        {rawRadixHit && (
+                          <span title={`Prefisso KV condiviso con lookup zero-copy O(1) (${rawRadixTokens || 0} token riutilizzati senza ricalcolo)`} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <span>⚡</span>
+                            <span>Radix: <strong style={{ color: '#c084fc', fontWeight: 700 }}>HIT (+{rawRadixTokens || 0} tok)</strong></span>
+                          </span>
+                        )}
+                        {loadDisplay && (
+                          <span title="Tempo impiegato per caricare il modello in memoria / VRAM" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <span>⏳</span>
+                            <span>Caricamento: <strong style={{ color: '#eab308', fontWeight: 600 }}>{loadDisplay}</strong></span>
+                          </span>
+                        )}
+                        {engineDisplay && (
+                          <span title="Motore di inferenza utilizzato" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <span>⚙️</span>
+                            <span>Engine: <strong style={{ color: '#00f2fe', fontWeight: 700 }}>{engineDisplay}</strong></span>
+                          </span>
+                        )}
+                        {ttftDisplay && (
+                          <span title="Time To First Token (Latenza primo token)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <span>⏱️</span>
+                            <span>TTFT: <strong style={{ color: '#00f2fe', fontWeight: 600 }}>{ttftDisplay}</strong></span>
+                          </span>
+                        )}
+                        {routingDisplay && (
+                          <span title="Tempo impiegato dal centralino per analizzare l'intento e selezionare il ruolo" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <span>🎯</span>
+                            <span>Scelta centralino: <strong style={{ color: '#00d2ff', fontWeight: 600 }}>{routingDisplay}</strong></span>
+                          </span>
+                        )}
+                        {tokensDisplay && (
+                          <span title="Numero totale di token generati nella risposta" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <span>🔢</span>
+                            <span>Token: <strong style={{ color: '#38bdf8', fontWeight: 600 }}>{tokensDisplay}</strong></span>
+                          </span>
+                        )}
+                        {genDurationDisplay && (
+                          <span title="Tempo effettivo impiegato per la sola generazione / decodifica dei token (esclude caricamento e centralino)" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <span>⏱️</span>
+                            <span>Tempo Generazione: <strong style={{ color: '#00d2ff', fontWeight: 600 }}>{genDurationDisplay}</strong></span>
+                          </span>
+                        )}
+                        {tpsDisplay && (
+                          <span title={tokensDisplay && genDurationDisplay ? `${tokensDisplay} in ${genDurationDisplay} (Velocità pura: ${tpsDisplay} t/s${wpsDisplay ? ` · ~${wpsDisplay} parole/s` : ''})` : "Velocità effettiva di generazione"} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                            <span>⚡</span>
+                            <span>Velocità: <strong style={{ color: '#4ade80', fontWeight: 600 }}>{tpsDisplay} t/s</strong>{wpsDisplay ? <span style={{ color: '#8b8fa3', fontWeight: 400, marginLeft: '3px' }}>({wpsDisplay} par/s)</span> : null}</span>
+                          </span>
+                        )}
+
+                      </div>
+                    );
 
 
 
 
-                })()}
+                  })()}
 
-                {isGrouped && (
-                  <div className="chat-timestamp">
-                    {formatTimestamp(m.timestamp)}
-                    <span className="chat-message-agent">{' · '}{m.agent_name || agentId || m.agentName || effectiveModelName || 'AI'}</span>
-                  </div>
-                )}
-              </div>
-            );
-          }))}
+                  {isGrouped && (
+                    <div className="chat-timestamp">
+                      {formatTimestamp(m.timestamp)}
+                      <span className="chat-message-agent">{' · '}{m.agent_name || agentId || m.agentName || effectiveModelName || 'AI'}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            }))}
         </div>
       </div>
       {lightboxSrc && (
@@ -1174,7 +1155,7 @@ export default function AgentMessage({
 
       {/* Interactive Category & Favorite Picker Popover for YouTube Video Cards */}
       {categoryPickerTarget && (
-        <div 
+        <div
           onClick={() => setCategoryPickerTarget(null)}
           style={{
             position: 'fixed',
@@ -1190,7 +1171,7 @@ export default function AgentMessage({
             justifyContent: 'center'
           }}
         >
-          <div 
+          <div
             onClick={(e) => e.stopPropagation()}
             style={{
               background: '#0f172a',
@@ -1210,7 +1191,7 @@ export default function AgentMessage({
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.96rem', fontWeight: 800 }}>
                 <span style={{ color: '#ef4444' }}>❤️</span> Salva nei Preferiti & Categorie
               </div>
-              <button 
+              <button
                 onClick={() => setCategoryPickerTarget(null)}
                 style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '1rem' }}
               >

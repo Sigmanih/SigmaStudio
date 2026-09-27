@@ -35,7 +35,7 @@ from core.harness.fs_manager import (
 
 log = get_logger("developer_fs_tools")
 
-READ_DEFAULT_LIMIT = 800          # lines returned when the caller asks for none
+READ_DEFAULT_LIMIT = 150          # finestra mirata predefinita (output token reduction per KV-Cache)
 READ_MAX_LIMIT = 5000             # hard ceiling for a single read request
 READ_MAX_LINE_CHARS = 2000        # a single minified line must not eat the budget
 
@@ -101,6 +101,12 @@ def read_file_slice(
         rendered.append(f"{str(i).rjust(width)}\t{raw}")
 
     end = start + len(window)
+    has_more = end < total
+    msg = (
+        f"Finestra mirata: mostrate righe {offset}..{end} di {total} totali. "
+        f"(Per continuare usa offset={end + 1} e limit={limit}, oppure trova i simboli con find_symbol)"
+        if has_more else f"File letto interamente ({total} righe)."
+    )
     return {
         **base,
         "is_sliceable": True,
@@ -109,7 +115,8 @@ def read_file_slice(
         "limit": limit,
         "returned_lines": len(window),
         "last_line": end,
-        "has_more": end < total,
+        "has_more": has_more,
+        "message": msg,
         "content": "\n".join(window),
         "numbered": "\n".join(rendered),
     }

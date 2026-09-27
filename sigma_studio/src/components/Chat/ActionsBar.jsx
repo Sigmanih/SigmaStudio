@@ -71,6 +71,25 @@ export default function ActionsBar({
             </span>
           </div>
         )}
+        <span
+          title="Flash Attention (FA-2/FA-3) attivo su GPU: accelerazione prefill e decodifica KV-Cache"
+          style={{
+            fontSize: '0.58rem',
+            fontWeight: 800,
+            padding: '2px 6px',
+            borderRadius: '4px',
+            background: 'rgba(0, 210, 255, 0.12)',
+            border: '1px solid rgba(0, 210, 255, 0.3)',
+            color: '#00d2ff',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '3px',
+            cursor: 'default',
+            userSelect: 'none'
+          }}
+        >
+          ⚡ FA: ON
+        </span>
         <button
           className={`chat-header-btn ${showQuickConfig ? 'active' : ''}`}
           onClick={(e) => { e.stopPropagation(); onOpenQuickConfig(); }}

@@ -693,33 +693,30 @@ def search_workspace_files(
         return None
 
     try:
-        if root.is_file():
-            stop_reason = _scan_file(root)
-        else:
-            for voce in _voci_da_esaminare(root):
-                stop_reason = _budget_exceeded()
-                if stop_reason:
-                    break
-                if voce.is_file():
-                    stop_reason = _scan_file(voce)
-                    continue
-                for dirpath, dirnames, filenames in os.walk(str(voce), topdown=True, onerror=None):
-                    # Prune heavy/ignored directories in place so os.walk never descends into them
-                    dirnames[:] = [
-                        d for d in dirnames
-                        if d not in SEARCH_IGNORE_DIRS and not (d.startswith(".") and d not in {".github"})
-                    ]
-                    for name in sorted(filenames):
-                        stop_reason = _budget_exceeded()
-                        if stop_reason:
-                            break
-                        stop_reason = _scan_file(Path(dirpath) / name)
-                        if stop_reason:
-                            break
+        for voce in _voci_da_esaminare(root):
+            stop_reason = _budget_exceeded()
+            if stop_reason:
+                break
+            if voce.is_file():
+                stop_reason = _scan_file(voce)
+                continue
+            for dirpath, dirnames, filenames in os.walk(str(voce), topdown=True, onerror=None):
+                # Prune heavy/ignored directories in place so os.walk never descends into them
+                dirnames[:] = [
+                    d for d in dirnames
+                    if d not in SEARCH_IGNORE_DIRS and not (d.startswith(".") and d not in {".github"})
+                ]
+                for name in sorted(filenames):
+                    stop_reason = _budget_exceeded()
+                    if stop_reason:
+                        break
+                    stop_reason = _scan_file(Path(dirpath) / name)
                     if stop_reason:
                         break
                 if stop_reason:
                     break
+            if stop_reason:
+                break
     except Exception as e:
         log.warning("Search failed under %s: %s", root, e)
         return {"success": False, "error": str(e), "results": results, "total_matches": len(results)}

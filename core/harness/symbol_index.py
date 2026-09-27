@@ -83,18 +83,30 @@ def _extract_js_symbols(code: str, rel_path: str) -> List[Dict[str, Any]]:
     return symbols
 
 
-def find_symbol_definitions(
-    query: str,
-    root_path: Optional[str] = None,
-    limit: int = 25,
-) -> Dict[str, Any]:
-    """Finds definitions of classes, functions, and components across the workspace."""
-    root = Path(root_path or get_default_workspace_root()).resolve()
-    if not root.exists() or not query.strip():
-        return {"success": True, "query": query, "symbols": [], "count": 0}
+import threading
 
-    query_clean = query.strip().lower()
+_INDEX_LOCK = threading.Lock()
+_INDEX_BG_RUNNING = False
+
+
+def get_or_build_symbol_index(
+    root_path: Optional[str] = None,
+    max_age_seconds: float = 60.0,
+    force_refresh: bool = False,
+) -> List[Dict[str, Any]]:
+    """Restituisce l'indice dei simboli dalla cache in RAM, o lo scansiona all'istante."""
+    root = Path(root_path or get_default_workspace_root()).resolve()
+    key = str(root).replace("\\", "/")
+    now = time.time()
+
+    with _INDEX_LOCK:
+        cached = _INDEX_CACHE.get(key)
+        if cached and not force_refresh and (now - cached[0] < max_age_seconds):
+            return cached[1]
+
     symbols: List[Dict[str, Any]] = []
+    if not root.exists():
+        return symbols
 
     for dirpath, dirnames, filenames in os.walk(root, topdown=True):
         dirnames[:] = [
@@ -117,25 +129,76 @@ def find_symbol_definitions(
                 else:
                     file_syms = _extract_js_symbols(code, rel_path)
 
-                for sym in file_syms:
-                    if query_clean in sym["name"].lower():
-                        symbols.append(sym)
-                        if len(symbols) >= limit:
-                            break
+                symbols.extend(file_syms)
             except Exception:
                 continue
 
-        if len(symbols) >= limit:
-            break
+    with _INDEX_LOCK:
+        _INDEX_CACHE[key] = (now, symbols)
+    return symbols
+
+
+def warmup_symbol_index(root_path: Optional[str] = None, in_background: bool = True) -> None:
+    """Pre-scansiona speculativamente l'indice dei simboli (I/O prefetching).
+    
+    Viene invocato non appena il modello avvia la generazione dei token di pensiero,
+    in modo che l'accesso al filesystem sia a latenza zero quando emette la tool call.
+    """
+    global _INDEX_BG_RUNNING
+    root = Path(root_path or get_default_workspace_root()).resolve()
+    key = str(root).replace("\\", "/")
+    
+    with _INDEX_LOCK:
+        cached = _INDEX_CACHE.get(key)
+        if cached and (time.time() - cached[0] < 45.0):
+            return  # Indice caldo e recente
+        if _INDEX_BG_RUNNING:
+            return
+
+    def _worker():
+        global _INDEX_BG_RUNNING
+        _INDEX_BG_RUNNING = True
+        try:
+            get_or_build_symbol_index(root_path=str(root), force_refresh=True)
+            log.debug("[Prefetch Speculativo] Indice simboli precaricato con successo per %s", root.name)
+        except Exception as exc:
+            log.debug("[Prefetch Speculativo] Errore scansione simboli in background: %s", exc)
+        finally:
+            _INDEX_BG_RUNNING = False
+
+    if in_background:
+        t = threading.Thread(target=_worker, name="sigma-speculative-symbol-prefetch", daemon=True)
+        t.start()
+    else:
+        _worker()
+
+
+def find_symbol_definitions(
+    query: str,
+    root_path: Optional[str] = None,
+    limit: int = 25,
+) -> Dict[str, Any]:
+    """Trova le definizioni di classi, funzioni e componenti nel workspace usando l'indice in cache."""
+    root = Path(root_path or get_default_workspace_root()).resolve()
+    if not root.exists() or not query.strip():
+        return {"success": True, "query": query, "symbols": [], "count": 0}
+
+    query_clean = query.strip().lower()
+    all_symbols = get_or_build_symbol_index(root_path=str(root))
+
+    matching = [sym for sym in all_symbols if query_clean in sym["name"].lower()]
 
     # Exact matches first
-    symbols.sort(key=lambda s: (0 if s["name"].lower() == query_clean else 1, s["name"]))
+    matching.sort(key=lambda s: (0 if s["name"].lower() == query_clean else 1, s["name"]))
+    matched_subset = matching[:limit]
+
     return {
         "success": True,
         "query": query,
-        "count": len(symbols),
-        "symbols": symbols[:limit],
-        "message": f"Trovate {len(symbols)} definizioni per '{query}'."
+        "count": len(matched_subset),
+        "total_matches": len(matching),
+        "symbols": matched_subset,
+        "message": f"Trovate {len(matching)} definizioni per '{query}' (mostrate {len(matched_subset)})."
     }
 
 

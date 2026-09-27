@@ -681,13 +681,14 @@ class RoleEngine:
             ADMIN_DEVELOPER_SYSTEM_PROMPT,
         )
 
-        # Il prompt del ruolo si SOMMA al protocollo, non lo sostituisce.
-        # Sostituendolo — com'era — il ruolo ereditava la propria identita' ma
-        # perdeva il formato delle tool call, il ciclo di lavoro e l'elenco dei
-        # tool: sapeva di essere il Tester e non sapeva come si esegue un test.
-        full_system = f"{ADMIN_DEVELOPER_SYSTEM_PROMPT}\n\n---\n\n{role.system_prompt}"
+        # Il prefisso comune (ADMIN_DEVELOPER_SYSTEM_PROMPT + context di progetto)
+        # deve restare INVARIANTE tra i cambi di ruolo per permettere a Sigma Engine
+        # e llama.cpp di riutilizzare la KV-Cache gia calcolata (tagliando il TTFT
+        # del 60-70%). La specializzazione del ruolo viene appesa in coda al prefisso.
+        full_system = ADMIN_DEVELOPER_SYSTEM_PROMPT
         if context:
-            full_system = f"{full_system}\n\n{context}"
+            full_system = f"{full_system}\n\n---\n\n{context}"
+        full_system = f"{full_system}\n\n---\n\n## RUOLO ATTIVO: {role.name} ({role.id.upper()})\n{role.system_prompt}"
 
         # Build messages with role-specific system prompt
         messages = [

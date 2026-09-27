@@ -65,7 +65,7 @@ from core.harness.terminal import (
 )
 
 from core.harness.diagnostics import validate_code_syntax
-from core.harness.symbol_index import find_symbol_definitions
+from core.harness.symbol_index import find_symbol_definitions, warmup_symbol_index
 
 log = get_logger("admin_developer_agent")
 
@@ -303,9 +303,9 @@ riesegue; una riga di shell no.
 
 ## TOOL DISPONIBILI
 
-`read_file` — legge righe numerate. Dice quante righe ha il file e se continua.
+`read_file` — legge righe numerate (finestra mirata: restituisce 150 righe alla volta per ottimizzare il contesto e la KV-Cache).
 {"path": "PERCORSO", "offset": PRIMA_RIGA, "limit": QUANTE_RIGHE}
-offset e limit sono opzionali (default: dalla riga 1, 800 righe).
+offset e limit sono opzionali (default: dalla riga 1, finestra mirata di 150 righe). Per leggere altre sezioni usa offset e limit, oppure `find_symbol` per trovare subito la riga esatta.
 
 ### Quando il contenuto e lungo: il corpo fuori dal JSON
 
@@ -2784,15 +2784,20 @@ def _stream_agent_turn_impl(
     # ruolo Coder, quindi ne eredita il binding: chi cambia quel binding cambia
     # anche questa, che e' l'unico modo perche' un solo posto resti la verita'.
     if not model_name or str(model_name).lower().strip() in GENERIC_MODEL_ALIASES:
-        try:
-            from core.harness.role_registry import get_role
-            coder = get_role("coder")
-            legato = (getattr(coder, "model", "") or "").strip() if coder else ""
-            if legato:
-                model_name = legato
-                log.info("[AdminAgent] Modello dal binding del ruolo coder: %s", model_name)
-        except Exception as exc:
-            log.debug("[AdminAgent] binding del ruolo non leggibile: %s", exc)
+        risolto = _risolvi_modello_autocodifica()
+        if risolto:
+            model_name = risolto
+            log.info("[AdminAgent] Modello risolto automaticamente per autocodifica: %s", model_name)
+        else:
+            try:
+                from core.harness.role_registry import get_role
+                coder = get_role("coder")
+                legato = (getattr(coder, "model", "") or "").strip() if coder else ""
+                if legato:
+                    model_name = legato
+                    log.info("[AdminAgent] Modello dal binding del ruolo coder: %s", model_name)
+            except Exception as exc:
+                log.debug("[AdminAgent] binding del ruolo non leggibile: %s", exc)
 
     def _cancelled() -> bool:
         try:
@@ -3220,6 +3225,7 @@ def _stream_agent_turn_impl(
         in_tool_block = False
         has_notified_tool = False
         loop_detected = False
+        prefetch_symbol_done = False
         turn_tokens = 0
         turn_reused = 0
         # Il conteggio vero che il server dichiara per questo turno, quando lo
@@ -3416,6 +3422,12 @@ def _stream_agent_turn_impl(
                 parte_risposta = []
                 for canale, testo in pezzi:
                     if canale == "thinking":
+                        if not prefetch_symbol_done:
+                            prefetch_symbol_done = True
+                            try:
+                                warmup_symbol_index(workspace_root, in_background=True)
+                            except Exception:
+                                pass
                         yield {"type": "thought", "token": testo}
                     else:
                         parte_risposta.append(testo)
@@ -4071,6 +4083,36 @@ def _stream_agent_turn_impl(
                                                  should_cancel=should_cancel,
                                                  dimensioni_viste=dimensioni_viste,
                                                  active_cwd=session_cwd)
+
+                # Auto-retry immediato System-1 con Laya su fallimenti transienti
+                if not result.get("success"):
+                    err_msg = str(result.get("error", ""))
+                    try:
+                        from core.harness.laya_router import diagnose_tool_failure, decide_tool_retry
+                        diag = diagnose_tool_failure(t_name, err_msg)
+                        if diag.get("action") == "retry" or diag.get("category") == "transient" or decide_tool_retry(t_name, "", err_msg):
+                            log.info("[LayaAutoRetry] Errore transiente su '%s' (%s). Eseguo retry immediato...", t_name, err_msg[:120])
+                            time.sleep(0.25)
+                            try:
+                                from core.modules.sigma_developer_lab.mcp_tools.bridge import is_mcp_tool, execute_via_mcp
+                                if is_mcp_tool(t_name):
+                                    retry_res = execute_via_mcp(t_name, t_params)
+                                else:
+                                    retry_res = execute_admin_tool(t_name, t_params, workspace_root,
+                                                                   should_cancel=should_cancel,
+                                                                   dimensioni_viste=dimensioni_viste,
+                                                                   active_cwd=session_cwd)
+                            except ImportError:
+                                retry_res = execute_admin_tool(t_name, t_params, workspace_root,
+                                                               should_cancel=should_cancel,
+                                                               dimensioni_viste=dimensioni_viste,
+                                                               active_cwd=session_cwd)
+                            if retry_res and retry_res.get("success"):
+                                log.info("[LayaAutoRetry] Auto-retry di '%s' riuscito con successo.", t_name)
+                                result = retry_res
+                    except Exception as retry_exc:
+                        log.debug("[LayaAutoRetry] Tentativo fallito: %s", retry_exc)
+
                 tool_cache.put(t_name, t_params, result)
 
             if result.get("new_cwd") and os.path.isdir(result["new_cwd"]):
@@ -5111,3 +5153,37 @@ def stream_admin_agent_turn(*args: Any, **kwargs: Any) -> Generator[Dict[str, An
             "goal_reached": bool(chiusura.get("goal_reached")),
             "apply_failed": bool(chiusura.get("goal_reached")) and not esito.get("applied"),
         }
+
+
+def _risolvi_modello_autocodifica() -> Optional[str]:
+    """Risoluzione automatica del modello per l'autocodifica.
+
+    Priorità:
+    1. Primo modello presente nella lista dei preferiti (se esiste almeno uno).
+    2. Primo modello disponibile tra quelli installati/attivi.
+    3. None se non c'è nulla di utilizzabile: il chiamante deve gestire l'errore.
+
+    La funzione è isolata per poter essere riusata anche da altre rotte del
+    Developer Studio senza duplicare la logica.
+    """
+    try:
+        from core.engine.unified_runtime import sigma_engine
+        preferiti = getattr(sigma_engine, "preferred_models", None) or []
+        if isinstance(preferiti, (list, tuple)) and len(preferiti) > 0:
+            primo = str(preferiti[0] or "").strip()
+            if primo:
+                return primo
+    except Exception as exc:
+        log.debug("[AdminAgent] preferiti non leggibili: %s", exc)
+
+    try:
+        from core.engine.unified_runtime import sigma_engine
+        disponibili = getattr(sigma_engine, "available_models", None) or []
+        if isinstance(disponibili, (list, tuple)) and len(disponibili) > 0:
+            primo = str(disponibili[0] or "").strip()
+            if primo:
+                return primo
+    except Exception as exc:
+        log.debug("[AdminAgent] modelli disponibili non leggibili: %s", exc)
+
+    return None

@@ -545,15 +545,8 @@ def handle_models_local_list(self):
                     # checkpoint ereditava il punteggio della propria
                     # quantizzazione, che e' un altro artefatto.
                     coda = chiave.split("/")[-1]
-                    cands = [coda]
-                    if "-" in coda:
-                        # Se il repo è nominato con prefisso autore (es. qwen-qwen3-0.6b -> qwen3-0.6b)
-                        cands.append(coda.split("-", 1)[1])
-                    for cand in cands:
-                        summary = next((r for k, r in referti.items()
-                                        if k.split("/")[-1] == cand or k == cand), None)
-                        if summary is not None:
-                            break
+                    summary = next((r for k, r in referti.items()
+                                    if k.split("/")[-1] == coda), None)
             m["benchmark_summary"] = summary or {"has_benchmarks": False}
             if summary:
                 m["tool_score"] = summary.get("tool_score")

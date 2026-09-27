@@ -255,24 +255,8 @@ def consulta(argomento: str = "", documento: str = "") -> Dict[str, Any]:
     voluto = str(documento or "").strip()
 
     if not termine and not voluto:
-        panoramica = ""
-        readme_path = _radice() / "README.md"
-        if readme_path.is_file():
-            try:
-                for titolo, corpo in _sezioni(readme_path.read_text(encoding="utf-8", errors="replace")):
-                    if any(w in titolo.lower() for w in ("presentazione", "cos'è", "about", "panoramica", "architettura", "sigma studio")):
-                        panoramica = corpo[:2500]
-                        break
-                if not panoramica:
-                    panoramica = readme_path.read_text(encoding="utf-8", errors="replace")[:1500]
-            except Exception as e_pan:
-                log.debug("[Scheda] panoramica README non estratta: %s", e_pan)
-        return {
-            "ok": True,
-            "panoramica": panoramica,
-            "indice": indice(),
-            "suggerimento": "Hai a disposizione la panoramica del progetto e l'indice dei documenti. Se cerchi dettagli specifici su un componente usa `argomento`.",
-        }
+        return {"ok": True, "indice": indice(),
+                "suggerimento": "Chiama di nuovo con `argomento` per leggere."}
 
     trovate: List[Dict[str, Any]] = []
     esaminate = 0
