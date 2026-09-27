@@ -1,7 +1,7 @@
 import React from 'react';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import 'katex/dist/katex.min.css';
-import { Bot, User, Terminal, FileText, Loader } from 'lucide-react';
+import { Bot, User, Terminal, FileText, Loader, Zap } from 'lucide-react';
 
 // ==============================================================================
 // AGENT AVATAR MAP — Match agent names/IDs to images
@@ -99,6 +99,13 @@ export default function MessageBubble({ msg, isLast, onStop, onFileLinkClick }) 
           <span className="message-role">{isUser ? userName : msg.agentName || 'Sigma AI'}</span>
           {msg.timestamp && <span className="message-time">{new Date(msg.timestamp).toLocaleTimeString()}</span>}
         </div>
+
+        {msg.laya_triage && (
+          <div className="message-laya-badge">
+            <Zap size={11} />
+            <span>Laya: <strong>{msg.laya_triage.intent}</strong> ({Math.round((msg.laya_triage.confidence || 0) * 100)}%) • {msg.laya_triage.device} • {Math.round(msg.laya_triage.elapsed_ms || 0)}ms</span>
+          </div>
+        )}
 
         {/* Thinking section — collapsible */}
         {msg.thinking && (

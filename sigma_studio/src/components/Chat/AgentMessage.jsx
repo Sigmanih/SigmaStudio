@@ -9,12 +9,28 @@ import { useApp } from '../../contexts/AppContext';
 import { useMusic } from '../../contexts/MusicContext';
 import { getModelSpecs, isErrorMessage } from './core/modelSpecsHelper';
 import ChatToolActionItem from './ui/ChatToolActionItem';
+import { estraiRiepilogo, isToolObiettivo } from './ui/GoalCompletionCard';
 import 'katex/dist/katex.min.css';
 
 
 // Helper: check if a file path is an image
 const IMAGE_EXTENSIONS = /\.(?:png|jpg|jpeg|webp|svg|gif|bmp|tiff)$/i;
 const isImagePath = (p) => typeof p === 'string' && IMAGE_EXTENSIONS.test(p);
+
+/**
+ * Un riepilogo di chiusura che la bolla dell'assistente mostra gia' non va
+ * ripetuto nella scheda del tool: si confrontano le prime parole, normalizzate,
+ * perche' la bolla puo' portare lo stesso testo con titoli e recinti diversi.
+ */
+function riepilogoGiaVisibile(contenutoVisibile, action) {
+  if (!contenutoVisibile || !action || !isToolObiettivo(action.tool || action.type)) return false;
+  const riepilogo = estraiRiepilogo(action.result);
+  if (!riepilogo) return false;
+  const normalizza = (t) => String(t || '').replace(/[#*`>_\-\s]+/g, ' ').trim().toLowerCase();
+  const bolla = normalizza(contenutoVisibile);
+  const spia = normalizza(riepilogo).slice(0, 60);
+  return Boolean(bolla && spia && bolla.includes(spia));
+}
 
 // ==============================================================================
 // AGENT MESSAGE v5.1 — Memoized HTML to prevent iframe/video reload on re-render
@@ -870,6 +886,7 @@ export default function AgentMessage({
                             onRollback={handleRollback}
                             isRollbackable={isRollbackable}
                             hasBeenRolledBack={hasBeenRolledBack}
+                            riepilogoGoalVisibile={riepilogoGiaVisibile(displayContent, action)}
                           />
                         );
                       })
@@ -904,6 +921,7 @@ export default function AgentMessage({
                               onRollback={handleRollback}
                               isRollbackable={isRollbackable}
                               hasBeenRolledBack={hasBeenRolledBack}
+                              riepilogoGoalVisibile={riepilogoGiaVisibile(displayContent, action)}
                             />
                           );
                         })}

@@ -227,6 +227,7 @@ export function useChatStreaming({
     let streamWps = null;
     let tpsFromRuntime = false;
     let streamHardwareNote = null;
+    let streamLayaTriage = null;
     let firstTokenTime = null;
     let generatedTokenCount = 0;
     let generatedWordCount = 0;
@@ -266,6 +267,7 @@ export function useChatStreaming({
               tokens_per_second: streamTps,
               words_per_second: streamWps,
               hardware_note: streamHardwareNote,
+              laya_triage: streamLayaTriage,
               metrics: {
                 routing_time_ms: streamRoutingTimeMs,
                 load_duration_ms: streamLoadDurationMs,
@@ -273,7 +275,8 @@ export function useChatStreaming({
                 token_count: streamTokenCount || (generatedTokenCount > 0 ? Math.round(generatedTokenCount) : undefined),
                 tokens_per_second: streamTps,
                 words_per_second: streamWps,
-                hardware_note: streamHardwareNote
+                hardware_note: streamHardwareNote,
+                laya_triage: streamLayaTriage
               }
             };
           } else {
@@ -298,11 +301,13 @@ export function useChatStreaming({
               load_duration_ms: streamLoadDurationMs,
               tokens_per_second: streamTps,
               hardware_note: streamHardwareNote,
+              laya_triage: streamLayaTriage,
               metrics: {
                 routing_time_ms: streamRoutingTimeMs,
                 load_duration_ms: streamLoadDurationMs,
                 tokens_per_second: streamTps,
-                hardware_note: streamHardwareNote
+                hardware_note: streamHardwareNote,
+                laya_triage: streamLayaTriage
               }
             });
           }
@@ -327,11 +332,13 @@ export function useChatStreaming({
               load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
               tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
               hardware_note: streamHardwareNote || n[n.length - 1].hardware_note,
+              laya_triage: streamLayaTriage || n[n.length - 1].laya_triage,
               metrics: {
                 routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
                 load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
                 tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
-                hardware_note: streamHardwareNote || n[n.length - 1].hardware_note
+                hardware_note: streamHardwareNote || n[n.length - 1].hardware_note,
+                laya_triage: streamLayaTriage || n[n.length - 1].laya_triage
               }
             };
           }
@@ -666,6 +673,9 @@ export function useChatStreaming({
               if (p.meta.hardware_note) {
                 streamHardwareNote = p.meta.hardware_note;
               }
+              if (p.meta.laya_triage) {
+                streamLayaTriage = p.meta.laya_triage;
+              }
               streamAgentId = p.meta.agent_id || p.meta.manifesto_used || 'sigma_assistant';
               streamAgentStyle = getAgentStyle(streamAgentId);
               const resolvedRole = p.meta.agent_role || streamAgentStyle.name || p.meta.agent_name || (streamAgentId ? streamAgentId.replace('_', ' ') : 'Sigma Assistant');
@@ -686,11 +696,13 @@ export function useChatStreaming({
                     routing_time_ms: streamRoutingTimeMs,
                     load_duration_ms: streamLoadDurationMs,
                     hardware_note: streamHardwareNote,
+                    laya_triage: streamLayaTriage,
                     metrics: {
                       routing_time_ms: streamRoutingTimeMs,
                       load_duration_ms: streamLoadDurationMs,
                       tokens_per_second: streamTps,
-                      hardware_note: streamHardwareNote
+                      hardware_note: streamHardwareNote,
+                      laya_triage: streamLayaTriage
                     }
                   };
                 }

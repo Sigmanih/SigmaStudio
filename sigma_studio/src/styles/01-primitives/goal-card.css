@@ -1,0 +1,349 @@
+/* ==============================================================================
+   LAYER 1 (PRIMITIVES) | Goal Completion Card
+   La chiusura di un lavoro dell'agente: riepilogo in markdown reso, prove per
+   criterio, esito del cancello di completamento. La usano la Chat e il
+   Developer Studio, e deve somigliare a un documento letto, non a un log.
+   ============================================================================== */
+
+.goal-card {
+  /* Il colore cambia con l'esito: verde chiuso, ambra aperto, rosso fallito. */
+  --goal-accent: var(--sigma-success, #3fb950);
+  --goal-accent-soft: rgba(63, 185, 80, 0.12);
+  --goal-accent-faint: rgba(63, 185, 80, 0.05);
+  --goal-accent-border: rgba(63, 185, 80, 0.32);
+  --goal-surface: var(--sigma-card-bg, #121622);
+  --goal-surface-alt: rgba(255, 255, 255, 0.035);
+  --goal-border: var(--sigma-border, rgba(255, 255, 255, 0.08));
+  --goal-text: var(--sigma-text, #f0f0f5);
+  --goal-text-dim: var(--sigma-text-dim, #9494a5);
+  --goal-mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+
+  position: relative;
+  display: block;
+  margin: 10px 0;
+  border: 1px solid var(--goal-accent-border);
+  border-radius: var(--sigma-radius-md, 14px);
+  background:
+    radial-gradient(120% 120% at 0% 0%, var(--goal-accent-faint) 0%, transparent 55%),
+    var(--goal-surface);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+  color: var(--goal-text);
+  animation: goal-card-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.goal-card--aperto {
+  --goal-accent: var(--sigma-warning, #ffb86c);
+  --goal-accent-soft: rgba(255, 184, 108, 0.14);
+  --goal-accent-faint: rgba(255, 184, 108, 0.05);
+  --goal-accent-border: rgba(255, 184, 108, 0.34);
+}
+
+.goal-card--errore {
+  --goal-accent: var(--sigma-error, #ff5555);
+  --goal-accent-soft: rgba(255, 85, 85, 0.14);
+  --goal-accent-faint: rgba(255, 85, 85, 0.05);
+  --goal-accent-border: rgba(255, 85, 85, 0.34);
+}
+
+@keyframes goal-card-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Intestazione --- */
+.goal-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, var(--goal-accent-soft) 0%, transparent 100%);
+  border-bottom: 1px solid var(--goal-border);
+}
+
+.goal-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  color: var(--goal-accent);
+  background: var(--goal-accent-soft);
+  border: 1px solid var(--goal-accent-border);
+  box-shadow: 0 0 14px var(--goal-accent-soft);
+}
+
+.goal-card__titles {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.goal-card__title {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+  color: var(--goal-text);
+  overflow-wrap: anywhere;
+}
+
+.goal-card__meta {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--goal-text-dim);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.goal-card__meta b {
+  color: var(--goal-accent);
+  font-weight: 700;
+}
+
+/* --- Pastiglie e pulsanti --- */
+.goal-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.goal-card__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--sigma-radius-full, 9999px);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--goal-accent);
+  background: var(--goal-accent-soft);
+  border: 1px solid var(--goal-accent-border);
+  white-space: nowrap;
+}
+
+.goal-card__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  font-size: 0.64rem;
+  font-weight: 700;
+  font-family: inherit;
+  color: var(--goal-text-dim);
+  background: var(--goal-surface-alt);
+  border: 1px solid var(--goal-border);
+  cursor: pointer;
+  transition: var(--trans-fast, all 0.15s ease);
+}
+
+.goal-card__btn:hover {
+  color: var(--goal-text);
+  border-color: var(--goal-accent-border);
+  background: var(--goal-accent-faint);
+}
+
+.goal-card__btn--on {
+  color: var(--goal-accent);
+  border-color: var(--goal-accent-border);
+}
+
+/* --- Riepilogo: stessa tipografia dell'anteprima markdown --- */
+.goal-card__body {
+  padding: 12px 16px;
+  max-width: 92ch;
+  font-size: 0.8rem;
+  color: var(--goal-text);
+}
+
+.goal-card__body > *:first-child {
+  margin-top: 0;
+}
+
+.goal-card__body > *:last-child {
+  margin-bottom: 0;
+}
+
+.goal-card__body .chat-file-link {
+  word-break: break-all;
+}
+
+/* --- Criteri e prove --- */
+.goal-card__criteria {
+  padding: 10px 16px 14px;
+  border-top: 1px dashed var(--goal-border);
+}
+
+.goal-card__section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--goal-text-dim);
+}
+
+.goal-card__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.goal-card__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: var(--goal-surface-alt);
+  border: 1px solid var(--goal-border);
+}
+
+.goal-card__item--ok {
+  border-color: var(--goal-accent-border);
+}
+
+.goal-card__bullet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border-radius: 6px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  font-family: var(--goal-mono);
+  color: var(--goal-accent);
+  background: var(--goal-accent-soft);
+  border: 1px solid var(--goal-accent-border);
+}
+
+.goal-card__item-body {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.goal-card__item-desc {
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--goal-text);
+  overflow-wrap: anywhere;
+}
+
+.goal-card__proof {
+  display: block;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-family: var(--goal-mono);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--goal-text-dim);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--goal-border);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* --- JSON grezzo: resta raggiungibile, non e' piu' la vista principale --- */
+.goal-card__raw {
+  margin: 0;
+  padding: 10px 14px;
+  max-height: 260px;
+  overflow: auto;
+  font-family: var(--goal-mono);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--goal-text-dim);
+  background: rgba(0, 0, 0, 0.32);
+  border-top: 1px solid var(--goal-border);
+}
+
+/* --- Variante chiara: il markdown della chat ha colori da tema scuro --- */
+.goal-card--light {
+  --goal-surface: #ffffff;
+  --goal-surface-alt: #f6f8fa;
+  --goal-border: #d8dee4;
+  --goal-text: #1f2328;
+  --goal-text-dim: #57606a;
+  --goal-accent-soft: rgba(16, 185, 129, 0.1);
+  --goal-accent-faint: rgba(16, 185, 129, 0.04);
+  box-shadow: 0 4px 16px rgba(31, 35, 40, 0.08);
+}
+
+.goal-card--light .goal-card__body.chat-md p,
+.goal-card--light .goal-card__body.chat-md li,
+.goal-card--light .goal-card__body.chat-md td,
+.goal-card--light .goal-card__body.chat-md th {
+  color: #32383f;
+}
+
+.goal-card--light .goal-card__body.chat-md h1,
+.goal-card--light .goal-card__body.chat-md h2,
+.goal-card--light .goal-card__body.chat-md h3,
+.goal-card--light .goal-card__body.chat-md h4,
+.goal-card--light .goal-card__body.chat-md strong {
+  color: #1f2328;
+}
+
+.goal-card--light .goal-card__body.chat-md code {
+  color: #6f42c1;
+  background: rgba(111, 66, 193, 0.08);
+  border-color: rgba(111, 66, 193, 0.16);
+}
+
+.goal-card--light .goal-card__proof,
+.goal-card--light .goal-card__raw {
+  background: #f6f8fa;
+  color: #57606a;
+}
+
+/* --- Schermi stretti: l'intestazione va in colonna, senza schiacciarsi --- */
+@media (max-width: 640px) {
+  .goal-card__head {
+    flex-wrap: wrap;
+  }
+
+  .goal-card__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .goal-card__body,
+  .goal-card__criteria {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goal-card {
+    animation: none;
+  }
+}

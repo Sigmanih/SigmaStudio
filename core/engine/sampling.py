@@ -78,6 +78,12 @@ FAMILY_RECIPES: Dict[str, Dict[str, Dict[str, float]]] = {
         "reasoning": {"temperature": 1.0, "top_p": 0.95, "top_k": 64, "min_p": 0.0,
                       "repeat_penalty": 1.0},
     },
+    "nex": {
+        "direct":    {"temperature": 0.7, "top_p": 0.85, "top_k": 30, "min_p": 0.05,
+                      "repeat_penalty": 1.1},
+        "reasoning": {"temperature": 0.7, "top_p": 0.85, "top_k": 30, "min_p": 0.05,
+                      "repeat_penalty": 1.15},
+    },
 }
 
 # Aliases that point at the same recipe under a different naming convention.
@@ -87,6 +93,8 @@ _FAMILY_ALIASES = {
     "deepseek-reasoner": "deepseek-r1",
     "qwen3-coder": "qwen3",
     "qwen2.5-coder": "qwen2.5",
+    "nex-n2.5": "nex",
+    "nex-agi": "nex",
 }
 
 

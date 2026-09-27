@@ -49,5 +49,6 @@ costo di caricarli tutti, motore di inferenza compreso.
 __all__ = [
     "loop", "roles", "ledger", "store", "policy", "rules", "providers",
     "context", "pipeline", "fs_manager", "fs_tools", "terminal",
-    "symbol_index", "diagnostics", "visual", "hooks", "cli",
+    "symbol_index", "diagnostics", "visual", "hooks", "cli", "laya_router",
 ]
+

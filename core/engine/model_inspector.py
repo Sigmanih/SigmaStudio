@@ -27,9 +27,9 @@ _FACTS_SCHEMA = 6
 
 # Bytes per element, by safetensors dtype string.
 _DTYPE_BYTES = {
-    "F64": 8, "I64": 8,
-    "F32": 4, "I32": 4,
-    "F16": 2, "BF16": 2, "I16": 2,
+    "F64": 8, "I64": 8, "U64": 8,
+    "F32": 4, "I32": 4, "U32": 4,
+    "F16": 2, "BF16": 2, "I16": 2, "U16": 2,
     "F8_E4M3": 1, "F8_E5M2": 1, "I8": 1, "U8": 1, "BOOL": 1,
     "F4": 0.5, "I4": 0.5,
 }
@@ -639,6 +639,18 @@ class ModelInspector:
         measured_bytes = 0
         expert_bytes = 0
 
+        # Un checkpoint MLX a 4 bit impacchetta otto pesi per uint32 e accanto
+        # tiene scale e offset: contare gli elementi dell'header direbbe un
+        # ottavo dei parametri veri, e ogni stima di memoria e disco partirebbe
+        # da un numero sbagliato di sette volte.
+        try:
+            from core.engine.mlx_weights import basi_quantizzate
+
+            basi = basi_quantizzate(facts.path)
+        except Exception as exc:      # modulo assente o header illeggibile
+            log.debug("[ModelInspector] Conteggio MLX non disponibile: %s", exc)
+            basi = {}
+
         for shard in shard_files:
             full_path = os.path.join(facts.path, shard)
             header = cls._read_safetensors_header(full_path)
@@ -653,11 +665,27 @@ class ModelInspector:
                 if not shape:
                     continue
 
+                numero = name[: name.rfind(".")] if "." in name else name
+                fattore = basi.get(numero)
+                if fattore and not name.endswith(".weight"):
+                    # Scale e offset servono a ricostruire i pesi: occupano
+                    # spazio reale, ma non sono parametri del modello.
+                    measured_bytes += int(
+                        meta.get("data_offsets", [0, 0])[1]
+                        - meta.get("data_offsets", [0, 0])[0]
+                    )
+                    continue
+
                 numel = 1
                 for dim in shape:
                     numel *= int(dim)
-                total_params += numel
+                # I byte sul disco sono quelli degli elementi impacchettati; i
+                # parametri che rappresentano sono otto volte tanti. Confondere
+                # i due fa sparire sette ottavi del modello dalle stime.
                 tensor_bytes = int(numel * _DTYPE_BYTES.get(dtype, 2))
+                if fattore:
+                    numel *= fattore
+                total_params += numel
                 measured_bytes += tensor_bytes
                 # Same question as on the GGUF side, asked of the checkpoint's
                 # own naming: "model.layers.N.mlp.experts.M.up_proj.weight".

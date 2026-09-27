@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Loader
 } from 'lucide-react';
+import GoalCompletionCard from './GoalCompletionCard';
 
 export default function ChatToolActionItem({
   action,
@@ -26,7 +27,8 @@ export default function ChatToolActionItem({
   onToggleDiff,
   onRollback,
   isRollbackable,
-  hasBeenRolledBack
+  hasBeenRolledBack,
+  riepilogoGoalVisibile = false
 }) {
   const [expandedContent, setExpandedContent] = useState(false);
   const [expandedTerminal, setExpandedTerminal] = useState(false);
@@ -55,6 +57,8 @@ export default function ChatToolActionItem({
   const isGit = tool.startsWith('git_') || tool === 'git';
   const isCargo = tool.startsWith('cargo_');
   const isDocker = tool.startsWith('docker_');
+  // Un tool di chiusura non si legge come un JSON: porta una scheda.
+  const isGoalCompletion = tool === 'complete_goal' || tool === 'finish_task' || tool === 'task_complete';
 
   // Icona tematica
   const renderIcon = () => {
@@ -322,7 +326,7 @@ export default function ChatToolActionItem({
           )}
 
           {/* Generic Details Toggle for other tools */}
-          {!isReadFile && !isTerminal && (action.result || action.params) && (
+          {!isReadFile && !isTerminal && !isGoalCompletion && (action.result || action.params) && (
             <button
               onClick={() => setExpandedDetails(prev => !prev)}
               style={{
@@ -370,6 +374,18 @@ export default function ChatToolActionItem({
           </span>
         </div>
       </div>
+
+      {/* Scheda di chiusura: riepilogo, criteri e prove al posto del JSON grezzo */}
+      {isGoalCompletion && (
+        <div style={{ padding: '2px 6px 6px' }}>
+          <GoalCompletionCard
+            result={action.result}
+            onOpenFile={onFileClick}
+            isLight={false}
+            mostraRiepilogo={!riepilogoGoalVisibile}
+          />
+        </div>
+      )}
 
       {/* Box Espanso: Contenuto del File Letto */}
       {isReadFile && expandedContent && content && (
@@ -541,7 +557,7 @@ export default function ChatToolActionItem({
       )}
 
       {/* Box Espanso: Dettagli Generici / Risultato Tool */}
-      {expandedDetails && (
+      {expandedDetails && !isGoalCompletion && (
         <div style={{
           background: '#090b10',
           border: '1px solid rgba(255, 255, 255, 0.08)',

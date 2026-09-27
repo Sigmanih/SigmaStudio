@@ -493,8 +493,44 @@ def find_placeholder_params(params: Dict[str, Any]) -> List[str]:
 # far too little to displace the file the next step depends on.
 MAX_ASSISTANT_HISTORY_CHARS = 1500
 
-_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
-_THINK_OPEN_RE = re.compile(r"<think>.*$", re.DOTALL | re.IGNORECASE)
+_THINK_BLOCK_RE = re.compile(r"<(?:think|thinking|thought)>.*?</(?:think|thinking|thought)>", re.DOTALL | re.IGNORECASE)
+_THINK_OPEN_RE = re.compile(r"<(?:think|thinking|thought)>.*$", re.DOTALL | re.IGNORECASE)
+
+
+def _detect_repetition_loop(text: str, min_unit: int = 30, max_unit: int = 400, min_repeats: int = 3) -> bool:
+    """Rileva se la parte terminale del testo sta ripetendo in loop una frase o sequenza di caratteri."""
+    if not text or len(text) < min_unit * min_repeats:
+        return False
+    window = text[-1500:]
+    n = len(window)
+    for unit_len in range(min_unit, min(max_unit, n // min_repeats) + 1):
+        candidate = window[-unit_len:]
+        repeats = 1
+        pos = n - 2 * unit_len
+        while pos >= 0 and window[pos:pos + unit_len] == candidate:
+            repeats += 1
+            pos -= unit_len
+            if repeats >= min_repeats:
+                return True
+    return False
+
+
+def _clean_repetition_loop(text: str, min_unit: int = 30, max_unit: int = 400, min_repeats: int = 3) -> str:
+    """Tronca le sequenze ripetute in loop alla fine del testo, lasciando una sola occorrenza."""
+    if not text or len(text) < min_unit * min_repeats:
+        return text
+    n = len(text)
+    for unit_len in range(min_unit, min(max_unit, n // min_repeats) + 1):
+        candidate = text[-unit_len:]
+        repeats = 1
+        pos = n - 2 * unit_len
+        while pos >= 0 and text[pos:pos + unit_len] == candidate:
+            repeats += 1
+            pos -= unit_len
+            if repeats >= min_repeats:
+                cutoff = pos + 2 * unit_len
+                return text[:cutoff].rstrip() + "\n[... ripetizione interrotta ...]"
+    return text
 
 
 #: Ricordato in coda allo stato quando il lavoro deve ancora avanzare.
@@ -763,11 +799,19 @@ def _as_history(full_text: str) -> str:
     decision the ledger already records, and on this checkpoint it cannot be
     switched off, so left in it would crowd out everything else.
     """
+    blocchi_tool = re.findall(
+        r"`{2,4}tool:\w+\s*[\s\S]*?`{2,4}", full_text or "", re.IGNORECASE
+    )
     text = _THINK_BLOCK_RE.sub("", full_text or "")
     # A generation cut off mid-thought leaves the tag unclosed.
     text = _THINK_OPEN_RE.sub("", text).strip()
+    if blocchi_tool:
+        for b in blocchi_tool:
+            if b not in text:
+                text = (text + "\n" + b).strip()
     if not text:
         return "(nessun output oltre al ragionamento interno)"
+    text = _clean_repetition_loop(text)
     if len(text) > MAX_ASSISTANT_HISTORY_CHARS:
         head = text[: MAX_ASSISTANT_HISTORY_CHARS // 2]
         tail = text[-MAX_ASSISTANT_HISTORY_CHARS // 2:]
@@ -1691,11 +1735,11 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
     tools = []
 
     # 1. Matches ```tool:name ... ```
-    # Il recinto deve stare a INIZIO RIGA. Con due backtick accettati ovunque,
-    # la frase «usa la variabile ``tool:read_file`` come riferimento» diventava
-    # una chiamata: un agente che spiega un tool lo eseguiva.
+    # Il recinto deve stare a INIZIO RIGA o seguire immediatamente un tag di pensiero.
     tool_named_block = re.compile(
-        r"(?:^|\n)[ \t]*`{2,4}tool:(\w+)\s*([\s\S]*?)`{2,4}", re.IGNORECASE)
+        r"(?:^|\n|</?(?:think|thinking|thought)>)[ \t]*`{2,4}tool:(\w+)\s*([\s\S]*?)`{2,4}",
+        re.IGNORECASE,
+    )
     for match in tool_named_block.finditer(text):
         tool_name = match.group(1).lower()
         body = match.group(2)
@@ -1712,8 +1756,9 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
     # 2. Matches ```tool\n...``` or ```json\n{"tool": "..."}``` or ```json\n{"action": "..."}```
     if not tools:
         generic_block = re.compile(
-            r"(?:^|\n)[ \t]*`{2,4}(?:tool|json|bash|sh|powershell)?[ \t]*\n?([\s\S]*?)`{2,4}",
-            re.IGNORECASE)
+            r"(?:^|\n|</?(?:think|thinking|thought)>)[ \t]*`{2,4}(?:tool|json|bash|sh|powershell)?[ \t]*\n?([\s\S]*?)`{2,4}",
+            re.IGNORECASE,
+        )
         for match in generic_block.finditer(text):
             body = match.group(1).strip()
             try:
@@ -1789,7 +1834,8 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
     #    azioni non puo' indovinare l'intenzione: se il nome del tool non
     #    c'e' scritto, non c'e' una chiamata.
     if not tools:
-        nudo = text.strip()
+        nudo = _THINK_BLOCK_RE.sub("", text).strip()
+        nudo = _THINK_OPEN_RE.sub("", nudo).strip()
         if nudo.startswith("{") and nudo.endswith("}"):
             data = _loads_forgiving(nudo)
             if isinstance(data, dict):
@@ -1800,6 +1846,12 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
                     params = (data.get("parameters") or data.get("arguments")
                               or data.get("params") or data.get("action_input") or data)
                     tools.append({"tool": t_name, "params": params, "raw_block": nudo})
+                elif isinstance(data.get("tool_uses"), list) and data["tool_uses"]:
+                    for tu in data["tool_uses"]:
+                        tu_name = str(tu.get("recipient_name") or tu.get("name") or "").strip().lower()
+                        tu_args = tu.get("arguments") or tu.get("parameters") or {}
+                        if tu_name and tu_name.isidentifier():
+                            tools.append({"tool": tu_name, "params": tu_args, "raw_block": nudo})
 
     return tools
 
@@ -3167,6 +3219,7 @@ def _stream_agent_turn_impl(
         router_pensiero = RouterPensiero()
         in_tool_block = False
         has_notified_tool = False
+        loop_detected = False
         turn_tokens = 0
         turn_reused = 0
         # Il conteggio vero che il server dichiara per questo turno, quando lo
@@ -3329,6 +3382,20 @@ def _stream_agent_turn_impl(
                 turn_tokens += 1
                 total_generated_tokens += 1
                 accumulated_response.append(token)
+
+                # Controllo periodico del loop di ripetizione nel flusso (ogni 25 token)
+                if turn_tokens % 25 == 0:
+                    text_so_far = "".join(accumulated_response)
+                    if _detect_repetition_loop(text_so_far):
+                        log.warning("[AdminAgent] Rilevato loop di ripetizione nel flusso a token %d. Interruzione streaming.", turn_tokens)
+                        loop_detected = True
+                        yield {"type": "status", "text": "⚠️ Rilevato loop di ripetizione: interrotto per procedere all'azione"}
+                        break
+                    if router_pensiero.in_pensiero and turn_tokens >= 2500:
+                        log.warning("[AdminAgent] Tetto massimo di ragionamento raggiunto (%d token). Interruzione pensiero.", turn_tokens)
+                        loop_detected = True
+                        yield {"type": "status", "text": "⚠️ Limite ragionamento raggiunto: interrotto per forzare l'emissione del tool"}
+                        break
 
                 # Ragionamento e risposta li separa `core/think_channel.py`, lo
                 # stesso modulo che usa la chat. Qui c'erano tre difetti che
@@ -3507,6 +3574,20 @@ def _stream_agent_turn_impl(
                     "type": "pipeline_update",
                     "tasks": implicit_tasks
                 }
+
+        if loop_detected and not tools_found:
+            advice = (
+                "⚠️ Il tuo ragionamento interno e' andato in loop di ripetizione o ha superato il limite di token senza emettere un'azione.\n"
+                "SMETTI DI RAGIONARE: emetti ORA il blocco tool necessario per avanzare nel lavoro, "
+                "senza alcun testo di pensiero o premessa.\n"
+                "Esempio:\n```tool:read_file\n{\"path\": \"<file_da_leggere>\"}\n```"
+            )
+            yield {"type": "status", "text": "⚠️ Loop di ragionamento interrotto: forzatura emissione tool"}
+            full_messages.append({"role": "assistant", "content": _as_history(full_text)})
+            full_messages.append({"role": "user", "content": advice})
+            full_messages = trim_history(full_messages)
+            last_user_prompt = advice
+            continue
 
         if not tools_found or not auto_execute_tools:
             # No tool this turn. That is the end of the work only if the work is
@@ -4230,9 +4311,16 @@ def _stream_agent_turn_impl(
             if result.get("success"):
                 obs_str = f"Tool '{t_name}' eseguito con successo.\n"
             else:
-                obs_str = (
-                    f"Tool '{t_name}' NON eseguito (errore): "
-                    f"{result.get('error', 'causa non specificata')}\n"
+                err_msg = str(result.get("error", "causa non specificata"))
+                obs_str = f"Tool '{t_name}' NON eseguito (errore): {err_msg}\n"
+                try:
+                    from core.harness.laya_router import diagnose_tool_failure
+                    laya_diag = diagnose_tool_failure(t_name, err_msg)
+                    if laya_diag and laya_diag.get("hint"):
+                        obs_str += f"[Laya Fast Recovery]: {laya_diag['hint']}\n"
+                except Exception:
+                    pass
+                obs_str += (
                     "Correggi la chiamata prima di proseguire. "
                     "NON ripetere la stessa identica chiamata.\n"
                 )
@@ -4688,7 +4776,7 @@ def _stream_agent_turn_impl(
     # Se il modello e' uscito senza emettere testo conversazionale (es. turni esauriti
     # su un blocco tool o troncamento), generiamo una sintesi informativa
     # sui dati raccolti per non lasciare mai l'utente con "Nessuna risposta".
-    if not (full_text or "").strip() or (full_text or "").strip().startswith("```tool:"):
+    if not (full_text or "").strip() or (full_text or "").strip().startswith("```tool:") or _THINK_BLOCK_RE.sub("", full_text or "").strip().startswith("```tool:"):
         letti = list(getattr(ledger, "read_files", []) or [])
         if letti:
             linee_file = "\n".join(f"- `{f}`" for f in letti[:20])

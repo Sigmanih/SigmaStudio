@@ -21,6 +21,7 @@
 @import './styles/01-primitives/forms.css';
 @import './styles/01-primitives/badges.css';
 @import './styles/01-primitives/modals.css';
+@import './styles/01-primitives/goal-card.css';
 
 /* --- LAYER 2: LAYOUT & DOMAIN MODULES --- */
 @import './styles/02-layout/app-layout.css';

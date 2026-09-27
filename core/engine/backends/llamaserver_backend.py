@@ -294,6 +294,23 @@ def plan_to_args(settings: Dict[str, Any]) -> List[str]:
     if settings.get("use_mlock"):
         argomenti.append("--mlock")
 
+    # Speculative Decoding: N-Gram Prompt Lookup o Draft Model
+    spec_model = settings.get("spec_draft_model") or os.environ.get("SIGMA_SPEC_DRAFT_MODEL")
+    spec_tokens = settings.get("prompt_lookup_tokens") or settings.get("spec_draft_tokens")
+
+    if spec_model and os.path.exists(str(spec_model)):
+        aggiungi("--spec-type", "draft-simple")
+        aggiungi("--spec-draft-model", spec_model)
+        if settings.get("spec_draft_ngl") is not None:
+            aggiungi("--spec-draft-ngl", settings.get("spec_draft_ngl"))
+        if settings.get("spec_draft_device"):
+            aggiungi("--spec-draft-device", settings.get("spec_draft_device"))
+        if spec_tokens:
+            aggiungi("--spec-draft-n-max", spec_tokens)
+    elif spec_tokens and int(spec_tokens) > 0:
+        aggiungi("--spec-type", "ngram-simple")
+        aggiungi("--spec-ngram-simple-size-m", spec_tokens)
+
     return argomenti
 
 
@@ -1277,6 +1294,8 @@ class LlamaServerBackend(InferenceBackend):
             corpo["min_p"] = float(params.min_p)
         if params.repeat_penalty is not None and params.repeat_penalty > 0:
             corpo["repeat_penalty"] = float(params.repeat_penalty)
+            if params.repeat_penalty > 1.0:
+                corpo["presence_penalty"] = round(min(max((params.repeat_penalty - 1.0) * 1.5, 0.0), 0.5), 2)
         if params.seed is not None and params.seed >= 0:
             corpo["seed"] = int(params.seed)
         if params.stop:

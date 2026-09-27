@@ -168,6 +168,17 @@ class TestLaProsaNonEUnaChiamata:
         chiamate = extract_tool_invocations('{"tool": "list_dir", "params": {"path": "core"}}')
         assert [(c["tool"], c["params"]["path"]) for c in chiamate] == [("list_dir", "core")]
 
+    def test_chiamata_preceduta_da_tag_pensiero_riconosciuta(self):
+        """Modelli con catena di pensiero nativa (es. Nex-N2.5, DeepSeek) che
+        emettono il recinto tool attaccato a <think> o </think>."""
+        testo1 = '<think>```tool:list_dir\n{"path": "."}\n```</think>'
+        chiamate1 = extract_tool_invocations(testo1)
+        assert [(c["tool"], c["params"]["path"]) for c in chiamate1] == [("list_dir", ".")]
+
+        testo2 = '<think>Ragiono prima di agire</think>```tool:read_file\n{"path": "x.py"}\n```'
+        chiamate2 = extract_tool_invocations(testo2)
+        assert [(c["tool"], c["params"]["path"]) for c in chiamate2] == [("read_file", "x.py")]
+
 
 class TestIlRiepilogoRifiutatoOttoVolte:
     """23 settembre 2026: un run ha emesso il proprio `complete_goal` otto volte
@@ -204,7 +215,7 @@ class TestIlRiepilogoRifiutatoOttoVolte:
         rotto e' un contenuto che l'agente deve riscrivere, non indovinare."""
         from core.harness.loop import normalize_tool_params
 
-        rotto = '{"path": "x.py", "content": "a "b" c"}'
+        rotto = '{"path": "x.py", "content": Ho verificato il file: non e in json}'
         assert normalize_tool_params(rotto, "write_file").get("__malformed__") is True
         assert normalize_tool_params('{"summary": "ok"}', "complete_goal") == {"summary": "ok"}
 

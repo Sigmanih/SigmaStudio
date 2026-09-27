@@ -5285,3 +5285,27 @@ table.chat-table tr:hover td {
   background: #f1f5f9 !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
 }
+
+/* ==============================================================================
+   LAYA DECISION ROUTER BADGE
+   ============================================================================== */
+.message-laya-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.2);
+  padding: 2px 8px;
+  border-radius: 9999px;
+  margin-bottom: 6px;
+  width: fit-content;
+}
+
+.message-laya-badge strong {
+  color: #c4b5fd;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}

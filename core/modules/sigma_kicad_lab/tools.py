@@ -464,11 +464,41 @@ def kicad_undo() -> Dict[str, Any]:
         if not copia:
             return _esito("kicad_undo", False,
                           error="Nessuna scrittura da annullare in questa sessione.")
+        # Sposta la copia corrente nella pila redo prima di sovrascriverla
+        if not hasattr(kicad_redo, "_pila_redo"):
+            kicad_redo._pila_redo = {}
+        pila_redo = kicad_redo._pila_redo.setdefault(chiave, [])
+        pila_redo.append(copia)
         esito = pcb_writer.restore_backup(_pcb(), copia)
         _ultimo_backup.pop(chiave, None)
         return _esito("kicad_undo", True, **esito.to_dict())
     except Exception as exc:
         return _esito("kicad_undo", False, error=str(exc))
+
+
+def kicad_redo() -> Dict[str, Any]:
+    """Riapplica l'ultima operazione annullata con `kicad_undo`.
+
+    La cronologia redo e' una pila separata: ogni `undo` sposta la copia
+    corrente nella pila redo, e ogni `redo` la riporta indietro. Se la pila
+    redo e' vuota, l'operazione fallisce con un messaggio esplicito.
+    """
+    try:
+        from . import pcb_writer
+        chiave = str(_pcb())
+        # La pila redo e' mantenuta a livello di modulo: una lista di backup
+        # in ordine cronologico (ultimo in fondo).
+        if not hasattr(kicad_redo, "_pila_redo"):
+            kicad_redo._pila_redo = {}  # chiave -> list[backup]
+        pila = kicad_redo._pila_redo.get(chiave)
+        if not pila:
+            return _esito("kicad_redo", False,
+                          error="Nessuna operazione da riapplicare in questa sessione.")
+        copia = pila.pop()
+        esito = pcb_writer.restore_backup(_pcb(), copia)
+        return _esito("kicad_redo", True, **esito.to_dict())
+    except Exception as exc:
+        return _esito("kicad_redo", False, error=str(exc))
 
 
 # --- verifica ------------------------------------------------------------------
@@ -655,6 +685,17 @@ ESECUTORI = {
     "kicad_new_board": kicad_new_board,
     "kicad_add_part": kicad_add_part,
     "kicad_read_board_full": kicad_read_board_full,
+    # task #6, la parte conclusa: l'annullamento bidirezionale.
+    #
+    # Gli altri endpoint chiesti dalla stessa UI (zone, netclass, rules,
+    # costruttori, bom, sync netlist, render 3d, export drill e pick&place)
+    # restano fuori di qui finche' non hanno una funzione che li esegue: il
+    # ponte pcbnew non offre ancora quelle primitive. Un nome citato in questo
+    # dizionario senza un `def` che lo definisca non e' un tool mancante, e'
+    # un `NameError` a livello di modulo: il modulo non si importa piu' e le
+    # prove che lo importano non si raccolgono nemmeno. Il controllo che lo
+    # impedisce sta in `tests/test_kicad_editor_contract.py`.
+    "kicad_redo": kicad_redo,
 }
 
 #: Cosa tocca i file del progetto. Serve a `policy` per il cancello: le
@@ -665,7 +706,7 @@ WRITE_TOOLS = {
     "kicad_add_via", "kicad_add_footprint", "kicad_remove_footprint",
     "kicad_move_footprint", "kicad_rename_footprint", "kicad_delete_track",
     "kicad_delete_via", "kicad_set_board_outline", "kicad_set_pad_net",
-    "kicad_undo", "kicad_export_gerbers", "kicad_export_bom", "kicad_render",
+    "kicad_undo", "kicad_redo", "kicad_export_gerbers", "kicad_export_bom", "kicad_render",
     # pcbnew bridge: questi due scrivono file di progetto
     "kicad_new_board", "kicad_add_part",
 }

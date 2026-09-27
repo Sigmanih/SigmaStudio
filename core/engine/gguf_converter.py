@@ -12,6 +12,12 @@
 #      cached; it is the only part that needs the network.
 #   2. GGUF -> K-quant runs entirely in-process through llama.dll's
 #      llama_model_quantize(), so no external binary is required.
+#
+# Davanti ai due ce n'e' uno che vale solo per i checkpoint MLX quantizzati:
+# sono safetensors impacchettati (uint32 + scales + biases) e il convertitore di
+# llama.cpp non li sa leggere, quindi prima vengono riportati a bf16 da
+# core.engine.mlx_weights, in una cartella temporanea che vive lo spazio della
+# conversione.
 # ==============================================================================
 import os
 import json
@@ -27,6 +33,7 @@ from typing import Dict, Any, List, Optional
 from core import paths
 from core.logger import get_logger
 from core.engine.model_inspector import ModelInspector
+from core.engine.mlx_weights import dequantizza_verso_hf, quantizzazione_mlx
 
 log = get_logger(__name__)
 
@@ -257,10 +264,16 @@ class GgufConverter:
         finale_gb = params * finale_bpw / 8 / 2**30
         libero_gb = cls._free_disk_gb(output_dir) - _DISK_HEADROOM_GB
 
+        # Un MLX quantizzato produce un terzo file, il checkpoint bf16 da cui
+        # parte la conversione: coesiste con gli altri due mentre il
+        # convertitore lo legge, e ignorarlo fa partire un lavoro che finisce a
+        # disco pieno.
+        dequant_gb = cls._mlx_dequant_gb(facts)
+
         for tipo in ("auto", "q8_0"):
             intermedio_gb = params * _INTERMEDIATE_BPP[tipo] / 2**30
-            if intermedio_gb + finale_gb <= libero_gb:
-                return {
+            if dequant_gb + intermedio_gb + finale_gb <= libero_gb:
+                piano = {
                     "ok": True,
                     "intermediate": tipo,
                     "intermediate_gb": round(intermedio_gb, 1),
@@ -268,16 +281,86 @@ class GgufConverter:
                     "free_gb": round(libero_gb, 1),
                     "downgraded": tipo != "auto",
                 }
+                if dequant_gb:
+                    piano["dequant_gb"] = round(dequant_gb, 1)
+                return piano
 
-        minimo_gb = params * _INTERMEDIATE_BPP["q8_0"] / 2**30 + finale_gb
-        return {
+        intermedio_gb = params * _INTERMEDIATE_BPP["q8_0"] / 2**30
+        minimo_gb = dequant_gb + intermedio_gb + finale_gb
+        piano = {
             "ok": False,
             "intermediate": "q8_0",
-            "intermediate_gb": round(params * _INTERMEDIATE_BPP["q8_0"] / 2**30, 1),
+            "intermediate_gb": round(intermedio_gb, 1),
             "final_gb": round(finale_gb, 1),
             "free_gb": round(libero_gb, 1),
             "needed_gb": round(minimo_gb, 1),
             "missing_gb": round(minimo_gb - libero_gb, 1),
+        }
+        if dequant_gb:
+            piano["dequant_gb"] = round(dequant_gb, 1)
+        return piano
+
+    @staticmethod
+    def _quantizzazione_mlx_di(facts) -> Optional[Dict[str, Any]]:
+        """Com'e' quantizzato il checkpoint, se e' un MLX.
+
+        Solo per i safetensors: un GGUF non ha tensori impacchettati da
+        disfare, e chiederlo a ogni altro formato costerebbe una lettura di
+        header per modello a ogni inventario.
+        """
+        if getattr(facts, "weight_format", "") != "safetensors":
+            return None
+        percorso = str(getattr(facts, "path", "") or "")
+        if not percorso:
+            return None
+        try:
+            return quantizzazione_mlx(percorso)
+        except Exception as exc:
+            log.debug("[GgufConverter] Riconoscimento MLX non riuscito per %s: %s",
+                      percorso, exc)
+            return None
+
+    @classmethod
+    def _mlx_dequant_gb(cls, facts) -> float:
+        """Quanto pesa il checkpoint bf16 che nasce da un MLX quantizzato.
+
+        bf16 sono due byte per peso, gli stessi che il convertitore legge
+        subito dopo. Zero per tutto il resto, e zero anche quando i pesi non si
+        sanno disfare: in quel caso la conversione non parte affatto.
+        """
+        info = cls._quantizzazione_mlx_di(facts)
+        if not info or not info.get("dequantizzabile"):
+            return 0.0
+        params = getattr(facts, "param_count", 0) or 0
+        return params * _INTERMEDIATE_BPP["bf16"] / 2**30
+
+    @classmethod
+    def _mlx_note(cls, facts) -> Optional[Dict[str, Any]]:
+        """Cosa dire di un checkpoint quantizzato da MLX prima di convertirlo.
+
+        Non e' un blocco: si converte lo stesso, ma solo dopo aver riportato i
+        pesi a bf16, e il GGUF che ne esce non e' piu' fedele dei bit di
+        partenza. Tacerlo fa credere che quel risultato valga il modello pieno.
+        """
+        info = cls._quantizzazione_mlx_di(facts)
+        if not info:
+            return None
+        bits = int(info.get("bits") or 0)
+        gruppo = int(info.get("group_size") or 0)
+        return {
+            "mode": info.get("mode"),
+            "bits": bits,
+            "group_size": gruppo,
+            "tensors": info.get("tensori_quantizzati"),
+            "dequantizable": bool(info.get("dequantizzabile")),
+            "reason": info.get("motivo"),
+            "note": (
+                "I pesi sono quantizzati da MLX (" + str(bits) + " bit, gruppi di "
+                + str(gruppo) + "): prima di convertirli vengono riportati a "
+                "bf16, quindi il GGUF non potra' essere piu' fedele dei bit di "
+                "partenza. Per la qualita' massima usa la variante bf16 dello "
+                "stesso modello."
+            ),
         }
 
     @staticmethod
@@ -604,6 +687,28 @@ class GgufConverter:
             "(Convertitore GGUF -> Aggiorna)."
         )
 
+        # Un checkpoint MLX quantizzato si converte, ma non dai pesi come sono
+        # scritti: prima si disfano in bf16. Va detto adesso e non a meta'
+        # lavoro, perche' da li' in poi la fedelta' del GGUF e' quella dei bit
+        # di partenza, e chi legge deve poterlo sapere prima di aspettare.
+        mlx = cls._mlx_note(facts)
+        if mlx:
+            report["mlx"] = mlx
+            if not mlx["dequantizable"]:
+                # Non e' l'architettura a mancare, e' il formato dei pesi: il
+                # convertitore partirebbe e morirebbe sul primo tensore
+                # impacchettato che incontra.
+                report["blocked_by"] = blocking + ["mlx"]
+                report["convertible"] = False
+                report["summary"] = (
+                    "I pesi di questo checkpoint sono quantizzati da MLX in un modo "
+                    "che non sappiamo disfare (" + str(mlx["reason"] or mlx["mode"])
+                    + "). Senza i pesi veri non c'e' niente da convertire: scarica "
+                    "la variante bf16 dello stesso modello, oppure convertila con "
+                    "MLX e usa il backend MLX."
+                )
+                return report
+
         # Il writer e' il segnale autorevole: il pacchetto gguf e il runtime
         # llama.cpp nascono dallo stesso progetto, quindi se il writer non
         # conosce l'architettura non la conoscera' nemmeno una build piu'
@@ -624,6 +729,8 @@ class GgufConverter:
                 if is_already_gguf
                 else "Compatibile: conversione ed esecuzione supportate."
             )
+            if report.get("mlx"):
+                report["summary"] += " " + report["mlx"]["note"]
         elif blocking == ["runtime"]:
             report["summary"] = (
                 "Il runtime llama.cpp installato non conosce l'architettura '"
@@ -1021,14 +1128,24 @@ class GgufConverter:
             dest_dir = os.path.dirname(source)
             piano_spazio = cls._plan_conversion_space(facts, quantization, dest_dir)
             if not piano_spazio["ok"]:
+                # Le tre parti si nominano una per una: quando una manca, chi
+                # legge deve sapere quale, e la dequantizzazione MLX si vede
+                # solo qui.
+                parti = []
+                if piano_spazio.get("dequant_gb"):
+                    parti.append(
+                        f"{piano_spazio['dequant_gb']} GB di checkpoint "
+                        "riportato a bf16 dai pesi MLX"
+                    )
+                parti.append(f"{piano_spazio['intermediate_gb']} GB di file intermedio")
+                parti.append(f"{piano_spazio['final_gb']} GB di risultato")
                 return {
                     "success": False,
                     "error": (
                         f"Spazio su disco insufficiente: servono circa "
-                        f"{piano_spazio['needed_gb']} GB "
-                        f"({piano_spazio['intermediate_gb']} GB di file intermedio "
-                        f"piu {piano_spazio['final_gb']} GB di risultato, che "
-                        f"coesistono durante la quantizzazione) e ne sono liberi "
+                        f"{piano_spazio['needed_gb']} GB ("
+                        + ", ".join(parti)
+                        + ", che coesistono durante la conversione) e ne sono liberi "
                         f"{piano_spazio['free_gb']} GB. "
                         f"Liberane almeno {piano_spazio['missing_gb']} GB e riprova."
                     ),
@@ -1191,6 +1308,17 @@ class GgufConverter:
                 pass
 
         existing_gguf = cls._existing_gguf(source)
+        # Lo stesso riconoscimento che fa l'inventario, senza ricostruire i
+        # fatti: qui serve solo sapere se i pesi sono impacchettati da MLX, e
+        # con un GGUF gia' in cartella la domanda non si pone nemmeno.
+        mlx_info: Optional[Dict[str, Any]] = None
+        if not existing_gguf:
+            try:
+                mlx_info = quantizzazione_mlx(source)
+            except Exception as exc:
+                log.debug("[GgufConverter] Riconoscimento MLX non riuscito per %s: %s",
+                          source, exc)
+        temporanea_mlx: Optional[str] = None
 
         try:
             if existing_gguf:
@@ -1216,6 +1344,15 @@ class GgufConverter:
                     )
             else:
                 job.status = "converting"
+                # Un MLX quantizzato non si passa al convertitore: `*.weight` e'
+                # uint32 impacchettato e accanto ha scale e offset, tensori che
+                # convert_hf_to_gguf.py non sa mappare. Si scrive prima un
+                # checkpoint HF normale in bf16, e si converte quello.
+                sorgente_hf = source
+                if mlx_info and mlx_info.get("dequantizzabile"):
+                    sorgente_hf = cls._dequantizza_mlx(
+                        job, source, base_name, mlx_info)
+                    temporanea_mlx = sorgente_hf
                 job.stage = "hf_to_gguf"
                 job.message = (
                     "Conversione dei pesi in GGUF ("
@@ -1229,7 +1366,7 @@ class GgufConverter:
                     "Conversione dei pesi in GGUF ("
                     + ("16 bit" if outtype == "auto" else outtype) + "):",
                 ):
-                    cls._convert_to_intermediate(source, intermediate, outtype)
+                    cls._convert_to_intermediate(sorgente_hf, intermediate, outtype)
 
             avvisi_metadati: List[str] = []
             if intermediate and os.path.exists(intermediate):
@@ -1342,6 +1479,12 @@ class GgufConverter:
             # anche rinominare a mano fallisce con "esiste gia' un modello".
             cls._rimuovi_se_senza_gguf(target_dir)
         finally:
+            # Il checkpoint bf16 temporaneo non e' un modello: e' un passaggio
+            # intermedio, e vive lo spazio di una conversione. Si cancella anche
+            # quando la conversione fallisce, altrimenti un errore lascia in
+            # giro gigabyte che nessuno collega piu' a questo job.
+            if temporanea_mlx:
+                shutil.rmtree(temporanea_mlx, ignore_errors=True)
             job.finished_at = time.time()
 
     @staticmethod
@@ -1395,6 +1538,56 @@ class GgufConverter:
         # A parita' di precisione il nome decide, cosi' la scelta e' stabile.
         migliore = max(nomi, key=lambda n: (cls._precisione_gguf(n), n))
         return os.path.join(source, migliore)
+
+    @classmethod
+    def _dequantizza_mlx(cls, job: ConversionJob, source: str, base_name: str,
+                         info: Dict[str, Any]) -> str:
+        """Riporta a bf16 i pesi di un checkpoint MLX quantizzato.
+
+        La cartella temporanea nasce accanto alla sorgente e non altrove: il
+        piano dello spazio e' calcolato sul volume che ospita il modello, e un
+        temporaneo su un altro disco lo aggirerebbe. Il nome comincia con un
+        punto perche' l'inventario del Model Hub non lo veda come un secondo
+        modello, e chi la cancella e' il `finally` di `_run`: nessun percorso,
+        nemmeno quello di errore, deve lasciarla dietro.
+        """
+        temporanea = os.path.join(
+            os.path.dirname(os.path.abspath(source)),
+            "." + base_name + "-MLX-BF16",
+        )
+        shutil.rmtree(temporanea, ignore_errors=True)
+        job.stage = "dequant_mlx"
+        job.progress = 2
+        job.message = (
+            "Pesi quantizzati da MLX (" + str(info.get("bits")) + " bit su gruppi di "
+            + str(info.get("group_size")) + "): li riporto a bf16 prima di "
+            "convertirli..."
+        )
+
+        def avanzamento(fatti: int, totali: int) -> None:
+            # Sotto il 5%: da li' in poi la conversione vera non e' ancora
+            # cominciata, e una barra che torna indietro si legge come un
+            # guasto.
+            if totali <= 0:
+                return
+            job.progress = min(4, 1 + int(3 * fatti / totali))
+            job.message = (
+                "Pesi MLX riportati a bf16: " + str(fatti) + "/" + str(totali)
+                + " tensori..."
+            )
+
+        try:
+            esito = dequantizza_verso_hf(source, temporanea, on_progress=avanzamento)
+        except Exception:
+            shutil.rmtree(temporanea, ignore_errors=True)
+            raise
+        job.message = (
+            "Pesi MLX riportati a bf16 ("
+            + str(esito.get("dequantizzati")) + " tensori dequantizzati, "
+            + str(round((esito.get("byte") or 0) / 2**30, 1))
+            + " GB): avvio la conversione."
+        )
+        return temporanea
 
     @staticmethod
     def _convert_to_intermediate(source: str, output: str,

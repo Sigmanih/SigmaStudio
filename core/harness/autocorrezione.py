@@ -363,18 +363,26 @@ def diagnostica(
     #    lui perche' i casi netti costano zero e un modello costa un minuto:
     #    lo si paga solo qui, dove nessuna regola ha saputo rispondere.
     if bilancio.puo_correggere():
+        istr = (
+            f"Diagnosi del task «{titolo}»: e' fallito e le regole non "
+            "sanno dire a che livello. Non riparare niente. Leggi i "
+            "comandi gia' eseguiti — se lo stesso comando ha dato esiti "
+            "diversi, parti da li' — riproduci il guasto, e di' il "
+            "livello: la prova, l'ambiente, il test, il codice, il "
+            "compito. Porta il file o il comando che lo dimostra."
+        )
+        try:
+            from core.harness.laya_router import diagnose_tool_failure
+            diag_hint = diagnose_tool_failure(titolo, guasto)
+            if diag_hint and not diag_hint.get("fallback") and diag_hint.get("hint"):
+                istr += f"\nIndizio preliminare System-1: {diag_hint['hint']}"
+        except Exception:
+            pass
         return Diagnosi(
             livello=CORREGGI,
             motivo="fallito senza una causa riconoscibile",
             ruolo="diagnosta",
-            istruzione=(
-                f"Diagnosi del task «{titolo}»: e' fallito e le regole non "
-                "sanno dire a che livello. Non riparare niente. Leggi i "
-                "comandi gia' eseguiti — se lo stesso comando ha dato esiti "
-                "diversi, parti da li' — riproduci il guasto, e di' il "
-                "livello: la prova, l'ambiente, il test, il codice, il "
-                "compito. Porta il file o il comando che lo dimostra."
-            ),
+            istruzione=istr,
             prove=[r for r in guasto.splitlines() if r.strip()][:2],
         )
     return Diagnosi(livello=RINUNCIA,

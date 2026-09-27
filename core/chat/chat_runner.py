@@ -507,7 +507,8 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
                           top_p, timeout, message, bot_name, manifesto_path,
                           allow_actions, agent_id=None, agent_role=None, agent_image=None,
                           routing_time_ms=None, hardware_note=None,
-                          sampling=None, wants_reasoning=True, target_hardware=None):
+                          sampling=None, wants_reasoning=True, target_hardware=None,
+                          laya_triage=None):
     """Stream a chat completion as SSE, then run file extraction on the full text.
 
     `sampling` is the resolved SamplingParams for this turn; when None each
@@ -545,6 +546,13 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
         "manifesto_used": manifesto_path,
         "routing_time_ms": routing_time_ms,
         "hardware_note": hw_info,
+        "laya_triage": {
+            "intent": laya_triage.intent,
+            "confidence": round(laya_triage.intent_confidence, 2),
+            "complexity": laya_triage.complexity,
+            "elapsed_ms": round(laya_triage.elapsed_ms, 1),
+            "device": laya_triage.device,
+        } if (laya_triage and not getattr(laya_triage, "fallback", True)) else None,
         "prefix_cache": {
             "matched_tokens": radix_matched,
             "total_prefix_tokens": radix_total,
@@ -1183,6 +1191,20 @@ def handle_chat(self):
         import time
         t_req_start = time.perf_counter()
 
+        # --- Laya System-1 Triage (Intent, Complexity, Tool-Gating) ---------
+        laya_decision = None
+        try:
+            from core.harness import laya_router
+            laya_decision = laya_router.triage_chat(message)
+            if not laya_decision.fallback:
+                log.info(
+                    "[ChatRunner] Laya triage: intent=%s (%.2f), complexity=%s in %.1f ms su %s",
+                    laya_decision.intent, laya_decision.intent_confidence,
+                    laya_decision.complexity, laya_decision.elapsed_ms, laya_decision.device,
+                )
+        except Exception as laya_exc:
+            log.debug("[ChatRunner] Laya triage non disponibile: %s", laya_exc)
+
         ai_cfg = load_ai_config()
         active_provider = ai_cfg.get("active_provider", "ollama")
         model = model_override or ai_cfg.get("active_model") or ai_cfg.get("model") or ""
@@ -1306,8 +1328,14 @@ def handle_chat(self):
             # server on or off, so it belongs in the cacheable prefix.
             # Only what is switched on and actually reachable: listing a tool the
             # hub would refuse just sends the agent into a wall.
-            from core.mcp.agent_loop import build_tools_prompt
-            mcp_tools_catalogue = build_tools_prompt(mcp_hub.get_agent_tools())
+            # Se Laya ha classificato l'intento come pura 'chat' e le azioni non sono
+            # richieste, saltiamo l'iniezione del catalogo (risparmiando ~3000 token).
+            if laya_decision and laya_decision.should_skip_tools and not allow_actions:
+                mcp_tools_catalogue = ""
+                log.debug("[ChatRunner] Tool catalogue saltato da Laya per intento 'chat'")
+            else:
+                from core.mcp.agent_loop import build_tools_prompt
+                mcp_tools_catalogue = build_tools_prompt(mcp_hub.get_agent_tools())
         except Exception as mcp_err:
             log.debug("MCP Hub chat pipeline enrichment skipped: %s", mcp_err)
 
@@ -1585,6 +1613,7 @@ Contenuto completo...
                 routing_time_ms=routing_time_ms, hardware_note=hardware_note,
                 sampling=sampling, wants_reasoning=wants_reasoning,
                 target_hardware=target_hardware,
+                laya_triage=laya_decision,
             )
 
         if active_provider in ("sigma_engine", "sigma"):
@@ -1674,6 +1703,13 @@ Contenuto completo...
             "agent_id": agent_id,
             "routing_time_ms": routing_time_ms,
             "hardware_note": hardware_note,
+            "laya_triage": {
+                "intent": laya_decision.intent,
+                "confidence": round(laya_decision.intent_confidence, 2),
+                "complexity": laya_decision.complexity,
+                "elapsed_ms": round(laya_decision.elapsed_ms, 1),
+                "device": laya_decision.device,
+            } if (laya_decision and not getattr(laya_decision, "fallback", True)) else None,
             "metrics": {
                 "routing_time_ms": routing_time_ms,
                 "hardware_note": hardware_note
