@@ -312,6 +312,7 @@ def plan_to_args(settings: Dict[str, Any]) -> List[str]:
     elif spec_tokens and int(spec_tokens) > 0:
         aggiungi("--spec-type", "ngram-simple")
         aggiungi("--spec-ngram-simple-size-m", spec_tokens)
+        aggiungi("--spec-ngram-simple-size-n", "1")
 
     return argomenti
 
@@ -584,7 +585,7 @@ class LlamaServerBackend(InferenceBackend):
                 "-np", str(int(cur_settings.get("parallel_slots")
                                 or slot_per_contesto(cur_settings.get("n_ctx")))),
                 "-cb",
-                "--cache-reuse", "64",
+                "--cache-reuse", "256",
                 "--slot-prompt-similarity", "0.5",
                 *plan_to_args(cur_settings),
             ]
@@ -594,6 +595,16 @@ class LlamaServerBackend(InferenceBackend):
             if mmproj_file:
                 comando.extend(["--mmproj", mmproj_file])
                 log.info("[LlamaServer] Rilevato e agganciato proiettore multimodale CLIP: %s", os.path.basename(mmproj_file))
+
+            # Aggancia l'adattatore LoRA residuo ("scarti") se presente nella cartella
+            # e non esplicitamente disabilitato per massimizzare la velocita' di calcolo.
+            skip_lora = bool(cur_settings.get("skip_residual_lora") or os.environ.get("SIGMA_DISABLE_RESIDUAL_LORA"))
+            lora_file = self._find_lora_file(facts)
+            if lora_file and not skip_lora:
+                comando.extend(["--lora", lora_file])
+                log.info("[LlamaServer] Rilevato e agganciato adattatore LoRA residuo ('scarti'): %s", os.path.basename(lora_file))
+            elif lora_file and skip_lora:
+                log.info("[LlamaServer] Adattatore LoRA residuo escluso per massimizzare la velocita' (zero branch GEMM).")
 
             log.info("[LlamaServer] Avvio: %s", " ".join(comando[1:]))
 
@@ -1068,6 +1079,22 @@ class LlamaServerBackend(InferenceBackend):
             pass
         return None
 
+    def _find_lora_file(self, facts: ModelFacts) -> Optional[str]:
+        """Trova l'adattatore LoRA residuo ('scarti') o ausiliario se presente nella cartella del modello."""
+        if not os.path.isdir(facts.path):
+            return None
+        try:
+            for root, _dirs, files in os.walk(facts.path):
+                for f in files:
+                    low = f.lower()
+                    if low.endswith(".gguf") and (
+                        "residual.lora" in low or ".lora." in low or low.endswith("-lora.gguf") or low.endswith(".lora.gguf")
+                    ):
+                        return os.path.join(root, f)
+        except OSError:
+            pass
+        return None
+
 
     def _url(self, percorso: str) -> str:
         return f"http://127.0.0.1:{self._porta}{percorso}"
@@ -1471,4 +1498,59 @@ class LlamaServerBackend(InferenceBackend):
 
                 if contenuto:
                     yield {"content": contenuto, "kind": "content"}
+
+    # ------------------------------------------------------------- persistent slots (NVMe)
+
+    def save_slot_kv(self, slot_id: int, filepath: str) -> bool:
+        """Salva lo stato della KV-cache di uno slot su NVMe via API llama-server.
+
+        Abbatte a zero il prefill di prompt frequenti o del system prompt.
+        """
+        if self._porta is None or self._processo is None:
+            return False
+        import urllib.parse
+        url = (
+            f"http://127.0.0.1:{self._porta}/slots/{slot_id}"
+            f"?action=save&filepath={urllib.parse.quote(str(filepath))}"
+        )
+        try:
+            req = urllib.request.Request(url, data=b"", method="POST")
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                return resp.status == 200
+        except Exception as exc:
+            log.debug("[LlamaServer] save_slot_kv fallito per slot %d: %s", slot_id, exc)
+            return False
+
+    def restore_slot_kv(self, slot_id: int, filepath: str) -> bool:
+        """Ripristina lo stato della KV-cache di uno slot da file NVMe."""
+        if self._porta is None or self._processo is None:
+            return False
+        if not os.path.exists(filepath):
+            return False
+        import urllib.parse
+        url = (
+            f"http://127.0.0.1:{self._porta}/slots/{slot_id}"
+            f"?action=restore&filepath={urllib.parse.quote(str(filepath))}"
+        )
+        try:
+            req = urllib.request.Request(url, data=b"", method="POST")
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                return resp.status == 200
+        except Exception as exc:
+            log.debug("[LlamaServer] restore_slot_kv fallito per slot %d: %s", slot_id, exc)
+            return False
+
+    def erase_slot_kv(self, slot_id: int) -> bool:
+        """Cancella la cache di uno slot su llama-server."""
+        if self._porta is None or self._processo is None:
+            return False
+        url = f"http://127.0.0.1:{self._porta}/slots/{slot_id}?action=erase"
+        try:
+            req = urllib.request.Request(url, data=b"", method="POST")
+            with urllib.request.urlopen(req, timeout=5.0) as resp:
+                return resp.status == 200
+        except Exception as exc:
+            log.debug("[LlamaServer] erase_slot_kv fallito per slot %d: %s", slot_id, exc)
+            return False
+
 

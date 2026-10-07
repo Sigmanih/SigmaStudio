@@ -28,8 +28,11 @@
 # Gli slot sono chiavi arbitrarie (il ruolo, la sessione) con sfratto LRU e un
 # tetto basso, perche' ogni slot e' KV che resta in VRAM.
 # ==============================================================================
+import json
 import os
+from pathlib import Path
 import threading
+import time
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -212,6 +215,68 @@ class PrefixKVCache:
             self._slots[slot] = (list(sequence_ids), cache)
             self._evict_locked()
 
+    # ------------------------------------------------------------- NVMe persistence
+
+    @staticmethod
+    def _default_persist_dir() -> Path:
+        from core.paths import var_dir
+        cartella = var_dir() / "prefix_cache"
+        cartella.mkdir(parents=True, exist_ok=True)
+        return cartella
+
+    def save_to_disk(self, slot: str = DEFAULT_SLOT, dest_dir: Optional[Path] = None) -> Optional[Path]:
+        """Salva i metadati e i token del prefisso su storage persistente (NVMe/SSD).
+
+        Consente di azzerare il prefill del prompt di sistema tra riavvii del server
+        o cambi di sessione.
+        """
+        slot = slot or DEFAULT_SLOT
+        with self._lock:
+            voce = self._slots.get(slot)
+            if not voce:
+                return None
+            tokens, _ = voce
+            model = self._model_name or "unknown"
+
+        out_dir = dest_dir or self._default_persist_dir()
+        file_path = out_dir / f"{slot}_{abs(hash(model)) % 1000000}.json"
+        payload = {
+            "slot": slot,
+            "model": model,
+            "tokens": tokens,
+            "token_count": len(tokens),
+            "timestamp": time.time(),
+        }
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+            log.debug("[PrefixCache] salvato prefisso slot '%s' su %s (%d token)", slot, file_path, len(tokens))
+            return file_path
+        except Exception as exc:
+            log.warning("[PrefixCache] impossibile persistere lo slot '%s': %s", slot, exc)
+            return None
+
+    def load_from_disk(self, slot: str = DEFAULT_SLOT, model_name: Optional[str] = None, src_dir: Optional[Path] = None) -> Optional[List[int]]:
+        """Carica da disco NVMe i token di un prefisso precedentemente salvato."""
+        slot = slot or DEFAULT_SLOT
+        in_dir = src_dir or self._default_persist_dir()
+        model = model_name or self._model_name or "unknown"
+        file_path = in_dir / f"{slot}_{abs(hash(model)) % 1000000}.json"
+
+        if not file_path.exists():
+            return None
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            tokens = data.get("tokens", [])
+            if tokens and isinstance(tokens, list):
+                log.debug("[PrefixCache] ripristinato prefisso su disco '%s' (%d token)", slot, len(tokens))
+                return [int(t) for t in tokens]
+        except Exception as exc:
+            log.debug("[PrefixCache] errore caricamento prefisso su disco: %s", exc)
+        return None
+
     # ------------------------------------------------------------- telemetry
 
     def stats(self) -> dict:
@@ -239,6 +304,7 @@ class PrefixKVCache:
                     / max(self.tokens_reused + self.tokens_prefilled, 1) * 100, 1
                 )
             ),
+            "nvme_persistent": True,
         }
 
 
@@ -250,3 +316,4 @@ def _common_prefix_length(a: List[int], b: List[int]) -> int:
             break
         n += 1
     return n
+

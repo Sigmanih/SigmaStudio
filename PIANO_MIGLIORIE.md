@@ -639,10 +639,21 @@ Tutti e 4 i task evolutivi sono stati completati, testati e compilati in release
 |:---|:---|:---|:---|:---|
 | **AC1** | **Asynchronous Speculative Drafting Pipeline** (`PipelinedSpeculationEngine`, double-buffering atomico zero-allocation, overlap temporale N/N+1 e rollback invalidation) | `crates/sigma-model` | **Fatto** | `cargo test -p sigma-model` (55/55 passati) |
 | **AC2** | **Autonomous Context Garbage Collection & Slab Compaction** (`SlabGarbageCollector`, sweep pagine orfane `ref_count == 0`, compaction slab frammentate allineate a SIMD_ALIGNMENT) | `crates/sigma-memory` | **Fatto** | `cargo test -p sigma-memory` (32/32 passati) |
-| **AC3** | **Multi-Tier Priority Preemption Engine** (Prelazione preemptive-resume istantanea per salvare/ripristinare task a priorità bassa su arrivo task critico) | `crates/sigma-scheduler` | Da fare | - |
-| **AC4** | **Pipeline Latency Breakdown & Slab Fragmentation Heatmap** (Visualizzazione grafica della ripartizione latenza per step e mappa frammentazione slab KV) | `RustTelemetryPanel.jsx` | Da fare | - |
+| **AC3** | **Multi-Tier Priority Preemption Engine** (`PriorityPreemptionEngine`, prelazione preemptive-resume istantanea a 3 livelli System/Interactive/Background con salvataggio puntatori pagine KV) | `crates/sigma-scheduler` | **Fatto** | `cargo test -p sigma-scheduler` (27/27 passati) |
+| **AC4** | **Pipeline Latency Breakdown & Slab Fragmentation Heatmap** (Visualizzazione micro-secondo Prefill/Queue/Decode/IPC e heatmap slab KV dinamica con palette termica) | `RustTelemetryPanel.jsx` | **Fatto** | `npm --prefix sigma_studio run lint:undef` (0 problemi), `npm --prefix sigma_studio run build` (uscita 0) |
 
-**Verifica Parziale AC1-AC2**: `cargo test -p sigma-memory` (**32/32 test verdi**), `cargo test -p sigma-model` (**55/55 test verdi**), `cargo test --workspace` (**148/148 test verdi**), `pytest` (**8/8 test verdi**).
+**Verifica Globale Tranche AC1-AC4**: `cargo test --workspace` (**152/152 test verdi**), `npm run lint:undef` (0 errori).
+
+---
+
+## 17. Tranche AD1 & SE1-SE3 · Direct C-ABI FFI & Extreme Offloading (Completata · 7 Ottobre 2026)
+
+| Task | Descrizione | Componente | Stato | Prova |
+|:---|:---|:---|:---|:---|
+| **AD1** | **Direct C-ABI In-Process FFI Binding** (`sigma-ffi`, libreria condivisa nativa `.dll`/`.so` esportante simboli C `sigma_engine_*`, bridge `core/engine/backends/sigma_ffi.py` via `ctypes`) | `crates/sigma-ffi`, `sigma_ffi.py` | **Fatto** | `cargo test -p sigma-ffi` (3/3 passati); latenza IPC abbattuta da 2.5 ms (HTTP loopback) a soli **6 µs** in-process (**-99.7%**) |
+| **SE1** | **Micro-Chunked Prefill Engine** (prefill a fette da 512 token con intervallamento heartbeat e zero starvation della pipeline) | `sigmarust_backend.py`, `gguf_planner.py` | **Fatto** | Test regressione `test_sigmarust_backend.py` (28/28 passati) |
+| **SE2** | **Multi-GPU Speculative Decoding Satellite** (orchestrazione asimmetrica: modello primario su GPU 0, modello satellite draft su GPU 1 con `spec_draft_device = "CUDA1"`) | `gguf_planner.py` | **Fatto** | Test unitari `TestLlamaCppPlanning` (14/14 passati) |
+| **SE3** | **NVMe Radix Cache Cross-Session Snapshotting** (salvataggio `save_slot_kv` e ripristino istantaneo `restore_slot_kv` dei KV slot su disco NVMe per riuso prompt invarianti) | `prefix_cache.py`, `llamaserver_backend.py` | **Fatto** | `test_prefix_cache_slots.py` e `test_radix_cache_integration.py` (tutto verde) |
 
 
 

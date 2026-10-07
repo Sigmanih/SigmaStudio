@@ -31,6 +31,7 @@ def register_get_handlers(handler_class):
         '/api/engine/runtime_check': 'handle_engine_runtime_check',
         '/api/engine/rust/metrics': 'handle_engine_rust_metrics',
         '/api/engine/rust/stream': 'handle_engine_rust_stream',
+        '/api/engine/bitnet/status': 'handle_engine_bitnet_status',
         '/api/engine/models': 'handle_engine_models',
         '/api/roles': 'handle_roles_list',
         '/api/developer/roles': 'handle_roles_list',

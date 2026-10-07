@@ -12,8 +12,22 @@ Usage:
 """
 
 import logging
-import sys
 import os
+import sys
+
+# Su Windows la console standard usa cp1252/charmap: quando un modello emette
+# token CJK, emoji o caratteri speciali non mappabili, la stampa su stdout solleverebbe
+# un UnicodeEncodeError fatale se non impostata su UTF-8 con errors="replace".
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # Log level controlled via SIGMA_LOG_LEVEL env var (default: INFO)
 _DEFAULT_LEVEL = os.environ.get("SIGMA_LOG_LEVEL", "INFO").upper()

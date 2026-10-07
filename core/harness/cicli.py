@@ -157,9 +157,25 @@ class RilevatoreCicli:
 
         Guarda la finestra **con in coda la chiamata proposta**: serve a
         fermarla prima che venga eseguita, non a constatarla dopo.
+        Riconosce il pattern legittimo di correzione: lettura mirata + ritentata modifica.
         """
         nome, corpo = firma(tool, params, self.radice)
         sequenza = [(t, c) for t, c, _ in self._finestra] + [(nome, corpo)]
+
+        # Se la chiamata proposta e' una modifica (edit_file, write_file, append_file) e
+        # la chiamata precedente era una lettura mirata (read_file, read_file_window) sullo stesso file,
+        # non e' un ciclo: e' il pattern legittimo di correzione.
+        if nome in ("edit_file", "write_file", "append_file"):
+            if len(sequenza) >= 2:
+                prev_nome, prev_corpo = sequenza[-2]
+                if prev_nome in ("read_file", "read_file_window"):
+                    # Verifica se nominano lo stesso file
+                    def _estrai_file(c): 
+                        import json
+                        try: return json.loads(c).get("path", "")
+                        except: return ""
+                    if _estrai_file(corpo) == _estrai_file(prev_corpo):
+                        return None
 
         for k in LUNGHEZZE_CICLO:
             if len(sequenza) < 2 * k:

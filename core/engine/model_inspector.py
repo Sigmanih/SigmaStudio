@@ -50,7 +50,9 @@ class ModelFacts:
     name: str
     model_type: str = "unknown"
     architectures: List[str] = field(default_factory=list)
-    weight_format: str = "safetensors"          # safetensors | gguf | bin
+    weight_format: str = "safetensors"          # safetensors | gguf | gguf_i2s | bin
+    is_ternary: bool = False
+    quantization: str = ""
 
     # Transformer geometry (from text_config when multimodal)
     num_hidden_layers: int = 0
@@ -119,6 +121,10 @@ class ModelInspector:
             facts = ModelFacts(path=model_path, name=os.path.basename(model_path))
             if model_path.lower().endswith(".gguf"):
                 facts.weight_format = "gguf"
+                if any(k in model_path.lower() for k in ("tq2_0", "tq1_0", "tq2", "tq1", "i2_s", "i2s", "bitnet")):
+                    facts.is_ternary = True
+                    facts.quantization = "TQ2_0" if "tq2" in model_path.lower() else ("TQ1_0" if "tq1" in model_path.lower() else "I2_S")
+                    facts.weight_format = "gguf_i2s"
                 facts.total_bytes = os.path.getsize(model_path)
                 facts.shards_present = 1
                 facts.total_shards_declared = 1
@@ -284,6 +290,10 @@ class ModelInspector:
 
         if gguf_files:
             facts.weight_format = "gguf"
+            if any(k in facts.path.lower() or any(k in f.lower() for f in gguf_files) for k in ("tq2_0", "tq1_0", "tq2", "tq1", "i2_s", "i2s", "bitnet")):
+                facts.is_ternary = True
+                facts.quantization = "TQ2_0" if any("tq2" in x.lower() for x in (facts.path, *gguf_files)) else ("TQ1_0" if any("tq1" in x.lower() for x in (facts.path, *gguf_files)) else "I2_S")
+                facts.weight_format = "gguf_i2s"
             main_ggufs = [
                 f for f in gguf_files if not (
                     os.path.basename(f).lower().startswith("mmproj") or "mmproj" in os.path.basename(f).lower() or
@@ -522,8 +532,13 @@ class ModelInspector:
                     for _ in range(tensor_count):
                         name = cls._read_gguf_string(handle) or ""
                         dim_count = struct.unpack("<I", handle.read(4))[0]
-                        handle.seek(8 * dim_count + 4, os.SEEK_CUR)  # dims + ggml type
+                        handle.seek(8 * dim_count, os.SEEK_CUR)  # dims
+                        tensor_type = struct.unpack("<I", handle.read(4))[0]  # ggml type
                         offset = struct.unpack("<Q", handle.read(8))[0]
+                        if tensor_type in (29, 34, 35):  # I2_S, TQ1_0, TQ2_0
+                            facts.is_ternary = True
+                            facts.quantization = "TQ2_0" if tensor_type == 35 else ("TQ1_0" if tensor_type == 34 else "I2_S")
+                            facts.weight_format = "gguf_i2s"
                         entries.append((offset, name))
 
                     data_start = handle.tell()

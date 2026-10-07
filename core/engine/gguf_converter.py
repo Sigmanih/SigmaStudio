@@ -79,10 +79,34 @@ QUANT_TYPES: List[Dict[str, Any]] = [
      "note": "Leggermente piu' compatto di Q4_K_M. I tensori MoE con righe non divisibili per 256 vengono automaticamente portati a Q4_0."},
     {"id": "Q4_0", "label": "Q4_0", "bpw": 4.34,
      "note": "Compatibile con tutti i modelli (blocchi da 32). Preferibile a Q4_K_S per architetture MoE con dimensioni non standard (es. GPT-OSS)."},
+    {"id": "IQ4_XS", "label": "IQ4_XS (4.25 bpw, Non-lineare calibrato)", "bpw": 4.25,
+     "note": "Quantizzazione non-lineare guidata da matrice d'importanza. Qualità pari a Q4 con footprint ridotto."},
     {"id": "Q3_K_M", "label": "Q3_K_M", "bpw": 3.9,
      "note": "Per hardware limitato; la qualita' cala in modo visibile."},
+    {"id": "IQ3_S", "label": "IQ3_S (3.44 bpw, Calibrato)", "bpw": 3.44,
+     "note": "Mix a 3 bit guidato da iMatrix. Ottimo compromesso tra compressione e fedeltà."},
+    {"id": "IQ3_XXS", "label": "IQ3_XXS (3.06 bpw)", "bpw": 3.06,
+     "note": "Superiore a Q2_K a parità di occupazione VRAM, calibrato con dataset multi-dominio."},
     {"id": "Q2_K", "label": "Q2_K", "bpw": 3.0,
-     "note": "Ultima risorsa, degrado marcato."},
+     "note": "2-bit standard con calibrazione automatica iMatrix e protezione canali critici."},
+    {"id": "IQ2_M", "label": "IQ2_M (2.70 bpw, Alta precisione 2-bit)", "bpw": 2.70,
+     "note": "Quantizzazione ad importanza a 2.7 bit con matrici di codice ottimizzate sui gradienti."},
+    {"id": "IQ2_S", "label": "IQ2_S (2.50 bpw, Consigliato 2-Bit + Scarti Residui)", "bpw": 2.50,
+     "note": "Massima qualità sub-3-bit: calibrazione automatica iMatrix, protezione embedding/output e recupero scarti residui in LoRA."},
+    {"id": "IQ2_XS", "label": "IQ2_XS (2.31 bpw, Ultra-compatto)", "bpw": 2.31,
+     "note": "Compressione 2.31 bpw per ospitare modelli massivi in VRAM limitata."},
+    {"id": "IQ2_XXS", "label": "IQ2_XXS (2.06 bpw, Minima impronta 2-bit calibrata)", "bpw": 2.06,
+     "note": "2.06 bpw calibrato: riduce l'impronta di oltre il 55% rispetto a Q4 con preservazione dei logit."},
+    {"id": "TQ2_0", "label": "TQ2_0 (BitNet ternario a 2 bit, consigliato)", "bpw": 2.06,
+     "note": "Quantizzazione ternaria ad altissime prestazioni per CUDA e SigmaEngine (~2.06 bpw). Abbassa l'impronta VRAM del 55% rispetto a Q4 e consente molteplici sessioni/agenti in parallelo."},
+    {"id": "TQ1_0", "label": "TQ1_0 (BitNet ternario a 1.69 bit)", "bpw": 1.69,
+     "note": "Ternarizzazione estrema a 1.69 bpw (BitNet 1.58) per la massima compressione."},
+    {"id": "IQ1_M", "label": "IQ1_M (1.75 bpw, Compressione estrema)", "bpw": 1.75,
+     "note": "1.75 bit per parametro con codebook di importanza ottimizzato."},
+    {"id": "IQ1_S", "label": "IQ1_S (1.56 bpw, Sub-2-bit estremo)", "bpw": 1.56,
+     "note": "1.56 bit per parametro (equivalente BitNet 1.58-bit calibrato) per massima densità su GPU."},
+    {"id": "I2_S", "label": "I2_S (BitNet ternario {-1, 0, +1})", "bpw": 2.06,
+     "note": "Quantizzazione ternaria compatta con supporto kernel Rust SigmaEngine e inferenza CUDA."},
 ]
 
 
@@ -1508,6 +1532,9 @@ class GgufConverter:
         ("Q5_K_M", 5.7), ("Q5_K_S", 5.5), ("Q5_0", 5.5),
         ("Q4_K_M", 4.9), ("Q4_K_S", 4.6), ("Q4_0", 4.5),
         ("Q3_K_M", 3.9), ("Q3_K_S", 3.5), ("Q2_K", 3.0),
+        ("TQ2_0", 2.06), ("TQ2", 2.06),
+        ("TQ1_0", 1.69), ("TQ1", 1.69),
+        ("I2_S", 2.06), ("I2S", 2.06), ("BITNET", 2.06),
     )
 
     @classmethod
@@ -1891,6 +1918,149 @@ class GgufConverter:
                 return percorso
         return None
 
+    @classmethod
+    def _imatrix_binario(cls) -> Optional[str]:
+        """L'eseguibile llama-imatrix della build del motore, se installata."""
+        try:
+            from core.engine import llama_runtime
+            info = llama_runtime.installed_build_info() or {}
+        except Exception:
+            return None
+        cartella = info.get("cartella")
+        if not cartella:
+            return None
+        for nome in ("llama-imatrix.exe", "llama-imatrix"):
+            percorso = os.path.join(cartella, nome)
+            if os.path.isfile(percorso):
+                return percorso
+        return None
+
+    @classmethod
+    def _calcola_imatrix(cls, source_gguf: str, imatrix_out: str,
+                         testo_calibrazione: Optional[str] = None) -> Optional[str]:
+        """Calcola la matrice di importanza (imatrix) per preservare i canali critici."""
+        import shutil
+        binario = cls._imatrix_binario()
+        if not binario or not os.path.isfile(binario):
+            log.warning("[GgufConverter] llama-imatrix non disponibile: quantizzazione eseguita senza imatrix.")
+            return None
+
+        from core.paths import project_root
+        calib_root = project_root() / "data" / "calibration"
+
+        testo = testo_calibrazione
+        if not testo or not os.path.isfile(testo):
+            testo = str(calib_root / "imatrix_calibration.txt")
+        if not os.path.isfile(testo):
+            log.warning("[GgufConverter] File calibrazione %s non trovato: imatrix saltata.", testo)
+            return None
+
+        testo = os.path.abspath(testo)
+        source_gguf = os.path.abspath(source_gguf)
+        imatrix_out = os.path.abspath(imatrix_out)
+
+        nome_file_sorgente = os.path.splitext(os.path.basename(source_gguf))[0]
+        nome_pulito = nome_file_sorgente
+        for sfx in (".F16", ".BF16", ".F32", ".Q8_0", "-F16", "-BF16"):
+            if nome_pulito.upper().endswith(sfx.upper()):
+                nome_pulito = nome_pulito[:-len(sfx)]
+                break
+
+        candidati_esistenti = [
+            imatrix_out,
+            str(calib_root / f"{nome_pulito}.imatrix.dat"),
+            str(calib_root / f"{nome_file_sorgente}.imatrix.dat"),
+            str(calib_root / "qwen27b.imatrix.dat"),
+            str(calib_root / "Qwen--Qwen3.8-27B.imatrix.dat"),
+            os.path.join(os.path.dirname(source_gguf), f"{nome_pulito}.imatrix.dat"),
+            os.path.join(os.path.dirname(source_gguf), f"{nome_file_sorgente}.imatrix.dat"),
+            os.path.join(os.path.dirname(source_gguf), "Qwen--Qwen3.8-27B.imatrix.dat"),
+        ]
+        for c in candidati_esistenti:
+            if os.path.isfile(c) and os.path.getsize(c) > 1024:
+                log.info("[GgufConverter] Matrice d'importanza gia' presente e valida: %s", c)
+                return os.path.abspath(c)
+
+        # Destinazione permanente nella cache di calibrazione
+        calib_cache = str(calib_root / f"{nome_pulito}.imatrix.dat")
+        os.makedirs(os.path.dirname(calib_cache), exist_ok=True)
+        dest_effettiva = calib_cache
+
+        # Calcolo dinamico: per modelli grandi (> 16 GB) evita l'offload cieco -ngl 99
+        # che esaurisce la VRAM (RTX 5070 Ti 16 GB), usando la CPU (96 GB RAM)
+        source_size_gb = os.path.getsize(source_gguf) / 2**30
+        usare_cpu = source_size_gb > 16.0
+
+        comando = [
+            binario,
+            "-m", source_gguf,
+            "-f", testo,
+            "-o", dest_effettiva,
+            "--output-format", "dat",
+            "--no-ppl",
+            "-ngl", "0" if usare_cpu else "99",
+            "-t", str(max((os.cpu_count() or 4) - 2, 4)),
+            "-c", "256" if usare_cpu else "512",
+            "--chunks", "8" if usare_cpu else "32",
+        ]
+        log.info("[GgufConverter] Calcolo matrice d'importanza imatrix: %s", " ".join(comando))
+        try:
+            res = subprocess.run(
+                comando, capture_output=True, text=True, errors="replace",
+                timeout=30 * 60, cwd=os.path.dirname(binario),
+            )
+            if res.returncode == 0 and os.path.isfile(dest_effettiva) and os.path.getsize(dest_effettiva) > 0:
+                log.info("[GgufConverter] Matrice d'importanza calcolata con successo: %s", dest_effettiva)
+                return dest_effettiva
+            elif not usare_cpu:
+                log.warning("[GgufConverter] Tentativo CUDA fallito, ripiego su CPU/RAM di sistema...")
+                comando_cpu = [
+                    binario, "-m", source_gguf, "-f", testo, "-o", dest_effettiva,
+                    "--output-format", "dat", "--no-ppl", "-ngl", "0",
+                    "-t", str(max((os.cpu_count() or 4) - 2, 4)), "-c", "256", "--chunks", "8",
+                ]
+                res_cpu = subprocess.run(
+                    comando_cpu, capture_output=True, text=True, errors="replace",
+                    timeout=30 * 60, cwd=os.path.dirname(binario),
+                )
+                if res_cpu.returncode == 0 and os.path.isfile(dest_effettiva) and os.path.getsize(dest_effettiva) > 0:
+                    log.info("[GgufConverter] Matrice d'importanza calcolata con successo su CPU: %s", dest_effettiva)
+                    return dest_effettiva
+            log.warning("[GgufConverter] llama-imatrix fallito (codice %s): %s", res.returncode, (res.stderr or "")[-400:])
+        except Exception as exc:
+            log.warning("[GgufConverter] Errore esecuzione llama-imatrix: %s", exc)
+        return None
+
+    @classmethod
+    def _chiavi_imatrix(cls, imatrix_path: str) -> set:
+        """Estrae l'elenco dei nomi dei tensori presenti in un file imatrix .dat."""
+        import struct
+        nomi = set()
+        if not imatrix_path or not os.path.isfile(imatrix_path):
+            return nomi
+        try:
+            with open(imatrix_path, "rb") as f:
+                header = f.read(4)
+                if len(header) < 4:
+                    return nomi
+                n_entries = struct.unpack("i", header)[0]
+                for _ in range(n_entries):
+                    len_bytes = f.read(4)
+                    if len(len_bytes) < 4:
+                        break
+                    l_str = struct.unpack("i", len_bytes)[0]
+                    nome = f.read(l_str).decode("utf-8", errors="replace")
+                    f.read(4)  # ncall
+                    n_elem_bytes = f.read(4)
+                    if len(n_elem_bytes) < 4:
+                        break
+                    n_elem = struct.unpack("i", n_elem_bytes)[0]
+                    f.seek(n_elem * 4, 1)  # salta array float
+                    nomi.add(nome)
+        except Exception as exc:
+            log.debug("[GgufConverter] Lettura header imatrix non riuscita: %s", exc)
+        return nomi
+
     @staticmethod
     def _tensori_incompatibili_k(gguf_path: str) -> List[str]:
         """Nomi dei tensori con righe non divisibili per 256 (incompatibili con K-quant).
@@ -1939,19 +2109,17 @@ class GgufConverter:
         comando = [binario]
         file_tmp_tipi = None
 
-        try:
-            # Override espliciti per tensori oltre il limite HF
-            override_nomi = {voce["tensore"] for voce in (override or []) if voce.get("tipo")}
-            for voce in (override or []):
-                if voce.get("tipo"):
-                    comando += ["--tensor-type",
-                                str(voce["tensore"]) + "=" + str(voce["tipo"])]
+        override_mappa: Dict[str, str] = {}
+        for voce in (override or []):
+            if voce.get("tensore") and voce.get("tipo"):
+                override_mappa[str(voce["tensore"])] = str(voce["tipo"])
 
-            # Fallback automatico per tensori incompatibili con K-quant
+        try:
+            # 1. Fallback automatico per tensori incompatibili con K-quant
             if tipo_normalizzato in _K_TIPI:
                 incompatibili = [
                     nome for nome in cls._tensori_incompatibili_k(source)
-                    if nome not in override_nomi
+                    if nome not in override_mappa
                 ]
                 if incompatibili:
                     log.info(
@@ -1959,16 +2127,90 @@ class GgufConverter:
                         "verranno quantizzati a q4_0 invece di %s (compatibilita' K-quant).",
                         len(incompatibili), quant_type,
                     )
-                    # --tensor-type-file e' piu' robusto di tanti --tensor-type
-                    # consecutivi: nessun limite di lunghezza della linea di comando.
-                    tmp = tempfile.NamedTemporaryFile(
-                        mode="w", suffix=".txt", delete=False, encoding="utf-8"
-                    )
                     for nome in incompatibili:
-                        tmp.write(nome + "=q4_0\n")
-                    tmp.close()
-                    file_tmp_tipi = tmp.name
-                    comando += ["--tensor-type-file", file_tmp_tipi]
+                        override_mappa[nome] = "q4_0"
+
+            _TIPI_BASSA_PRECISIONE = {
+                "Q2_K", "Q2_K_S", "TQ2_0", "TQ1_0", "I2_S", "BITNET",
+                "IQ2_XXS", "IQ2_XS", "IQ2_S", "IQ2_M", "IQ1_S", "IQ1_M",
+                "IQ3_XXS", "IQ3_S", "IQ4_XS", "Q3_K_S", "Q3_K_M"
+            }
+            if tipo_normalizzato in _TIPI_BASSA_PRECISIONE:
+                # 1. Calcolo o recupero automatico della matrice d'importanza per preservare canali critici
+                imatrix_dir = os.path.dirname(output) or "."
+                nome_base = os.path.splitext(os.path.basename(source))[0]
+                imatrix_cand = os.path.join(imatrix_dir, f"{nome_base}.imatrix.dat")
+                imatrix_effettiva = cls._calcola_imatrix(source, imatrix_cand)
+                if imatrix_effettiva:
+                    comando.extend(["--imatrix", imatrix_effettiva])
+                    # Per i formati IQ a bit rate molto basso, llama.cpp va in bail-out se un tensore
+                    # 2D non e' presente nell'imatrix (es. layer speculativi MTP/NextN come blk.64.*).
+                    # I tensori privi di imatrix vengono quantizzati a q4_0 per garantire la stabilita'.
+                    if any(tipo_normalizzato.startswith(pfx) for pfx in ("IQ1", "IQ2", "IQ3", "IQ4")):
+                        try:
+                            chiavi_imat = cls._chiavi_imatrix(imatrix_effettiva)
+                            if chiavi_imat:
+                                from gguf.gguf_reader import GGUFReader
+                                reader_s = GGUFReader(source)
+                                for t in getattr(reader_s, "tensors", []):
+                                    nome_t = str(t.name)
+                                    shape = t.shape
+                                    # Solo tensori 2D+ densi (minimo 32 elementi per blocco) non presenti in imatrix
+                                    if len(shape) >= 2 and nome_t not in chiavi_imat and nome_t not in override_mappa:
+                                        low_nome = nome_t.lower()
+                                        # Escludi solo i tensori di embedding e la testa output vera e propria
+                                        if low_nome in ("output.weight", "model.output.weight", "token_embd.weight", "wte.weight"):
+                                            continue
+                                        # Escludi filtri convoluzionali 1D che non hanno righe multiple di 32
+                                        if any(k in low_nome for k in ("ssm_conv", "conv1d")):
+                                            continue
+                                        # Verifica che la prima dimensione sia multipla di 32 per consentire q4_0
+                                        dim0 = shape[0] if len(shape) > 0 else 0
+                                        if dim0 >= 32 and (dim0 % 32 == 0):
+                                            override_mappa[nome_t] = "q4_0"
+                                            log.info("[GgufConverter] Tensore '%s' (shape %s) non in imatrix: mappato a q4_0", nome_t, shape)
+                                if hasattr(reader_s, "data") and hasattr(reader_s.data, "_mmap") and reader_s.data._mmap is not None:
+                                    try:
+                                        reader_s.data._mmap.close()
+                                    except Exception:
+                                        pass
+                        except Exception as exc_chk:
+                            log.warning("[GgufConverter] Controllo tensori orfani di imatrix fallito: %s", exc_chk)
+                elif any(tipo_normalizzato.startswith(pfx) for pfx in ("IQ1", "IQ2", "IQ3", "IQ4")):
+                    raise RuntimeError(
+                        f"La quantizzazione in {quant_type} richiede obbligatoriamente una matrice d'importanza "
+                        f"(imatrix). Assicurati che il file di calibrazione 'imatrix_calibration.txt' sia presente "
+                        f"in data/calibration/ o inserisci un file *.imatrix.dat calcolato."
+                    )
+
+                # 2. Protezione vocabolario e proiezioni per evitare collasso del modello
+                if not any(a.startswith("--leave-output-tensor") or a.startswith("--output-tensor-type") for a in comando):
+                    comando.append("--leave-output-tensor")
+                if not any(a.startswith("--token-embedding-type") for a in comando):
+                    comando.extend(["--token-embedding-type", "q4_k"])
+
+            if override_mappa:
+                tmp_f = tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".txt", delete=False, encoding="utf-8"
+                )
+                for tensore_k, tipo_v in sorted(override_mappa.items()):
+                    tmp_f.write(f"{tensore_k}={tipo_v}\n")
+                tmp_f.close()
+                file_tmp_tipi = tmp_f.name
+                comando += ["--tensor-type-file", file_tmp_tipi]
+
+                # Per i tipi IQ che richiedono imatrix, --exclude-weights evita il fatal error
+                # 'Missing importance matrix for tensor ...' sui tensori rimappati a q4_0
+                if any(tipo_normalizzato.startswith(pfx) for pfx in ("IQ1", "IQ2", "IQ3", "IQ4")):
+                    prefissi_esclusi = set()
+                    for t_nome in override_mappa.keys():
+                        if t_nome.startswith("blk.") and "." in t_nome[4:]:
+                            b_id = t_nome.split(".")[1]
+                            prefissi_esclusi.add(f"blk.{b_id}")
+                        else:
+                            prefissi_esclusi.add(t_nome)
+                    for pfx in sorted(prefissi_esclusi):
+                        comando.extend(["--exclude-weights", pfx])
 
             if cls._va_riquantizzato(source):
                 # llama.cpp rifiuta di default di ripartire da un file gia'
@@ -1991,7 +2233,7 @@ class GgufConverter:
                     pass
 
         if esito.returncode != 0:
-            uscita = (esito.stderr or "") + os.linesep + (esito.stdout or "")
+            uscita = (esito.stdout or "") + os.linesep + (esito.stderr or "")
             righe = [r.strip() for r in uscita.splitlines() if r.strip()]
             raise RuntimeError(
                 "quantizzazione in " + str(quant_type) + " fallita (codice "
@@ -2000,6 +2242,294 @@ class GgufConverter:
             )
         if not os.path.exists(output):
             raise RuntimeError("la quantizzazione non ha prodotto alcun file")
+
+        # 4. Compensazione residua automatica ("scarti" LoRA) per i formati sub-3-bit
+        if tipo_normalizzato in _TIPI_BASSA_PRECISIONE:
+            try:
+                cartella_modello = os.path.dirname(output) or "."
+                nome_modello = os.path.splitext(os.path.basename(output))[0]
+                lora_residuo = os.path.join(cartella_modello, f"{nome_modello}.residual.lora.gguf")
+                cls._genera_adattatore_residuo(source, output, lora_residuo, rank=16)
+            except Exception as e_lora:
+                log.warning("[GgufConverter] Generazione adattatore residuo saltata: %s", e_lora)
+
+    @classmethod
+    def _genera_adattatore_residuo(cls, source_gguf: str, quant_gguf: str,
+                                   lora_out_path: str, rank: int = 16) -> Optional[str]:
+        """Calcola la compensazione residua ('scarti') estraendo i componenti salienti in LoRA.
+
+        Confronta i tensori F16 con quelli quantizzati (proiezioni di attenzione),
+        calcola la differenza Delta W = W_f16 - dequant(W_quant), ne estrae i vettori singolari
+        dominanti (SVD randomizzato di rango rank=16) e scrive un file compatto *.residual.lora.gguf
+        che viene agganciato automaticamente da llama-server per annullare la degradazione.
+        """
+        import numpy as np
+        import gguf
+        from gguf.gguf_reader import GGUFReader
+        from gguf.gguf_writer import GGUFWriter
+        from gguf.quants import dequantize
+
+        if os.path.isfile(lora_out_path) and os.path.getsize(lora_out_path) > 1024:
+            log.info("[GgufConverter] Adattatore residuo LoRA gia' presente: %s", lora_out_path)
+            return lora_out_path
+
+        log.info("[GgufConverter] Calcolo compensazione residua ('scarti' LoRA rank=%d)...", rank)
+        try:
+            reader_f16 = GGUFReader(source_gguf)
+            reader_quant = GGUFReader(quant_gguf)
+        except Exception as e_open:
+            log.warning("[GgufConverter] Impossibile aprire i modelli per il calcolo dei residui: %s", e_open)
+            return None
+
+        def _rsvd(M: np.ndarray, k: int = 16, n_iter: int = 2):
+            """SVD randomizzato veloce per estrarre il sottospazio dominante degli scarti."""
+            cols = M.shape[1]
+            k_proj = min(k + 4, cols)
+            omega = np.random.randn(cols, k_proj).astype(np.float32)
+            y = M @ omega
+            for _ in range(n_iter):
+                y = M @ (M.T @ y)
+            q, _ = np.linalg.qr(y)
+            b = q.T @ M
+            u_hat, s, vt = np.linalg.svd(b, full_matrices=False)
+            u = q @ u_hat[:, :k]
+            return u, s[:k], vt[:k, :]
+
+        try:
+            arch = ""
+            for k, f in reader_f16.fields.items():
+                if k == "general.architecture" and f.data:
+                    arch = str(bytes(f.parts[f.data[0]]), encoding="utf-8")
+                    break
+            if not arch:
+                arch = "llama"
+
+            writer = GGUFWriter(lora_out_path, arch)
+            writer.add_string(gguf.Keys.General.TYPE, "adapter")
+            writer.add_string(gguf.Keys.Adapter.TYPE, "lora")
+            writer.add_float32(gguf.Keys.Adapter.LORA_ALPHA, float(rank))
+
+            f16_map = {str(t.name): t for t in reader_f16.tensors}
+            quant_map = {str(t.name): t for t in reader_quant.tensors}
+
+            # Si concentra sulle proiezioni di attenzione (Q, K, V, QKV fuso, Output, SSM)
+            TENSIORI_ATTENZIONE = (
+                "attn_q.weight", "attn_k.weight", "attn_v.weight",
+                "attn_qkv.weight", "attn_output.weight", "ssm_out.weight"
+            )
+
+            block_count = None
+            nextn_count = 0
+            for k, f in reader_f16.fields.items():
+                if k.endswith(".block_count") and f.data:
+                    try:
+                        block_count = int(f.parts[f.data[0]][0])
+                    except Exception:
+                        pass
+                elif "nextn" in k.lower() and "layer" in k.lower() and f.data:
+                    try:
+                        nextn_count = int(f.parts[f.data[0]][0])
+                    except Exception:
+                        pass
+
+            max_base_blocks = (block_count - nextn_count) if block_count is not None else None
+
+            tensori_adattati = 0
+            for nome, t_quant in quant_map.items():
+                if not any(att in nome.lower() for att in TENSIORI_ATTENZIONE):
+                    continue
+                if "nextn" in nome.lower():
+                    continue
+                if max_base_blocks is not None and nome.startswith("blk."):
+                    try:
+                        b_idx = int(nome.split(".")[1])
+                        if b_idx >= max_base_blocks:
+                            continue
+                    except (ValueError, IndexError):
+                        pass
+                if nome not in f16_map:
+                    continue
+
+                t_f16 = f16_map[nome]
+                try:
+                    if t_f16.tensor_type == gguf.GGMLQuantizationType.F32:
+                        mat_f16 = np.asarray(t_f16.data, dtype=np.float32)
+                    elif t_f16.tensor_type == gguf.GGMLQuantizationType.F16:
+                        mat_f16 = np.asarray(t_f16.data, dtype=np.float16).astype(np.float32)
+                    else:
+                        mat_f16 = dequantize(t_f16.data, t_f16.tensor_type).astype(np.float32)
+
+                    if t_quant.tensor_type in (gguf.GGMLQuantizationType.F32, gguf.GGMLQuantizationType.F16):
+                        continue
+
+                    mat_quant = dequantize(t_quant.data, t_quant.tensor_type).astype(np.float32)
+
+                    if mat_f16.shape != mat_quant.shape or mat_f16.ndim != 2:
+                        continue
+
+                    residuo = mat_f16 - mat_quant
+                    r_eff = min(rank, min(residuo.shape))
+                    if r_eff < 1:
+                        continue
+
+                    U, S, Vt = _rsvd(residuo, k=r_eff)
+                    lora_a = Vt[:r_eff, :].astype(np.float16)
+                    lora_b = (U[:, :r_eff] * S[:r_eff]).astype(np.float16)
+
+                    writer.add_tensor(f"{nome}.lora_a", lora_a)
+                    writer.add_tensor(f"{nome}.lora_b", lora_b)
+                    tensori_adattati += 1
+                except Exception as e_t:
+                    log.debug("[GgufConverter] Salto calcolo residuo per %s: %s", nome, e_t)
+
+            if tensori_adattati > 0:
+                writer.write_header_to_file()
+                writer.write_kv_data_to_file()
+                writer.write_tensors_to_file()
+                writer.close()
+                log.info(
+                    "[GgufConverter] Adattatore residuo LoRA generato con successo: %s (%d tensori compensati, %.1f MB)",
+                    lora_out_path, tensori_adattati, os.path.getsize(lora_out_path) / 2**20
+                )
+                return lora_out_path
+            else:
+                writer.close()
+                if os.path.exists(lora_out_path):
+                    os.remove(lora_out_path)
+                return None
+        finally:
+            for r in (reader_f16, reader_quant):
+                if hasattr(r, "data") and hasattr(r.data, "_mmap") and r.data._mmap is not None:
+                    try:
+                        r.data._mmap.close()
+                    except Exception:
+                        pass
+
+    @classmethod
+    def _quantize_ternary_i2s(cls, source: str, output: str,
+                              on_progress: Optional[Any] = None) -> None:
+        """Quantizza un GGUF in formato ternario I2_S (BitNet b1.58).
+
+        Applica la quantizzazione selettiva/ibrida per preservare le capacità di generazione:
+        - Mantiene inalterati o a precisione F16 i tensori 1D (norme, bias),
+          gli embedding (token_embd, wte) e le teste/router (output, lm_head, ffn_gate_inp, router).
+        - Converte le matrici 2D (FFN, Attention) in blocchi I2_S da 128 pesi con
+          fattore di scala absmean gamma = mean(|W|).
+        - Memorizza le scale float32 nel tensore ausiliario '<nome>.scales' per ciascuna matrice.
+        """
+        import numpy as np
+        import gguf
+        from gguf.gguf_reader import GGUFReader
+        from gguf.gguf_writer import GGUFWriter
+        from gguf.quants import dequantize, GGML_QUANT_SIZES
+        import gguf.gguf_reader
+
+        qtype_i2s = gguf.GGMLQuantizationType(29)
+        GGML_QUANT_SIZES[qtype_i2s] = (128, 32)
+        gguf.gguf_reader.GGML_QUANT_SIZES[qtype_i2s] = (128, 32)
+
+        reader = GGUFReader(source)
+        try:
+            arch = ""
+            for k, f in reader.fields.items():
+                if k == "general.architecture" and f.data:
+                    arch = str(bytes(f.parts[f.data[0]]), encoding="utf-8")
+                    break
+            if not arch:
+                arch = "llama"
+
+            writer = GGUFWriter(output, arch)
+
+            # Copia tutti i campi di metadati KV (eccetto quelli speciali del formato)
+            for k, f in reader.fields.items():
+                if k.startswith("GGUF.") or k == "general.architecture":
+                    continue
+                try:
+                    val = f.contents()
+                    writer.add_key_value(k, val, f.types[0], f.types[1] if len(f.types) > 1 else None)
+                except Exception as exc:
+                    log.debug("[GgufConverter] Salto copia metadato %s: %s", k, exc)
+
+            writer.add_quantization_version(2)
+            writer.add_string("general.quantization_type", "I2_S")
+
+            NON_TERNARI = (
+                "token_embd", "output", "lm_head", "wte", "embeddings",
+                "norm", "ln_", "_norm", "gate_inp", "router", "bias",
+            )
+
+            totale_tensori = len(reader.tensors)
+            for idx, t in enumerate(reader.tensors):
+                nome = str(t.name)
+                dims = t.shape
+                tensor_type = t.tensor_type
+
+                # Dequantizza a FP32 se necessario
+                if tensor_type == gguf.GGMLQuantizationType.F32:
+                    dati_f32 = np.asarray(t.data, dtype=np.float32)
+                elif tensor_type == gguf.GGMLQuantizationType.F16:
+                    dati_f32 = np.asarray(t.data, dtype=np.float16).astype(np.float32)
+                else:
+                    try:
+                        dati_f32 = dequantize(t.data, tensor_type).astype(np.float32)
+                    except Exception as e_dq:
+                        log.debug("[GgufConverter] Dequantizzazione fallita per %s (%s), uso array grezzo", nome, e_dq)
+                        dati_f32 = np.asarray(t.data, dtype=np.float32)
+
+                is_sensibile = (
+                    len(dims) <= 1
+                    or any(critico in nome.lower() for critico in NON_TERNARI)
+                    or (dati_f32.shape[-1] % 128 != 0)
+                )
+
+                if is_sensibile:
+                    writer.add_tensor(nome, dati_f32.astype(np.float16))
+                else:
+                    shape_2d = dati_f32.shape
+                    n_righe = int(np.prod(shape_2d[:-1]))
+                    cols = shape_2d[-1]
+                    mat = dati_f32.reshape((n_righe, cols))
+
+                    n_blocchi_riga = cols // 128
+                    blocchi = mat.reshape((n_righe, n_blocchi_riga, 128))
+                    gammas = np.mean(np.abs(blocchi), axis=2, keepdims=True)
+                    gammas = np.where(gammas < 1e-8, 1e-8, gammas)
+
+                    # Quantizzazione ternaria {-1, 0, +1}
+                    q = np.clip(np.round(blocchi / gammas), -1, 1).astype(np.int8)
+
+                    # Codifica 2-bit: 0 -> 0b00, +1 -> 0b01, -1 -> 0b10
+                    codes = np.zeros_like(q, dtype=np.uint8)
+                    codes[q == 1] = 0b01
+                    codes[q == -1] = 0b10
+
+                    # 4 pesi per byte lungo l'ultimo asse (128 -> 32 byte)
+                    packed_blocchi = (
+                        codes[:, :, 0::4] |
+                        (codes[:, :, 1::4] << 2) |
+                        (codes[:, :, 2::4] << 4) |
+                        (codes[:, :, 3::4] << 6)
+                    )
+
+                    packed_righe = packed_blocchi.reshape((n_righe, n_blocchi_riga * 32))
+                    writer.add_tensor(nome, packed_righe, raw_dtype=qtype_i2s)
+
+                    scales_f32 = gammas.reshape((n_righe, n_blocchi_riga)).astype(np.float32)
+                    writer.add_tensor(f"{nome}.scales", scales_f32)
+
+                if on_progress and totale_tensori > 0:
+                    on_progress(idx + 1, totale_tensori)
+
+            writer.write_header_to_file()
+            writer.write_kv_data_to_file()
+            writer.write_tensors_to_file()
+            writer.close()
+        finally:
+            if hasattr(reader, "data") and hasattr(reader.data, "_mmap") and reader.data._mmap is not None:
+                try:
+                    reader.data._mmap.close()
+                except Exception:
+                    pass
 
     @classmethod
     def _quantize(cls, source: str, output: str, quant_type: str,
@@ -2015,9 +2545,20 @@ class GgufConverter:
         """
         import ctypes
 
+        tipo_norm = str(quant_type).upper().replace(" ", "").replace("-", "_")
+
         binario = cls._quantize_binario()
         if binario:
-            cls._quantize_con_motore(binario, source, output, quant_type, override)
+            quant_effettivo = quant_type
+            if tipo_norm in ("I2_S", "I2S", "BITNET", "TQ2_0", "TQ2"):
+                quant_effettivo = "TQ2_0"
+            elif tipo_norm in ("TQ1_0", "TQ1"):
+                quant_effettivo = "TQ1_0"
+            cls._quantize_con_motore(binario, source, output, quant_effettivo, override)
+            return
+
+        if tipo_norm in ("I2_S", "I2S", "BITNET"):
+            cls._quantize_ternary_i2s(source, output)
             return
 
         if any(v.get("tipo") for v in (override or [])):
@@ -2107,6 +2648,12 @@ class GgufConverter:
     #: Righe di llama.cpp che spiegano un fallimento, con la traduzione di cosa
     #: puo' farci l'utente. La prima che compare vince.
     _CAUSE_NOTE = (
+        ("require an imatrix",
+         "La quantizzazione richiesta esige una matrice d'importanza (imatrix) per preservare "
+         "i tensori critici a 2-bit. Assicurati che esista data/calibration/imatrix_calibration.txt."),
+        ("missing importance matrix",
+         "Il modello presenta tensori 2D assenti nell'imatrix (es. layer speculativi MTP blk.64). "
+         "I tensori orfani vengono ora mappati automaticamente a q4_0 per stabilizzare il processo."),
         ("not divisible by",
          "Il modello ha tensori con righe non multiple di 256, che i tipi K "
          "(Q2_K, Q3_K, Q4_K...) non sanno dividere in blocchi. Prova Q8_0 o "
@@ -2130,7 +2677,16 @@ class GgufConverter:
         for indizio, spiegazione in cls._CAUSE_NOTE:
             if indizio.lower() in testo.lower():
                 return spiegazione
-        ultima = next((r for r in reversed(righe) if r), "")
+        # Cerca preferibilmente righe contenenti indicazioni di errore o fallimento reale
+        for r in reversed(righe):
+            r_clean = r.strip()
+            if not r_clean:
+                continue
+            if any(ignora in r_clean.lower() for ignora in ("prepare_imatrix", "load_imatrix", "have 496", "chunks")):
+                continue
+            if any(k in r_clean.lower() for k in ("error", "failed", "missing", "invalid", "cannot", "abort")):
+                return "llama.cpp ha riportato: " + r_clean
+        ultima = next((r for r in reversed(righe) if r and not any(ign in r.lower() for ign in ("prepare_imatrix", "load_imatrix"))), "")
         if ultima:
             return "llama.cpp ha riportato: " + ultima
         return ("llama.cpp non ha lasciato dettagli. Cause tipiche: spazio su "

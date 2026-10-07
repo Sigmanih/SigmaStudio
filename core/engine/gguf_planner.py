@@ -168,7 +168,7 @@ _N_BATCH_ROOMY = 2048
 # x float32 that is 15.7 GB for a 32k window on a 128256-token vocabulary --
 # more than three times the model itself. It is therefore requested only when
 # that buffer has been costed against real free RAM (see _fit_to_host_memory).
-_PROMPT_LOOKUP_TOKENS = 10
+_PROMPT_LOOKUP_TOKENS = 4
 
 # n_batch is not free in host RAM. llama-cpp-python allocates a logits buffer of
 # n_batch x n_vocab float32 whether or not it ever writes to it, so the cost
@@ -178,12 +178,12 @@ _PROMPT_LOOKUP_TOKENS = 10
 # machine could have spent on layers.
 _SCORES_BUDGET_BYTES = 512 * 2**20
 
-_SPECULATION_BUFFER_CAP_GB = 1.0
+_SPECULATION_BUFFER_CAP_GB = 2.0
 
 # The speculation buffer is an optimisation. It is allowed at most this share
 # of what is actually free, and never more than the cap: a speedup that takes
 # a gigabyte away from the page cache the weights stream through is a loss.
-_SPECULATION_BUFFER_FRACTION = 0.10
+_SPECULATION_BUFFER_FRACTION = 0.15
 
 
 def _env_context_ceiling() -> Optional[int]:
@@ -483,7 +483,12 @@ def _plan_settings(
         n_gpu_layers = fits_single
         if n_gpu_layers == 0:
             flash_attn = False
-    elif len(gpus) > 1:
+    spec_satellite_gpu = None
+    spec_draft_device = None
+    spec_draft_ngl = None
+    spec_draft_model = os.environ.get("SIGMA_SPEC_DRAFT_MODEL")
+
+    if len(gpus) > 1:
         # Se la sola GPU primaria dispone di memoria LIBERA sufficiente per accogliere
         # l'intero modello e la cache KV (_layers_that_fit == -1), concentriamo l'offload
         # sulla scheda primaria (split_mode = none). Se invece non ci sta, sfruttiamo
@@ -496,8 +501,35 @@ def _plan_settings(
             split_mode = "none"
             main_gpu = 0
             n_gpu_layers = -1
+            # SE2 — Speculative Decoding Satellite Multi-GPU:
+            # GPU 0 ospita il modello primario ad alte prestazioni, GPU 1 (satellite)
+            # esegue il modello draft per generare 4-5 token di proposta verificati in un
+            # singolo forward pass dalla GPU primaria.
+            if len(usable) > 1 and usable[1] >= 1.5:
+                spec_satellite_gpu = 1
+                spec_draft_device = "CUDA1"
+                spec_draft_ngl = 99
+                if not spec_draft_model:
+                    try:
+                        from core.paths import models_dir
+                        mdir = models_dir()
+                        if mdir.exists():
+                            for cand in mdir.glob("**/*.gguf"):
+                                cname = cand.name.lower()
+                                if any(k in cname for k in ("draft", "0.5b", "0.6b", "qwen2.5-0.5b", "qwen3.5-0.6b")):
+                                    spec_draft_model = str(cand)
+                                    break
+                    except Exception:
+                        pass
         elif tensor_split is not None:
             split_mode = "layer"
+
+    # Su GPU completa, troppi thread CPU causano lock contention sul driver CUDA; 4-6 thread sono ottimali.
+    threads_effettivi = min(n_threads, 6) if (n_gpu_layers == -1 and len(gpus) > 0) else n_threads
+
+    # SE1 — Micro-Chunked Prefill:
+    # Spezza la valutazione del prompt in micro-chunk da 512 token interleaved per evitare congelamenti TTFT.
+    chunk_size = min(n_batch, 512) if n_gpu_layers == -1 else min(n_batch, 256)
 
     settings = {
         "n_gpu_layers": n_gpu_layers,
@@ -507,13 +539,19 @@ def _plan_settings(
         "forced_single_gpu": forced_single_gpu,
         "target_hardware": target if target else "auto",
         "n_ctx": n_ctx,
-        "n_threads": n_threads,
+        "n_threads": threads_effettivi,
         "n_threads_batch": n_threads_batch,
         "n_batch": n_batch,
-        "n_ubatch": min(n_batch, 256),
+        "n_ubatch": chunk_size,
+        "chunked_prefill": True,
+        "prefill_chunk_size": chunk_size,
         "flash_attn": flash_attn,
         "kv_quant": kv_quant,
         "prompt_lookup_tokens": fit["prompt_lookup_tokens"],
+        "spec_satellite_gpu": spec_satellite_gpu,
+        "spec_draft_device": spec_draft_device,
+        "spec_draft_ngl": spec_draft_ngl,
+        "spec_draft_model": spec_draft_model,
         "device": "cuda",
         "use_mmap": True,
         "usable_vram_gb": round(total_usable, 2),
@@ -521,6 +559,15 @@ def _plan_settings(
         "kv_cache_gb": kv_gb,
         "kv_cache_gb_f16": kv_gb_f16,
     }
+    if getattr(facts, "is_ternary", False) or facts.weight_format == "gguf_i2s":
+        settings["is_ternary"] = True
+        impronta_sessione = max((weights_gb * _GGUF_OVERHEAD_FACTOR) + kv_gb, 0.5)
+        sessioni_stimabili = max(1, int(total_usable // impronta_sessione)) if total_usable > 0 else 1
+        settings["concurrent_sessions_capacity"] = sessioni_stimabili
+        settings.setdefault("notes", []).append(
+            f"Modello in formato BitNet I2_S ternario (risparmio VRAM ~55%): "
+            f"capacità stimata di circa {sessioni_stimabili} sessioni/agenti in parallelo su {round(total_usable, 1)} GB VRAM."
+        )
     if on_usb:
         settings.setdefault("notes", []).append(
             "Modello su storage USB/rimovibile: il caricamento resta con memory "

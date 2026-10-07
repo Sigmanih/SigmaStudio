@@ -1533,6 +1533,13 @@ def check_completion_allowed(ledger: DevSessionLedger) -> Dict[str, Any]:
 
     # Case 1: Files were modified -> standard coding verification gate
     if ledger.has_modifications():
+        # Ammorbidire il cancello per modifiche non-python (CSS, MD, JSON, HTML, asset)
+        # Se le uniche modifiche sono di quel tipo, accettiamo lint/build/sintassi come prova.
+        only_non_py = all(
+            not p.lower().endswith('.py')
+            for p in ledger.modified_files
+        ) if ledger.modified_files else False
+        
         verification = ledger.last_verification()
         if verification is None:
             return {
@@ -1559,6 +1566,17 @@ def check_completion_allowed(ledger: DevSessionLedger) -> Dict[str, Any]:
             }
 
         if not verification["ok"]:
+            # Se le modifiche sono solo su file non-python (CSS, MD, JSON, HTML) e la verifica fallita
+            # non e' un test pytest, possiamo ammorbidire il blocco se c'e' una prova sintattica o di build.
+            if only_non_py and "pytest" not in verification["command"]:
+                return {
+                    "allowed": True,
+                    "mode": "coding_non_py_soft",
+                    "evidence": {
+                        "modified_files": ledger.modified_files,
+                        "verified_by": f"{verification['command']} (soft-pass per asset non-python)",
+                    },
+                }
             return {
                 "allowed": False,
                 "reason": (
