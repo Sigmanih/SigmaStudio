@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Home, FileText, Activity, PieChart, Layers, ChevronRight, ChevronDown, MessageSquare, 
-  FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, 
+import {
+  Home, FileText, Activity, PieChart, Layers, ChevronRight, ChevronDown, MessageSquare,
+  FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun,
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
   Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2,
   Share2, Plus, Search, HardDrive, Copy, UserCheck, Award, CircuitBoard
@@ -9,14 +9,14 @@ import {
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
 
-export const SidebarItem = ({ 
-  icon: Icon, 
-  label, 
-  active, 
-  onClick, 
-  badge, 
-  badgeColor, 
-  badgeSecondary, 
+export const SidebarItem = ({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+  badge,
+  badgeColor,
+  badgeSecondary,
   badgeSecondaryColor,
   isKernel = false,
   expandable = false,
@@ -31,9 +31,9 @@ export const SidebarItem = ({
   return (
     <div className={`sidebar-item ${isKernel ? 'kernel-item' : ''} ${active ? 'active' : ''}`} onClick={onClick} title={label}>
       <Icon size={15} style={{ flexShrink: 0 }} />
-      <span style={{ 
-        flex: 1, 
-        whiteSpace: 'nowrap', 
+      <span style={{
+        flex: 1,
+        whiteSpace: 'nowrap',
         fontSize: '0.76rem',
         fontWeight: isKernel ? 700 : 600,
         letterSpacing: '-0.1px',
@@ -42,11 +42,11 @@ export const SidebarItem = ({
         {label}
       </span>
       {isKernel && (
-        <span 
-          style={{ 
-            width: '5px', 
-            height: '5px', 
-            borderRadius: '50%', 
+        <span
+          style={{
+            width: '5px',
+            height: '5px',
+            borderRadius: '50%',
             background: isLight ? '#d97706' : '#eab308',
             boxShadow: isLight ? '0 0 6px rgba(217, 119, 6, 0.6)' : '0 0 6px rgba(234, 179, 8, 0.8)',
             flexShrink: 0,
@@ -58,8 +58,8 @@ export const SidebarItem = ({
       {(badge !== undefined || badgeSecondary !== undefined) && (
         <span className="sidebar-badges" style={{ display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0 }}>
           {badgeSecondary !== undefined && (
-            <span className="badge" style={{ 
-              background: badgeSecondaryColor || 'rgba(210,153,34,0.15)', 
+            <span className="badge" style={{
+              background: badgeSecondaryColor || 'rgba(210,153,34,0.15)',
               color: computedBadgeSecondaryColor,
               fontSize: '0.56rem',
               padding: '1px 5px',
@@ -71,8 +71,8 @@ export const SidebarItem = ({
             </span>
           )}
           {badge !== undefined && (
-            <span className="badge" style={{ 
-              background: badgeColor || 'rgba(63,185,80,0.15)', 
+            <span className="badge" style={{
+              background: badgeColor || 'rgba(63,185,80,0.15)',
               color: computedBadgeColor,
               fontSize: '0.56rem',
               padding: '1px 5px',
@@ -111,24 +111,24 @@ export const SidebarItem = ({
   );
 };
 
-export default function Sidebar({ 
-  modules = [], 
+export default function Sidebar({
+  modules = [],
   manifestiCount = 0,
-  activeTabId, 
-  leftVisible, 
-  setLeftVisible, 
-  setActiveTabId, 
+  activeTabId,
+  leftVisible,
+  setLeftVisible,
+  setActiveTabId,
   openTab,
   goHome,
   tasks = [],
   topicsCount = 0
 }) {
-  const { 
-    theme, 
-    toggleTheme, 
-    clearSystemMemory, 
-    openCleanupModal, 
-    mobileSidebarOpen, 
+  const {
+    theme,
+    toggleTheme,
+    clearSystemMemory,
+    openCleanupModal,
+    mobileSidebarOpen,
     setMobileSidebarOpen
   } = useApp();
   const isLight = theme === 'light' || theme === 'cream';
@@ -274,7 +274,7 @@ export default function Sidebar({
     setActiveModelTab(tabId);
     try {
       localStorage.setItem('sigma_model_hub_active_subtab', tabId);
-    } catch {}
+    } catch { }
     openTab({ name: 'Modelli' }, 'model_hub');
     window.dispatchEvent(new CustomEvent('sigma-model-hub-set-tab', { detail: tabId }));
     if (setMobileSidebarOpen) setMobileSidebarOpen(false);
@@ -284,7 +284,7 @@ export default function Sidebar({
     setActiveProvidersTab(tabId);
     try {
       localStorage.setItem('sigma_providers_active_subtab', tabId);
-    } catch {}
+    } catch { }
     openTab({ name: 'Providers' }, 'ai_config');
     window.dispatchEvent(new CustomEvent('sigma-providers-set-tab', { detail: tabId }));
     if (setMobileSidebarOpen) setMobileSidebarOpen(false);
@@ -294,7 +294,7 @@ export default function Sidebar({
     setActiveSkillsTab(tabId);
     try {
       localStorage.setItem('sigma_marketplace_active_subtab', tabId);
-    } catch {}
+    } catch { }
     openTab({ name: 'Skills' }, 'marketplace');
     window.dispatchEvent(new CustomEvent('sigma-marketplace-set-tab', { detail: tabId }));
     if (setMobileSidebarOpen) setMobileSidebarOpen(false);
@@ -304,13 +304,13 @@ export default function Sidebar({
     setActiveManifestiTab(tabId);
     try {
       localStorage.setItem('sigma_manifesti_active_subtab', tabId);
-    } catch {}
+    } catch { }
     openTab({ name: 'Ruoli AI' }, 'whitepapers_lib');
     window.dispatchEvent(new CustomEvent('sigma-manifesti-set-tab', { detail: tabId }));
     if (setMobileSidebarOpen) setMobileSidebarOpen(false);
   };
   const [hiddenTabs, setHiddenTabs] = useState(() => new Set());
-  
+
   useEffect(() => {
     const fetchSkills = () => {
       fetch('/api/skills')
@@ -319,7 +319,7 @@ export default function Sidebar({
           if (!d.success) return;
           setHiddenTabs(new Set(d.skills.filter(s => !s.enabled && s.tab_type).map(s => s.tab_type)));
         })
-        .catch(() => {});
+        .catch(() => { });
     };
     fetchSkills();
 
@@ -405,7 +405,7 @@ export default function Sidebar({
               setResearchCount(data.sessions.length);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
 
       if (isTrainingInstalled) {
@@ -416,7 +416,7 @@ export default function Sidebar({
               setTrainingCompleted(data.jobs.filter(j => j.status === 'completed' || j.status === 'running').length);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
 
       if (isKnowledgeInstalled) {
@@ -434,7 +434,7 @@ export default function Sidebar({
                 const parsed = JSON.parse(k);
                 if (Array.isArray(parsed)) setLocalTopicsCount(parsed.length);
               }
-            } catch (e) {}
+            } catch (e) { }
           });
       }
 
@@ -446,7 +446,7 @@ export default function Sidebar({
               setAssetCount(data.assets);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     };
 
@@ -479,21 +479,21 @@ export default function Sidebar({
   return (
     <aside className={`sidebar ${mobileSidebarOpen ? 'mobile-open' : ''}`}>
       <button className="collapse-btn left" onClick={() => setLeftVisible(!leftVisible)}>
-         {leftVisible ? <ChevronRight size={14} style={{transform: 'rotate(180deg)'}} /> : <ChevronRight size={14} />}
+        {leftVisible ? <ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> : <ChevronRight size={14} />}
       </button>
       <div className="sidebar-content">
-        
+
         {/* SIDEBAR HEADER & LOGO */}
         <div className="sidebar-header">
-          <div 
-            className="logo" 
+          <div
+            className="logo"
             onClick={() => handleNavClick(goHome)}
             title="Torna alla Bacheca"
-            style={{ 
-              marginBottom: '16px', 
-              cursor: 'pointer', 
-              display: 'flex', 
-              alignItems: 'center', 
+            style={{
+              marginBottom: '16px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
               gap: '12px',
               userSelect: 'none'
             }}
@@ -512,9 +512,9 @@ export default function Sidebar({
               flexShrink: 0,
               transition: 'transform 0.2s ease, box-shadow 0.2s ease'
             }}>
-              <img 
-                src="/images/sigma_logo_harmonic_flow.jpg" 
-                alt="Sigma Logo" 
+              <img
+                src="/images/sigma_logo_harmonic_flow.jpg"
+                alt="Sigma Logo"
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 onError={(e) => { e.target.src = '/sigma_logo.jpg'; }}
               />
@@ -529,17 +529,17 @@ export default function Sidebar({
         {/* 1. SEZIONE FONDAMENTALE: FUNZIONI KERNEL                          */}
         {/* ================================================================= */}
         <nav className="nav-section" style={{ marginBottom: '18px' }}>
-          <SidebarItem 
-            icon={Home} 
-            label="Home" 
+          <SidebarItem
+            icon={Home}
+            label="Home"
             isKernel={true}
             active={activeTabId === null}
             onClick={goHome}
           />
 
-          <SidebarItem 
-            icon={MessageSquare} 
-            label="Chat" 
+          <SidebarItem
+            icon={MessageSquare}
+            label="Chat"
             isKernel={true}
             badge={chatCount > 0 ? chatCount : 0}
             badgeColor="rgba(234,179,8,0.18)"
@@ -547,7 +547,7 @@ export default function Sidebar({
             onClick={() => {
               openTab({ name: 'Chat', path: 'chat-tab' }, 'chat');
               setChatExpanded(true);
-            }} 
+            }}
             expandable={true}
             expanded={chatExpanded}
             onToggleExpand={() => setChatExpanded(prev => !prev)}
@@ -606,9 +606,9 @@ export default function Sidebar({
             </div>
           )}
 
-          <SidebarItem 
-            icon={DownloadCloud} 
-            label="Modelli" 
+          <SidebarItem
+            icon={DownloadCloud}
+            label="Modelli"
             isKernel={true}
             badge="LOCAL"
             badgeColor="rgba(255,184,108,0.2)"
@@ -616,7 +616,7 @@ export default function Sidebar({
             onClick={() => {
               handleSelectModelTab('inventory');
               setModelsExpanded(true);
-            }} 
+            }}
             expandable={true}
             expanded={modelsExpanded}
             onToggleExpand={() => setModelsExpanded(prev => !prev)}
@@ -626,7 +626,7 @@ export default function Sidebar({
             <div className="sidebar-subnav sidebar-models-subnav">
               {[
                 { id: 'inventory', label: 'Modelli Locali', icon: HardDrive },
-                { id: 'browse', label: 'Download HF', icon: Search },
+                { id: 'browse', label: 'Download Modelli', icon: Search },
                 { id: 'converter', label: 'Convertitore GGUF', icon: Zap },
                 { id: 'settings', label: 'Impostazioni & Token', icon: Settings },
               ].map(sub => {
@@ -646,9 +646,9 @@ export default function Sidebar({
             </div>
           )}
 
-          <SidebarItem 
-            icon={Sliders} 
-            label="Providers" 
+          <SidebarItem
+            icon={Sliders}
+            label="Providers"
             isKernel={true}
             badge="ROUTING"
             badgeColor="rgba(234,179,8,0.18)"
@@ -656,7 +656,7 @@ export default function Sidebar({
             onClick={() => {
               openTab({ name: 'Providers' }, 'ai_config');
               setProvidersExpanded(true);
-            }} 
+            }}
             expandable={true}
             expanded={providersExpanded}
             onToggleExpand={() => setProvidersExpanded(prev => !prev)}
@@ -683,14 +683,14 @@ export default function Sidebar({
             </div>
           )}
 
-          <SidebarItem 
-            icon={Package} 
-            label="Skills" 
+          <SidebarItem
+            icon={Package}
+            label="Skills"
             isKernel={true}
             badge="STORE"
             badgeColor="rgba(234,179,8,0.2)"
             active={activeTabId != null && activeTabId.startsWith('marketplace')}
-            onClick={() => setSkillsExpanded(prev => !prev)} 
+            onClick={() => setSkillsExpanded(prev => !prev)}
             expandable={true}
             expanded={skillsExpanded}
             onToggleExpand={() => setSkillsExpanded(prev => !prev)}
@@ -717,9 +717,9 @@ export default function Sidebar({
             </div>
           )}
 
-          <SidebarItem 
-            icon={Brain} 
-            label="Ruoli AI" 
+          <SidebarItem
+            icon={Brain}
+            label="Ruoli AI"
             isKernel={true}
             badge={manifestiCount + modules.reduce((acc, m) => acc + (m.whitepapers?.length || 0), 0)}
             badgeColor="rgba(188,140,255,0.15)"
@@ -727,7 +727,7 @@ export default function Sidebar({
             onClick={() => {
               openTab({ name: 'Ruoli AI' }, 'whitepapers_lib');
               setManifestiExpanded(true);
-            }} 
+            }}
             expandable={true}
             expanded={manifestiExpanded}
             onToggleExpand={() => setManifestiExpanded(prev => !prev)}
@@ -755,35 +755,35 @@ export default function Sidebar({
           )}
 
           {!hiddenTabs.has('mcp_hub') && (
-            <SidebarItem 
-              icon={Wrench} 
-              label="MCP Tools" 
+            <SidebarItem
+              icon={Wrench}
+              label="MCP Tools"
               isKernel={true}
               badge={6}
               badgeColor="rgba(63,185,80,0.15)"
               active={activeTabId != null && activeTabId.startsWith('mcp_hub')}
-              onClick={() => openTab({ name: 'MCP Tools' }, 'mcp_hub')} 
+              onClick={() => openTab({ name: 'MCP Tools' }, 'mcp_hub')}
             />
           )}
 
-          <SidebarItem 
-            icon={Settings} 
-            label="Impostazioni" 
+          <SidebarItem
+            icon={Settings}
+            label="Impostazioni"
             isKernel={true}
             badge="CONFIG"
             badgeColor="rgba(188,140,255,0.15)"
             active={activeTabId != null && (activeTabId.startsWith('account') || activeTabId.startsWith('settings'))}
-            onClick={() => handleNavClick(() => openTab({ name: 'Impostazioni' }, 'account'))} 
+            onClick={() => handleNavClick(() => openTab({ name: 'Impostazioni' }, 'account'))}
           />
 
-          <SidebarItem 
-            icon={Palette} 
-            label="Tema" 
+          <SidebarItem
+            icon={Palette}
+            label="Tema"
             isKernel={true}
             badge="COLORI"
             badgeColor="rgba(0,210,255,0.18)"
             active={activeTabId != null && (activeTabId.startsWith('theme') || activeTabId.startsWith('palette'))}
-            onClick={() => handleNavClick(() => openTab({ name: 'Tema' }, 'theme'))} 
+            onClick={() => handleNavClick(() => openTab({ name: 'Tema' }, 'theme'))}
           />
         </nav>
 
@@ -795,13 +795,13 @@ export default function Sidebar({
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span>🧩</span> CATALOGO SKILLS
             </span>
-            <span style={{ 
-              fontSize: '0.58rem', 
-              fontWeight: 800, 
-              padding: '1px 6px', 
-              borderRadius: '6px', 
-              background: isLight ? 'rgba(124, 91, 240, 0.12)' : 'rgba(188, 140, 255, 0.15)', 
-              color: isLight ? '#6d28d9' : '#bc8cff' 
+            <span style={{
+              fontSize: '0.58rem',
+              fontWeight: 800,
+              padding: '1px 6px',
+              borderRadius: '6px',
+              background: isLight ? 'rgba(124, 91, 240, 0.12)' : 'rgba(188, 140, 255, 0.15)',
+              color: isLight ? '#6d28d9' : '#bc8cff'
             }}>
               {totalActiveSkills} ATTIVE
             </span>
@@ -810,7 +810,7 @@ export default function Sidebar({
           {/* SOTTOARGOMENTO 1: MULTIMODALE & CREATIVITÀ (Mostra solo se ha skill) */}
           {hasMultimodal && (
             <div style={{ marginBottom: '6px' }}>
-              <div 
+              <div
                 onClick={() => toggleSubtopic('multimodal')}
                 style={{
                   display: 'flex',
@@ -859,46 +859,46 @@ export default function Sidebar({
                   )}
 
                   {isDomoticaInstalled && (
-                    <SidebarItem 
-                      icon={Home} 
-                      label="Domotica" 
+                    <SidebarItem
+                      icon={Home}
+                      label="Domotica"
                       badge="HA"
                       badgeColor="rgba(167,139,250,0.2)"
                       active={activeTabId != null && (activeTabId.startsWith('domotica') || activeTabId.startsWith('home_assistant'))}
-                      onClick={() => openTab({ name: 'Domotica' }, 'domotica')} 
+                      onClick={() => openTab({ name: 'Domotica' }, 'domotica')}
                     />
                   )}
 
                   {isAudioInstalled && (
-                    <SidebarItem 
-                      icon={Radio} 
-                      label="Musica" 
+                    <SidebarItem
+                      icon={Radio}
+                      label="Musica"
                       badge="LOUNGE"
                       badgeColor="rgba(0,242,254,0.2)"
                       active={activeTabId != null && (activeTabId.startsWith('music') || activeTabId === 'audio_studio' || activeTabId === 'music_lounge')}
-                      onClick={() => openTab({ name: 'Musica' }, 'music')} 
+                      onClick={() => openTab({ name: 'Musica' }, 'music')}
                     />
                   )}
 
                   {isAudioEngineInstalled && (
-                    <SidebarItem 
-                      icon={Sparkles} 
-                      label="Audio Engine" 
+                    <SidebarItem
+                      icon={Sparkles}
+                      label="Audio Engine"
                       badge="VOICE"
                       badgeColor="rgba(255,121,198,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('audio_studio')}
-                      onClick={() => openTab({ name: 'Audio Engine' }, 'audio_studio')} 
+                      onClick={() => openTab({ name: 'Audio Engine' }, 'audio_studio')}
                     />
                   )}
 
                   {isVisionInstalled && (
-                    <SidebarItem 
-                      icon={Sparkles} 
-                      label="Vision Lab" 
+                    <SidebarItem
+                      icon={Sparkles}
+                      label="Vision Lab"
                       badge="VL"
                       badgeColor="rgba(0,210,255,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('vision_lab')}
-                      onClick={() => openTab({ name: 'Vision Lab' }, 'vision_lab')} 
+                      onClick={() => openTab({ name: 'Vision Lab' }, 'vision_lab')}
                     />
                   )}
                 </div>
@@ -909,7 +909,7 @@ export default function Sidebar({
           {/* SOTTOARGOMENTO 2: STUDIO & INTELLIGENZA ARTIFICIALE (Mostra solo se ha skill) */}
           {hasStudio && (
             <div style={{ marginBottom: '6px' }}>
-              <div 
+              <div
                 onClick={() => toggleSubtopic('studio')}
                 style={{
                   display: 'flex',
@@ -957,48 +957,48 @@ export default function Sidebar({
                   )}
 
                   {isResearchInstalled && (
-                    <SidebarItem 
-                      icon={FlaskConical} 
-                      label="Pipelines" 
+                    <SidebarItem
+                      icon={FlaskConical}
+                      label="Pipelines"
                       badge={researchCount > 0 ? researchCount : 0}
                       badgeColor="rgba(188,140,255,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('research_lab')}
-                      onClick={() => openTab({ name: 'Pipelines' }, 'research_lab')} 
+                      onClick={() => openTab({ name: 'Pipelines' }, 'research_lab')}
                     />
                   )}
 
                   {isRoadmapInstalled && (
-                    <SidebarItem 
-                      icon={Activity} 
-                      label="Pianificazione & Task" 
+                    <SidebarItem
+                      icon={Activity}
+                      label="Pianificazione & Task"
                       badge={taskInCorso > 0 ? taskInCorso : (taskTotal === 0 ? 0 : undefined)}
                       badgeColor="rgba(210,153,34,0.15)"
                       badgeSecondary={taskDone > 0 ? taskDone : undefined}
                       badgeSecondaryColor="rgba(63,185,80,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('roadmap')}
-                      onClick={() => openTab({ name: 'Pianificazione & Task' }, 'roadmap')} 
+                      onClick={() => openTab({ name: 'Pianificazione & Task' }, 'roadmap')}
                     />
                   )}
 
                   {isKnowledgeInstalled && (
-                    <SidebarItem 
-                      icon={PieChart} 
-                      label="Argomenti" 
+                    <SidebarItem
+                      icon={PieChart}
+                      label="Argomenti"
                       badge={localTopicsCount > 0 || topicsCount > 0 ? Math.max(localTopicsCount, topicsCount) : 0}
                       badgeColor="rgba(0,210,255,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('knowledge')}
-                      onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')} 
+                      onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')}
                     />
                   )}
 
                   {isQuantInstalled && (
-                    <SidebarItem 
-                      icon={Sparkles} 
-                      label="Quant Lab" 
+                    <SidebarItem
+                      icon={Sparkles}
+                      label="Quant Lab"
                       badge="QUANT"
                       badgeColor="rgba(210,153,34,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('quant_lab')}
-                      onClick={() => openTab({ name: 'Quant Lab' }, 'quant_lab')} 
+                      onClick={() => openTab({ name: 'Quant Lab' }, 'quant_lab')}
                     />
                   )}
                 </div>
@@ -1009,7 +1009,7 @@ export default function Sidebar({
           {/* SOTTOARGOMENTO 3: INFRASTRUTTURA & RETE (Mostra solo se ha skill) */}
           {hasInfra && (
             <div style={{ marginBottom: '6px' }}>
-              <div 
+              <div
                 onClick={() => toggleSubtopic('infra')}
                 style={{
                   display: 'flex',
@@ -1047,13 +1047,13 @@ export default function Sidebar({
                   )}
 
                   {isHardwareInstalled && (
-                    <SidebarItem 
-                      icon={Zap} 
-                      label="Monitor Hardware" 
+                    <SidebarItem
+                      icon={Zap}
+                      label="Monitor Hardware"
                       badge="VRAM"
                       badgeColor="rgba(0,242,254,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('hardware_lab')}
-                      onClick={() => openTab({ name: 'Monitor Hardware' }, 'hardware_lab')} 
+                      onClick={() => openTab({ name: 'Monitor Hardware' }, 'hardware_lab')}
                     />
                   )}
 
@@ -1069,13 +1069,13 @@ export default function Sidebar({
                   )}
 
                   {isNetworkInstalled && (
-                    <SidebarItem 
-                      icon={Globe} 
-                      label="AI Web Browser" 
+                    <SidebarItem
+                      icon={Globe}
+                      label="AI Web Browser"
                       badge="NET"
                       badgeColor="rgba(63,185,80,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('network_lab')}
-                      onClick={() => openTab({ name: 'AI Web Browser' }, 'network_lab')} 
+                      onClick={() => openTab({ name: 'AI Web Browser' }, 'network_lab')}
                     />
                   )}
 
@@ -1091,13 +1091,13 @@ export default function Sidebar({
                   )}
 
                   {isRoboticsInstalled && (
-                    <SidebarItem 
-                      icon={Sparkles} 
-                      label="Robotica ROS2" 
+                    <SidebarItem
+                      icon={Sparkles}
+                      label="Robotica ROS2"
                       badge="ROS2"
                       badgeColor="rgba(63,185,80,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('robotics_tab')}
-                      onClick={() => openTab({ name: 'Robotica ROS2' }, 'robotics_tab')} 
+                      onClick={() => openTab({ name: 'Robotica ROS2' }, 'robotics_tab')}
                     />
                   )}
                 </div>
@@ -1108,7 +1108,7 @@ export default function Sidebar({
           {/* SOTTOARGOMENTO 4: COMUNICAZIONE & SOCIAL (Mostra solo se ha skill) */}
           {hasComms && (
             <div style={{ marginBottom: '6px' }}>
-              <div 
+              <div
                 onClick={() => toggleSubtopic('comms')}
                 style={{
                   display: 'flex',
@@ -1135,24 +1135,24 @@ export default function Sidebar({
               {!collapsedSections.comms && (
                 <div style={{ paddingLeft: '4px', marginTop: '2px' }}>
                   {isEmailInstalled && (
-                    <SidebarItem 
-                      icon={Mail} 
-                      label="Email Hub" 
+                    <SidebarItem
+                      icon={Mail}
+                      label="Email Hub"
                       badge="MAIL"
                       badgeColor="rgba(255,180,84,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('email_client')}
-                      onClick={() => openTab({ name: '✉️ Email Hub' }, 'email_client')} 
+                      onClick={() => openTab({ name: '✉️ Email Hub' }, 'email_client')}
                     />
                   )}
 
                   {isMessagingInstalled && (
-                    <SidebarItem 
-                      icon={Send} 
-                      label="Messaging Hub" 
+                    <SidebarItem
+                      icon={Send}
+                      label="Messaging Hub"
                       badge="BOT"
                       badgeColor="rgba(188,140,255,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('messaging_hub')}
-                      onClick={() => openTab({ name: '💬 Messaging Hub' }, 'messaging_hub')} 
+                      onClick={() => openTab({ name: '💬 Messaging Hub' }, 'messaging_hub')}
                     />
                   )}
                 </div>
