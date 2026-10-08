@@ -1,16 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  Home, 
-  Scroll, 
   ExternalLink, 
-  DownloadCloud, 
-  Layers, 
-  Cpu, 
-  ShieldCheck, 
-  Terminal, 
-  ArrowRight, 
-  Sparkles, 
-  Zap, 
   CheckCircle2, 
   RefreshCw, 
   AlertCircle, 
@@ -18,13 +8,6 @@ import {
   GitBranch, 
   Check, 
   Bell, 
-  Info, 
-  ChevronDown, 
-  ChevronUp, 
-  Activity, 
-  Sliders, 
-  Flame, 
-  Globe,
   Heart
 } from 'lucide-react';
 
@@ -34,10 +17,6 @@ import SkillsShowcaseSlider from './SkillsShowcaseSlider';
 export default function WelcomeDashboard({ modules, openTab }) {
   const { theme } = useApp();
   const isLight = theme === 'light';
-
-  // Stato per l'espansione dei pilastri informativi (click o hover)
-  const [expandedPillar, setExpandedPillar] = useState(null);
-  const [hoveredPillar, setHoveredPillar] = useState(null);
 
   // GitHub & Roles Update Check State
   const [updateState, setUpdateState] = useState({
@@ -154,70 +133,6 @@ export default function WelcomeDashboard({ modules, openTab }) {
     checkForUpdates(false);
   }, [checkForUpdates]);
 
-  // Toggle espansione dei pilastri
-  const togglePillar = (id) => {
-    setExpandedPillar(prev => prev === id ? null : id);
-  };
-
-  const openLocalModels = () => {
-    try {
-      localStorage.setItem('sigma_model_hub_active_subtab', 'inventory');
-    } catch {}
-    window.dispatchEvent(new CustomEvent('sigma-model-hub-set-tab', { detail: 'inventory' }));
-    openTab({ name: 'Modelli' }, 'model_hub');
-  };
-
-  const pillarsData = [
-    {
-      id: 'engine',
-      title: 'SigmaEngine',
-      badge: 'GGUF & Safetensors',
-      short: 'Inferenza neurale locale ad alta velocità con gestione dinamica di RAM/VRAM.',
-      full: 'Esegui qualsiasi modello open-source direttamente sul tuo hardware senza passare dal cloud. Ottimizzato sia per potenti workstation con GPU dedicate che per architetture compatte come Raspberry Pi 5 (CPU aarch64). Zero latenza esterna, privacy al 100% e nessun costo di token.',
-      icon: Cpu,
-      color: '#00f2fe',
-      bgGlow: 'rgba(0, 242, 254, 0.15)',
-      actionText: 'Gestisci Modelli',
-      actionTab: 'model_hub'
-    },
-    {
-      id: 'roles',
-      title: 'Ruoli Cognitivi',
-      badge: `${updateState.activeRolesCount} Specialisti Attivi`,
-      short: 'Manifesti etico-disciplinari che trasformano l\'assistente in professionisti dedicati.',
-      full: 'Attiva all\'istante figure specializzate: dal programmatore senior al ricercatore matematico, dal revisore legale all\'analista finanziario. Ogni ruolo applica direttive etiche, stili comunicativi e metodologie di ragionamento strutturate pronte all\'uso in chat e pipeline.',
-      icon: Scroll,
-      color: '#bc8cff',
-      bgGlow: 'rgba(188, 140, 255, 0.15)',
-      actionText: 'Esplora Ruoli',
-      actionTab: 'whitepapers_lib'
-    },
-    {
-      id: 'mcp',
-      title: 'Protocollo MCP',
-      badge: 'Gateway Strumenti & Azione',
-      short: 'Standard aperto Model Context Protocol per interagire con file, test e periferiche.',
-      full: 'Fornisci all\'intelligenza artificiale braccia e occhi per agire nel tuo ambiente. Esegui script nel terminale, sincronizza file nel workspace, interroga sensori hardware in tempo reale e connetti server MCP esterni in totale trasparenza e sicurezza controllata.',
-      icon: Terminal,
-      color: '#ff5064',
-      bgGlow: 'rgba(255, 80, 100, 0.15)',
-      actionText: 'Gateway MCP',
-      actionTab: 'mcp_hub'
-    },
-    {
-      id: 'skills',
-      title: 'Skills Hub & Moduli',
-      badge: 'Architettura Modulare',
-      short: 'Estendi l\'IDE con moduli avanzati (3D Lab, Audio Studio, Training) ad aggancio automatico.',
-      full: 'Il kernel di Sigma Studio rimane leggero e minimale: installa e attiva con un click moduli specialistici opzionali mantenendo la separazione architetturale pulita. Condividi o crea nuove feature modulari per la community open source.',
-      icon: Layers,
-      color: '#3fb950',
-      bgGlow: 'rgba(63, 185, 80, 0.15)',
-      actionText: 'Apri Skills',
-      actionTab: 'marketplace'
-    }
-  ];
-
   return (
     <div className="home-dashboard-wrapper">
       {/* ── Top Bar Minimale e Fluida ── */}
@@ -306,6 +221,11 @@ export default function WelcomeDashboard({ modules, openTab }) {
                     {updateState.updateAvailable ? 'Aggiornamento Disponibile' : 'Sistema Sincronizzato'}
                   </span>
                 </div>
+
+                <p className="home-bacheca-desc-text">
+                  Sigma Studio è un IDE intelligente e modulare per la ricerca e lo sviluppo con intelligenza artificiale locale e sovrana.
+                  Integra agenti cognitivi specializzati, elaborazione hardware trasparente e automazione guidata da protocollo MCP.
+                </p>
 
                 <div className="home-bacheca-sub">
                   {updateState.updateAvailable ? (
@@ -437,119 +357,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
           )}
         </div>
 
-        {/* ── 4 Pilastri Card Interattive (Hover & Click per info complete) ── */}
-        <section className="home-pillars-section">
-          <div className="home-section-header">
-            <div>
-              <h2 className="home-section-title">Architettura & Capacità Chiave</h2>
-              <p className="home-section-sub">
-                Passa il cursore o clicca su ogni card per accedere alla scheda tecnica completa e alle direttive operative.
-              </p>
-            </div>
-          </div>
-
-          <div className="home-pillars-grid">
-            {pillarsData.map(p => {
-              const IconComp = p.icon;
-              const isExpanded = expandedPillar === p.id;
-              const isHovered = hoveredPillar === p.id;
-
-              return (
-                <div
-                  key={p.id}
-                  className={`home-pillar-card ${isExpanded ? 'is-expanded' : ''} ${isHovered ? 'is-hovered' : ''}`}
-                  onMouseEnter={() => setHoveredPillar(p.id)}
-                  onMouseLeave={() => setHoveredPillar(null)}
-                  onClick={() => togglePillar(p.id)}
-                >
-                  <div className="home-pillar-header">
-                    <div 
-                      className="home-pillar-icon-box"
-                      style={{ background: p.bgGlow, borderColor: `${p.color}55`, color: p.color }}
-                    >
-                      <IconComp size={20} />
-                    </div>
-
-                    <div className="home-pillar-title-area">
-                      <div className="home-pillar-badge" style={{ color: p.color, borderColor: `${p.color}40` }}>
-                        {p.badge}
-                      </div>
-                      <h3 className="home-pillar-title">{p.title}</h3>
-                    </div>
-
-                    <button 
-                      type="button" 
-                      className={`home-pillar-toggle-btn ${isExpanded ? 'open' : ''}`}
-                      title={isExpanded ? "Comprimi dettagli" : "Espandi descrizione completa"}
-                    >
-                      {isExpanded ? <ChevronUp size={14} /> : <Info size={14} />}
-                    </button>
-                  </div>
-
-                  {/* Sintesi immediata sempre visibile */}
-                  <p className="home-pillar-short-desc">
-                    {p.short}
-                  </p>
-
-                  {/* Descrizione approfondita espandibile su Click o visibile con dettaglio */}
-                  {isExpanded && (
-                    <div className="home-pillar-full-desc" onClick={e => e.stopPropagation()}>
-                      <p>{p.full}</p>
-                    </div>
-                  )}
-
-                  {/* Footer della card con Action CTA */}
-                  <div className="home-pillar-footer" onClick={e => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      className="home-pillar-action-link"
-                      style={{ color: p.color }}
-                      onClick={() => {
-                        if (p.actionTab === 'model_hub') {
-                          openLocalModels();
-                        } else {
-                          openTab({ name: p.title }, p.actionTab);
-                        }
-                      }}
-                    >
-                      <span>{p.actionText}</span>
-                      <ArrowRight size={12} />
-                    </button>
-
-                    <span className="home-pillar-hint">
-                      {isExpanded ? 'Clicca per comprimere' : 'Clicca per info estese'}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* ── Quick System Specs Counter Bar ── */}
-        <section className="home-stats-strip">
-          <div className="home-stat-item">
-            <span className="home-stat-val">100% Locale</span>
-            <span className="home-stat-lbl">Nessuna telemetria cloud</span>
-          </div>
-          <div className="home-stat-divider" />
-          <div className="home-stat-item">
-            <span className="home-stat-val">GGUF & SafeT</span>
-            <span className="home-stat-lbl">Quantizzazione e VRAM dinamica</span>
-          </div>
-          <div className="home-stat-divider" />
-          <div className="home-stat-item">
-            <span className="home-stat-val">{updateState.activeRolesCount} Ruoli AI</span>
-            <span className="home-stat-lbl">Manifesti cognitivi pronti</span>
-          </div>
-          <div className="home-stat-divider" />
-          <div className="home-stat-item">
-            <span className="home-stat-val">MCP Gateway</span>
-            <span className="home-stat-lbl">Automazione di file e comandi</span>
-          </div>
-        </section>
-
-        {/* ── Banner Sostegno Indipendente & Community (Efficace e Sobrio) ── */}
+        {/* ── Banner Sostegno Indipendente & Community (posizionato in evidenza in alto) ── */}
         <section className="home-community-banner">
           <div className="home-community-left">
             <div className="home-community-icon">
@@ -588,10 +396,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
         <footer className="home-footer">
           <div className="home-footer-left">
             <button
-              onClick={() => openTab({ path: 'README_IT.md', filename: 'README_IT.md' }, 'editor')}
+              onClick={() => openTab({ path: 'README.md', filename: 'README.md' }, 'editor')}
               className="home-footer-link"
             >
-              🇮🇹 Documentazione IT
+              📖 Documentation (README)
             </button>
             <span className="home-footer-bullet">•</span>
             <button

@@ -675,6 +675,14 @@
   color: #faa03c;
 }
 
+.home-bacheca-desc-text {
+  font-size: 0.80rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+  margin: 6px 0 8px 0;
+  width: 100%;
+}
+
 .home-bacheca-sub {
   font-size: 0.74rem;
   color: #94a3b8;
@@ -911,6 +919,10 @@
 
 .theme-light .home-bacheca-title {
   color: #0f172a !important;
+}
+
+.theme-light .home-bacheca-desc-text {
+  color: #334155 !important;
 }
 
 .theme-light .home-bacheca-sub {
