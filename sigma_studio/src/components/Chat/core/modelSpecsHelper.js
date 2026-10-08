@@ -280,91 +280,118 @@ if (typeof window !== 'undefined') {
  */
 export function getModelSpecs(modelName, availableModels = []) {
   if (!modelName) return null;
-  const raw = String(modelName).trim();
+  const inputObj = (typeof modelName === 'object' && modelName !== null) ? modelName : null;
+  const raw = String(inputObj ? (inputObj.name || inputObj.id || inputObj.model_id || inputObj.filename || '') : modelName).trim();
   const lower = raw.toLowerCase();
+
+  // Pulizia prefissi di routing provider (es. sigma:, ollama:) e wrapper (es. SigmaEngine (...))
+  const stripPrefixes = (s) => String(s || '').toLowerCase()
+    .replace(/^(?:sigma|ollama|lmstudio|openai|deepseek|anthropic|groq|google|mistral|together|xai):/i, '')
+    .replace(/^sigmaengine\s*\((.*?)\)$/i, '$1')
+    .replace(/^in vram\s*\((.*?)\)$/i, '$1')
+    .replace(/\.gguf$/i, '')
+    .replace(/\.safetensors$/i, '')
+    .trim();
+
+  const cleanRaw = stripPrefixes(raw);
 
   // Combine passed availableModels with global cache
   const candidatePool = (Array.isArray(availableModels) && availableModels.length > 0)
     ? [...availableModels, ..._localModelsCache]
     : _localModelsCache;
 
-  // 1. Search in candidate pool
-  if (candidatePool.length > 0) {
-    const cleanRaw = lower.replace(/\.gguf$/i, '').replace(/^.*\//, '').replace(/^.*\\/, '');
+  // 1. Search in candidate pool (o usa direttamente inputObj se già fornito e ha dati)
+  let found = inputObj;
+  if (!found && candidatePool.length > 0) {
+    const rawSlash = cleanRaw.replace(/--/g, '/');
+    const rawTail = cleanRaw.split('/').pop().split('--').pop();
 
-    const found = candidatePool.find(m => {
+    found = candidatePool.find(m => {
       if (!m) return false;
-      const mName = (m.name || '').toLowerCase();
-      const mFile = (m.filename || '').toLowerCase();
-      const mId = (m.model_id || '').toLowerCase();
-      const mDisp = (m.display_name || '').toLowerCase();
+      const mName = stripPrefixes(m.name);
+      const mFile = stripPrefixes(m.filename);
+      const mId = stripPrefixes(m.id || m.model_id);
+      const mDisp = stripPrefixes(m.display_name);
 
-      return (
-        mName === lower || mFile === lower || mId === lower || mDisp === lower ||
-        mFile.replace(/\.gguf$/i, '') === cleanRaw ||
-        mDisp.replace(/\.gguf$/i, '') === cleanRaw ||
-        cleanRaw.includes(mFile.replace(/\.gguf$/i, '')) ||
-        (mFile && cleanRaw.includes(mFile))
-      );
-    });
+      const targets = [cleanRaw, rawSlash, rawTail].filter(Boolean);
+      const cands = [mName, mFile, mId, mDisp].filter(Boolean);
 
-    if (found) {
-      // Dynamic Parameter Count extraction
-      let params = found.params_label || '';
-      if (!params) {
-        if (/2\.4t/i.test(raw) || /a95b/i.test(raw)) params = '95B (2.4T)';
-        else if (/671b/i.test(raw)) params = '37B (671B)';
-        else {
-          const pMatch = raw.match(/(?:^|[_\-./ ])([0-9.]+[bBmMtT])(?:[_\-./ ]|$)/) || raw.match(/([0-9.]+[bBmMtT])/);
-          if (pMatch) params = pMatch[1].toUpperCase();
+      for (const t of targets) {
+        for (const c of cands) {
+          if (c === t || c.replace(/--/g, '/') === t) return true;
+          const cTail = c.split('/').pop().split('--').pop();
+          if (cTail && cTail === t) return true;
+          if (t.includes(c) || c.includes(t)) return true;
         }
       }
+      return false;
+    });
+  }
 
-      // Dynamic Quantization
-      const quant = found.quantization && found.quantization !== 'Standard'
-        ? found.quantization
-        : (raw.match(/(Q[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2)/i)?.[1]?.toUpperCase() || '');
-
-      // Dynamic Format
-      let format = found.format || (lower.includes('gguf') ? 'GGUF' : (lower.includes('safetensors') ? 'Safetensors' : ''));
-      if (!format && (lower.includes('.gguf') || quant.startsWith('Q'))) format = 'GGUF';
-      if (format === 'GGUF' && quant && !format.includes(quant)) {
-        format = `GGUF (${quant})`;
-      }
-
-      // Real disk size measured from host storage
-      let size = found.size_label;
-      if (!size && found.size_gb) {
-        size = found.size_gb >= 1000 ? `~${(found.size_gb / 1024).toFixed(1)} TB` : `~${found.size_gb.toFixed(1)} GB`;
-      } else if (!size && found.size) {
-        size = found.size;
-      }
-
-      const family = detectModelFamily(found);
-      const chatSpeed = getModelChatSpeed(found.name || raw, found);
-
-      return {
-        name: found.display_name || found.name || raw,
-        params: params || '',
-        size: size || '',
-        format: format || '',
-        quantization: quant || '',
-        provider: found.provider || 'sigma_engine',
-        family,
-        benchmark: found.benchmark_summary || null,
-        toolScore: found.tool_score ?? found.benchmark_summary?.tool_score ?? null,
-        toolStats: (found.tool_total || found.benchmark_summary?.tool_total)
-          ? {
-              passed: found.tool_passed ?? found.benchmark_summary?.tool_passed ?? 0,
-              total: found.tool_total ?? found.benchmark_summary?.tool_total ?? 0,
-            }
-          : null,
-        chatSpeed: chatSpeed !== null ? chatSpeed : null,
-        publication: found.publication || null,
-        isPublished: Boolean(found.publication?.repo_id || found.is_published || found.published),
-        rawModel: found
-      };
+  // Se trovato in candidatePool o passato direttamente come oggetto
+  if (found) {
+    // Dynamic Parameter Count extraction
+    let params = found.params_label || found.parameter_size || '';
+    if (typeof params === 'string' && (params.includes('GB') || params.includes('Resident') || params.includes('Autotune') || params.includes('Cloud API'))) {
+      params = '';
     }
+    if (!params) {
+      if (/2\.4t/i.test(raw) || /a95b/i.test(raw)) params = '95B (2.4T)';
+      else if (/671b/i.test(raw)) params = '37B (671B)';
+      else {
+        const pMatch = raw.match(/(?:^|[_\-./ ])([0-9.]+[bBmMtT])(?:[_\-./ ]|$)/) || raw.match(/([0-9.]+[bBmMtT])/);
+        if (pMatch) params = pMatch[1].toUpperCase();
+      }
+    }
+
+    // Dynamic Quantization
+    const quant = found.quantization && found.quantization !== 'Standard' && found.quantization !== 'Native/FlashAttn' && found.quantization !== 'Loaded'
+      ? found.quantization
+      : (raw.match(/(Q[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2)/i)?.[1]?.toUpperCase() || '');
+
+    // Dynamic Format
+    let format = found.format || (lower.includes('gguf') ? 'GGUF' : (lower.includes('safetensors') ? 'Safetensors' : ''));
+    if (!format && (lower.includes('.gguf') || (quant && quant.startsWith('Q')))) format = 'GGUF';
+    if (format === 'GGUF' && quant && !format.includes(quant)) {
+      format = `GGUF (${quant})`;
+    }
+
+    // Real disk size measured from host storage
+    let size = found.size_label;
+    if (!size && found.size_gb) {
+      size = found.size_gb >= 1000 ? `~${(found.size_gb / 1024).toFixed(1)} TB` : `~${found.size_gb.toFixed(1)} GB`;
+    } else if (!size && found.size) {
+      size = found.size;
+    }
+
+    const family = detectModelFamily(found);
+    const chatSpeed = getModelChatSpeed(found.name || raw, found);
+
+    // Benchmark summary e Tool metrics da backend o oggetto
+    const bm = found.benchmark_summary || found.benchmark || null;
+    const bmScore = bm ? (bm.score ?? bm.overall_pass_rate ?? bm.best_score ?? null) : (found.benchmark_score ?? null);
+    const toolScore = found.tool_score ?? bm?.tool_score ?? null;
+    const toolPassed = found.tool_passed ?? bm?.tool_passed ?? 0;
+    const toolTotal = found.tool_total ?? bm?.tool_total ?? 0;
+    const toolStats = (toolTotal > 0 || toolPassed > 0) ? { passed: toolPassed, total: toolTotal } : null;
+
+    return {
+      name: found.display_name || found.name || raw,
+      params: params || '',
+      size: size || '',
+      format: format || '',
+      quantization: quant || '',
+      provider: found.provider || 'sigma_engine',
+      family,
+      benchmark: bm,
+      benchmarkScore: bmScore,
+      toolScore: toolScore,
+      toolStats: toolStats,
+      chatSpeed: chatSpeed !== null ? chatSpeed : null,
+      publication: found.publication || null,
+      isPublished: Boolean(found.publication?.repo_id || found.is_published || found.published),
+      rawModel: found
+    };
   }
 
   // 2. Dynamic regex parsing (Zero hardcoded fake numbers)
