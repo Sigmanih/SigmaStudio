@@ -193,8 +193,13 @@ DEFAULT_AI_CONFIG = {
 }
 
 
-def load_ai_config(config_path: str = "config.json") -> dict:
+def load_ai_config(config_path: str | None = None) -> dict:
     """Load AI config from config.json, returning a normalized multi-provider dict."""
+    if config_path is None:
+        from core import paths
+        cfg_file = paths.config_file()
+        config_path = str(cfg_file) if cfg_file.exists() else "config.json"
+
     if not os.path.exists(config_path):
         return DEFAULT_AI_CONFIG
 
@@ -244,8 +249,12 @@ def load_ai_config(config_path: str = "config.json") -> dict:
         return DEFAULT_AI_CONFIG
 
 
-def save_ai_config(ai_config: dict, config_path: str = "config.json") -> None:
+def save_ai_config(ai_config: dict, config_path: str | None = None) -> None:
     """Persist the AI config back to config.json."""
+    if config_path is None:
+        from core import paths
+        config_path = str(paths.config_file())
+
     existing = {}
     if os.path.exists(config_path):
         try:

@@ -11,6 +11,22 @@
         "SIGMA_WORKSPACE_ROOT": "C:/Users/Sigma/Desktop/Sigma_Studio",
         "SIGMA_MCP_CLIENT": "Antigravity"
       }
+    },
+    "easyeda-pro": {
+      "command": "C:\\Users\\Sigma\\.node24\\node.exe",
+      "args": [
+        "C:\\Users\\Sigma\\.easyeda-mcp\\node_modules\\easyeda-mcp-pro\\dist\\index.js"
+      ],
+      "env": {
+        "TOOL_PROFILE": "pro",
+        "TRANSPORT": "stdio",
+        "MCP_BRIDGE_BACKEND": "local_bridge",
+        "BRIDGE_HOST": "127.0.0.1",
+        "BRIDGE_PORT": "49620",
+        "BRIDGE_PORT_SCAN": "49620-49629",
+        "BRIDGE_TIMEOUT_MS": "15000",
+        "BRIDGE_WAIT_FOR_EDA_MS": "30000"
+      }
     }
   }
 }

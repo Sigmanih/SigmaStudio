@@ -192,11 +192,11 @@ def execute_feedback_loop(self, req, stream_callback=None):
 
     # Automatic Agent Routing in Loop Mode
     # Priority: 1) Explicit manifesto in request, 2) Ailo intent (already computed), 3) Fallback routing
-    if not manifesto_path or manifesto_path in ("auto", "auto.md", "Ruoli/auto.md", "ruoli/auto.md", "manifesti/auto.md", "MANIFESTO.md"):
+    if not manifesto_path or manifesto_path in ("auto", "auto.md", "roles/auto.md", "Ruoli/auto.md", "ruoli/auto.md", "manifesti/auto.md", "MANIFESTO.md"):
         # Check if Ailo already determined the agent during _should_activate_loop
         if _last_ailo_intent and _last_ailo_intent.get("agent"):
             ailo_agent = _last_ailo_intent["agent"]
-            for r_prefix in ("Ruoli", "ruoli", "manifesti"):
+            for r_prefix in ("roles", "Ruoli", "ruoli", "manifesti"):
                 candidate = f"{r_prefix}/{ailo_agent}.md"
                 if os.path.exists(candidate):
                     manifesto_path = candidate
@@ -204,7 +204,7 @@ def execute_feedback_loop(self, req, stream_callback=None):
                     break
         
         # Fallback: classic routing if Ailo didn't set an agent
-        if not manifesto_path or manifesto_path in ("auto", "auto.md", "Ruoli/auto.md", "ruoli/auto.md", "manifesti/auto.md", "MANIFESTO.md"):
+        if not manifesto_path or manifesto_path in ("auto", "auto.md", "roles/auto.md", "Ruoli/auto.md", "ruoli/auto.md", "manifesti/auto.md", "MANIFESTO.md"):
             if not manifesto_path or os.path.basename(manifesto_path) == "auto.md" or manifesto_path == "auto":
                 manifesto_path = _determine_agent_by_request(goal, ai_cfg, model)
             else:

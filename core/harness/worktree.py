@@ -60,7 +60,7 @@ def _run_git(args: List[str], cwd: Path, timeout_s: float = 30.0) -> subprocess.
 #: principale: la contabilita' del sistema entrava in conflitto con se'
 #: stessa e impediva al lavoro vero di arrivare a destinazione. Su un
 #: ventaglio da otto voci e' successo quattro volte su cinque.
-ESCLUSI_DAL_DIFF = (":(exclude).sigma_backups/**", ":(exclude)node_modules/**")
+ESCLUSI_DAL_DIFF = (":(exclude)backups/**", ":(exclude).sigma_backups/**", ":(exclude)node_modules/**")
 
 
 def _fondi_tre_testi(nostro: str, partenza: str, loro: str) -> tuple:

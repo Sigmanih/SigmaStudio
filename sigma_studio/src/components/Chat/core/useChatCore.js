@@ -118,7 +118,7 @@ export default function useChatCore(extraProps = {}) {
       const preload = localStorage.getItem('sigma_preload_agent');
       if (preload) {
         localStorage.removeItem('sigma_preload_agent');
-        const mPath = preload.includes('/') ? preload.replace('manifesti/', 'Ruoli/') : `Ruoli/${preload}.md`;
+        const mPath = preload.includes('/') ? preload.replace('manifesti/', 'roles/').replace('Ruoli/', 'roles/') : `roles/${preload}.md`;
         const saved = localStorage.getItem('sigma_selected_manifesto');
         let mObj = saved ? JSON.parse(saved) : null;
         if (!mObj) {

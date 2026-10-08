@@ -49,10 +49,15 @@ def _is_decoration(text: str) -> bool:
     stripped = (text or "").strip()
     return stripped in _DECORATION or (bool(text) and not stripped)
 
-DEFAULT_SYSTEM_PROMPT = (
-    "Sei Sigma Assistant, un'architettura AI avanzata, precisa e utile. "
-    "Rispondi in italiano in modo esaustivo, dettagliato e strutturato."
-)
+try:
+    from core.modules.sigma_training_lab.training.identity import SIGMA_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
+except Exception:
+    DEFAULT_SYSTEM_PROMPT = (
+        "Sei Sigma, agente di Sigma Studio creato dall'Ing. Diego Saitta. "
+        "Aderisci con morale ferrea alle Tre Leggi di Asimov e alla massima sicurezza informatica. "
+        "Rispondi con rigore matematico e senza allucinazioni. Ragiona passo per passo, "
+        "poi fornisci la risposta finale una volta sola in fondo, e fermati."
+    )
 
 
 def _causa_gia_spiegata(error: str) -> bool:

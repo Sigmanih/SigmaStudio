@@ -505,22 +505,10 @@ def _plan_settings(
             # GPU 0 ospita il modello primario ad alte prestazioni, GPU 1 (satellite)
             # esegue il modello draft per generare 4-5 token di proposta verificati in un
             # singolo forward pass dalla GPU primaria.
-            if len(usable) > 1 and usable[1] >= 1.5:
+            if len(usable) > 1 and usable[1] >= 1.5 and spec_draft_model:
                 spec_satellite_gpu = 1
                 spec_draft_device = "CUDA1"
                 spec_draft_ngl = 99
-                if not spec_draft_model:
-                    try:
-                        from core.paths import models_dir
-                        mdir = models_dir()
-                        if mdir.exists():
-                            for cand in mdir.glob("**/*.gguf"):
-                                cname = cand.name.lower()
-                                if any(k in cname for k in ("draft", "0.5b", "0.6b", "qwen2.5-0.5b", "qwen3.5-0.6b")):
-                                    spec_draft_model = str(cand)
-                                    break
-                    except Exception:
-                        pass
         elif tensor_split is not None:
             split_mode = "layer"
 

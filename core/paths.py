@@ -322,8 +322,11 @@ def training_lab_dir() -> Path:
     return _con_ripiego(store_dir() / "training_lab", "training_lab")
 
 
-def ruoli_dir() -> Path:
-    """La cartella dei ruoli (ex-manifesti) dell'agente."""
+def roles_dir() -> Path:
+    """La cartella dei ruoli (roles) dell'agente."""
+    r_roles = project_root() / "roles"
+    if r_roles.exists():
+        return r_roles
     r_upper = project_root() / "Ruoli"
     if r_upper.exists():
         return r_upper
@@ -333,12 +336,17 @@ def ruoli_dir() -> Path:
     r_leg = project_root() / "manifesti"
     if r_leg.exists():
         return r_leg
-    return r_upper
+    return r_roles
+
+
+def ruoli_dir() -> Path:
+    """Alias retrocompatibile per roles_dir()."""
+    return roles_dir()
 
 
 def manifests_dir() -> Path:
-    """Alias retrocompatibile per ruoli_dir()."""
-    return ruoli_dir()
+    """Alias retrocompatibile per roles_dir()."""
+    return roles_dir()
 
 
 def scratch_dir() -> Path:
@@ -346,7 +354,15 @@ def scratch_dir() -> Path:
 
 
 def backups_dir() -> Path:
-    return project_root() / ".backups"
+    return project_root() / "backups"
+
+
+def backups_chat_dir() -> Path:
+    return backups_dir() / "chat"
+
+
+def backups_development_dir() -> Path:
+    return backups_dir() / "development"
 
 
 # ==============================================================================

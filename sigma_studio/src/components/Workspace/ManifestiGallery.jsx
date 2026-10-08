@@ -776,7 +776,7 @@ export default function ManifestiGallery({
   const handleLaunchChat = (manifesto) => {
     if (!manifesto) return;
     const agentId = manifesto.filename ? manifesto.filename.replace('.md', '') : manifesto.id;
-    const manifestoPath = manifesto.path ? manifesto.path.replace('manifesti/', 'Ruoli/') : `Ruoli/${manifesto.filename}`;
+    const manifestoPath = manifesto.path ? manifesto.path.replace('manifesti/', 'roles/').replace('Ruoli/', 'roles/') : `roles/${manifesto.filename}`;
     
     try {
       localStorage.setItem('sigma_preload_agent', agentId);
@@ -803,7 +803,7 @@ export default function ManifestiGallery({
   const handleEditManifesto = (manifesto) => {
     if (openTab && manifesto) {
       openTab({ 
-        path: manifesto.path ? manifesto.path.replace('manifesti/', 'Ruoli/') : `Ruoli/${manifesto.filename}`, 
+        path: manifesto.path ? manifesto.path.replace('manifesti/', 'roles/').replace('Ruoli/', 'roles/') : `roles/${manifesto.filename}`, 
         filename: manifesto.filename || `${manifesto.id}.md` 
       }, 'editor');
     }
@@ -965,7 +965,7 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          path: `Ruoli/${finalFileName}`,
+          path: `roles/${finalFileName}`,
           content: modelfileContent
         })
       });
@@ -1008,7 +1008,7 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('path', editingAvatarManifesto.path || `Ruoli/${editingAvatarManifesto.filename || editingAvatarManifesto.id + '.md'}`);
+      formData.append('path', editingAvatarManifesto.path || `roles/${editingAvatarManifesto.filename || editingAvatarManifesto.id + '.md'}`);
       const res = await fetch('/api/agents/upload_image', {
         method: 'POST',
         body: formData

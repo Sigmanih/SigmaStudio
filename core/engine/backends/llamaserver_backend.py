@@ -305,8 +305,12 @@ def plan_to_args(settings: Dict[str, Any]) -> List[str]:
         aggiungi("--spec-draft-model", spec_model)
         if settings.get("spec_draft_ngl") is not None:
             aggiungi("--spec-draft-ngl", settings.get("spec_draft_ngl"))
-        if settings.get("spec_draft_device"):
-            aggiungi("--spec-draft-device", settings.get("spec_draft_device"))
+        draft_dev = settings.get("spec_draft_device")
+        if draft_dev:
+            # llama-server richiede che ogni device citato sia elencato in --device
+            if "--device" not in argomenti and "-dev" not in argomenti:
+                argomenti.extend(["--device", "CUDA0,CUDA1"])
+            aggiungi("--spec-draft-device", draft_dev)
         if spec_tokens:
             aggiungi("--spec-draft-n-max", spec_tokens)
     elif spec_tokens and int(spec_tokens) > 0:

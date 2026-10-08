@@ -19,7 +19,7 @@ log = get_logger("developer_fs")
 
 IGNORE_DIRS = {
     ".git", "node_modules", "__pycache__", ".venv", "venv", ".pytest_cache",
-    ".idea", ".vscode", "dist", "build", ".next", ".cache", ".sigma_backups"
+    ".idea", ".vscode", "dist", "build", ".next", ".cache", ".sigma_backups", "backups"
 }
 
 IGNORE_EXTENSIONS = {
@@ -265,7 +265,7 @@ def find_workspace_root_for_path(p: Path) -> Path:
     """Finds the root workspace directory containing a file by looking for markers."""
     curr = p.parent if (p.is_file() or not p.exists()) else p
     for _ in range(12):
-        if (curr / ".git").exists() or (curr / "package.json").exists() or (curr / ".sigma_backups").exists() or (curr / "requirements").exists():
+        if (curr / ".git").exists() or (curr / "package.json").exists() or (curr / "backups").exists() or (curr / ".sigma_backups").exists() or (curr / "requirements").exists():
             return curr
         if curr == curr.parent:
             break
@@ -274,9 +274,9 @@ def find_workspace_root_for_path(p: Path) -> Path:
 
 
 def get_backup_dir(root: Optional[str] = None) -> Path:
-    """Returns the .sigma_backups directory inside the project/workspace root."""
+    """Returns the backups/development directory inside the project/workspace root."""
     ws = Path(root or get_default_workspace_root()).resolve()
-    backup_dir = ws / ".sigma_backups"
+    backup_dir = ws / "backups" / "development"
     backup_dir.mkdir(parents=True, exist_ok=True)
     return backup_dir
 

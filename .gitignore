@@ -195,7 +195,7 @@ training/*/__pycache__/
 unsloth_compiled_cache/
 
 # Benchmark: dataset ufficiali scaricati da HuggingFace e dettaglio dei run.
-benchmarks/
+/benchmarks/
 training_lab/benchmark_cache/
 training_lab/benchmark_runs/
 # PID e porte dei servitori Ollama avviati da Sigma: stato di questa macchina.
@@ -310,3 +310,13 @@ projects/sigma_power_v01/gerbers/sigma_power_v01-User_Drawings.gbr
 projects/sigma_power_v01/gerbers/sigma_power_v01-User_Eco1.gbr
 projects/sigma_power_v01/gerbers/sigma_power_v01-User_Eco2.gbr
 projects/sigma_power_v01/gerbers/sigma_power_v01.drl
+
+# Backups
+/backups/**
+!/backups/
+!/backups/chat/
+!/backups/chat/.gitkeep
+!/backups/development/
+!/backups/development/.gitkeep
+/.backups/
+/.sigma_backups/

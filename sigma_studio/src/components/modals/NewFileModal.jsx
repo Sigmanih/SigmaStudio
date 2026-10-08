@@ -3,12 +3,12 @@ import { X } from 'lucide-react';
 
 export default function NewFileModal({ isOpen, onClose, onSave, folder, type }) {
   const [name, setName] = useState("");
-  const extensions = { teoria: '.md', test: '.py', viz: '.html', docs: '.md', whitepaper: '.md', ruoli: '.md', manifesti: '.md' };
+  const extensions = { teoria: '.md', test: '.py', viz: '.html', docs: '.md', whitepaper: '.md', ruoli: '.md', manifesti: '.md', roles: '.md' };
 
   if (!isOpen) return null;
 
-  const typeLabel = (type === 'ruoli' || type === 'manifesti') ? 'Ruolo' : type.charAt(0).toUpperCase() + type.slice(1);
-  const targetPath = (type === 'ruoli' || type === 'manifesti') ? 'Ruoli/' : `/${folder}/${type}/`;
+  const typeLabel = (type === 'ruoli' || type === 'manifesti' || type === 'roles') ? 'Ruolo' : type.charAt(0).toUpperCase() + type.slice(1);
+  const targetPath = (type === 'ruoli' || type === 'manifesti' || type === 'roles') ? 'roles/' : `/${folder}/${type}/`;
 
   return (
     <div className="modal-overlay">

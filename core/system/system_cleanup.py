@@ -1,0 +1,723 @@
+# ==============================================================================
+# core/system_cleanup.py — Comprehensive System Task Teardown & Memory Purge
+# Sigma Studio — Graceful Shutdown & Memory Cleanup Manager
+# ==============================================================================
+from __future__ import annotations
+import os
+import gc
+import atexit
+from typing import Dict, Any
+from core.logger import get_logger
+
+log = get_logger("system_cleanup")
+
+_SHUTDOWN_PERFORMED = False
+
+
+def _safe_log(level: str, msg: str, *args):
+    """Logs safely without raising ValueError if file streams are closed during atexit."""
+    try:
+        import sys
+        import logging
+        if sys is None:
+            return
+        old_raise = logging.raiseExceptions
+        logging.raiseExceptions = False
+        try:
+            getattr(log, level, log.info)(msg, *args)
+        finally:
+            logging.raiseExceptions = old_raise
+    except Exception:
+        pass
+
+
+def shutdown_all_tasks():
+    """
+    Gracefully stops all running background tasks, workers, child processes,
+    and unloads loaded models when Sigma Studio is shutting down or resetting.
+    """
+    global _SHUTDOWN_PERFORMED
+    if _SHUTDOWN_PERFORMED:
+        return
+    _SHUTDOWN_PERFORMED = True
+
+    _safe_log("info", "[SystemCleanup] Disconnessione e arresto ordinato di tutti i task in esecuzione...")
+
+    # 1. Cancel active Model Downloads
+    try:
+        from core.modules.sigma_model_hub.backend.downloader_engine import downloader_manager
+        with downloader_manager.lock:
+            for task in list(downloader_manager.tasks.values()):
+                if getattr(task, "status", None) in ("downloading", "queued"):
+                    task.cancel()
+                    _safe_log("info", "[SystemCleanup] Annullato download task %s (%s)", task.task_id, getattr(task, "filename", ""))
+    except Exception as exc:
+        _safe_log("debug", "[SystemCleanup] Avviso arresto downloads: %s", exc)
+
+    # 2. Cancel active Model Uploads
+    try:
+        from core.modules.sigma_model_hub.backend.uploader_engine import uploader_manager
+        if uploader_manager:
+            for task in list(uploader_manager.tasks.values()):
+                if getattr(task, "status", None) in ("uploading", "queued"):
+                    task.cancel()
+                    _safe_log("info", "[SystemCleanup] Annullato upload task %s (%s)", task.task_id, getattr(task, "repo_id", ""))
+    except Exception as exc:
+        _safe_log("debug", "[SystemCleanup] Avviso arresto uploads: %s", exc)
+
+    # 3. Stop running GGUF Conversion jobs
+    try:
+        from core.engine.gguf_converter import gguf_converter
+        for job in getattr(gguf_converter, "jobs", {}).values():
+            if getattr(job, "status", None) in ("converting", "quantizing", "queued"):
+                job.status = "cancelled"
+                _safe_log("info", "[SystemCleanup] Annullata conversione GGUF %s", getattr(job, "job_id", ""))
+    except Exception as exc:
+        _safe_log("debug", "[SystemCleanup] Avviso arresto conversioni: %s", exc)
+
+    # 4. Stop running Pipelines
+    try:
+        from core.pipeline_engine import active_pipeline_state
+        if active_pipeline_state.get("is_running"):
+            active_pipeline_state["is_running"] = False
+            active_pipeline_state["status"] = "stopped"
+            _safe_log("info", "[SystemCleanup] Arrestata pipeline attiva")
+    except Exception as exc:
+        _safe_log("debug", "[SystemCleanup] Avviso arresto pipeline: %s", exc)
+
+    # 5. Unload active model from SigmaEngine (free VRAM & RAM) and kill orphaned llama-server
+    try:
+        from core.engine.unified_runtime import sigma_engine
+        if sigma_engine.loaded_model_name:
+            _safe_log("info", "[SystemCleanup] Scaricamento modello SigmaEngine '%s'...", sigma_engine.loaded_model_name)
+            sigma_engine.unload()
+    except Exception as exc:
+        _safe_log("debug", "[SystemCleanup] Avviso scaricamento modello: %s", exc)
+
+    try:
+        import sys
+        if os.environ.get("SIGMA_SERVER_RUNNING") == "1" or (sys.argv and any("sigma_server" in a for a in sys.argv)):
+            terminate_orphan_processes(os.getpid())
+    except Exception as exc:
+        _safe_log("debug", "[SystemCleanup] Avviso terminazione processi orfani: %s", exc)
+
+    # 6. Clear agent temporary tasks cache
+    try:
+        from core.store import agent_tasks_store
+        agent_tasks_store.save({})
+    except Exception as exc:
+        _safe_log("debug", "[SystemCleanup] Avviso reset agent_tasks_store: %s", exc)
+
+    # 7. Force garbage collection and CUDA cache cleanup
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+    _safe_log("info", "[SystemCleanup] Tutti i task sono stati staccati e le risorse liberate.")
+
+
+def _get_protected_pids(current_pid: int | None = None) -> set[int]:
+    """
+    Restituisce i PID che non devono MAI essere terminati:
+    il processo attivo corrente, i suoi antenati, e qualsiasi processo
+    attivamente in ascolto sulle porte di servizio di Sigma Studio.
+    """
+    protected = set()
+    my_pid = current_pid or os.getpid()
+    protected.add(my_pid)
+    try:
+        import psutil
+        cur = psutil.Process(my_pid)
+        for parent in cur.parents():
+            protected.add(parent.pid)
+    except Exception:
+        pass
+
+    try:
+        import psutil
+        for conn in psutil.net_connections(kind='inet'):
+            if conn.status == psutil.CONN_LISTEN and conn.laddr and conn.laddr.port in (8000, 8014):
+                if conn.pid:
+                    protected.add(conn.pid)
+                    try:
+                        p_parent = psutil.Process(conn.pid).parent()
+                        if p_parent:
+                            protected.add(p_parent.pid)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+
+    return protected
+
+
+def detect_orphan_processes(current_pid: int | None = None) -> Dict[str, Any]:
+    """
+    Rileva processi orfani o bloccati collegati a Sigma Studio:
+    1. Motori llama-server / llama-quantize orfani
+    2. Runner pytest bloccati o orfani
+    3. Processi wrapper (bash/timeout) dedicati a pytest
+    4. Server o launcher duplicati/orfani (con PID diverso dal server attivo)
+    5. Processi figli del progetto rimasti orfani (parent PID defunto)
+    """
+    import psutil
+    protected_pids = _get_protected_pids(current_pid)
+
+    candidates = []
+    total_rss = 0
+    total_vms = 0
+
+    for p in psutil.process_iter(['pid', 'name', 'cmdline', 'memory_info', 'ppid']):
+        try:
+            pid = p.info['pid']
+            if pid in protected_pids:
+                continue
+
+            name = (p.info.get('name') or '').lower()
+            cmdline_list = p.info.get('cmdline') or []
+            cmdline = ' '.join(cmdline_list).lower()
+            ppid = p.info.get('ppid')
+            parent_alive = psutil.pid_exists(ppid) if ppid else False
+
+            is_orphan = False
+            category = ""
+            details = ""
+
+            # 1. llama-server or quantize
+            if any(k in name for k in ('llama-server', 'llama_server', 'llama-cli', 'llama-quantize')):
+                is_orphan = True
+                category = "llama_engine"
+                details = f"Processo motore llama-server ({name})"
+
+            # 2. pytest runners bloccati
+            elif 'pytest' in cmdline or 'pytest' in name or ('tests/' in cmdline and 'python' in name):
+                is_orphan = True
+                category = "pytest"
+                details = "Runner test pytest bloccato in background"
+
+            # 3. wrapper bash o timeout associati a pytest
+            elif name in ('bash.exe', 'bash', 'timeout.exe', 'timeout') and ('pytest' in cmdline or 'tests/' in cmdline):
+                is_orphan = True
+                category = "test_wrapper"
+                details = f"Wrapper shell test ({name})"
+
+            # 4. Server o launcher duplicati
+            elif 'sigma_server.py' in cmdline:
+                is_orphan = True
+                category = "duplicate_server"
+                details = "Istanza orfana o duplicata di sigma_server"
+            elif 'sigma_launcher.py' in cmdline and not parent_alive:
+                is_orphan = True
+                category = "duplicate_launcher"
+                details = "Launcher orfano di Sigma Studio"
+
+            # 5. Processi figli orfani della cartella di progetto
+            elif not parent_alive and any(k in cmdline for k in ('sigma_studio', 'sigma_network', 'gguf_converter')):
+                is_orphan = True
+                category = "abandoned_worker"
+                details = "Worker di background con processo genitore terminato"
+
+            if is_orphan:
+                mem = p.info.get('memory_info')
+                rss = mem.rss if mem else 0
+                vms = mem.vms if mem else 0
+                total_rss += rss
+                total_vms += vms
+                candidates.append({
+                    "pid": pid,
+                    "name": name,
+                    "category": category,
+                    "details": details,
+                    "rss_bytes": rss,
+                    "vms_bytes": vms,
+                    "memory_formatted": _format_bytes(rss),
+                    "cmdline": cmdline[:120]
+                })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+    return {
+        "count": len(candidates),
+        "total_rss": total_rss,
+        "total_vms": total_vms,
+        "formatted": _format_bytes(total_rss),
+        "total_vms_formatted": _format_bytes(total_vms),
+        "items": candidates
+    }
+
+
+def terminate_orphan_processes(current_pid: int | None = None, orphan_items: list = None) -> Dict[str, Any]:
+    """
+    Termina in modo sicuro i processi orfani rilevati senza chiudere il server attivo.
+    """
+    import psutil
+    import time
+
+    if orphan_items is None:
+        detected = detect_orphan_processes(current_pid)
+        orphan_items = detected["items"]
+
+    protected_pids = _get_protected_pids(current_pid)
+    killed_pids = []
+    freed_rss = 0
+    categories_count: Dict[str, int] = {}
+
+    for item in orphan_items:
+        pid = item["pid"]
+        if pid in protected_pids:
+            continue
+        try:
+            p = psutil.Process(pid)
+            freed_rss += item.get("rss_bytes", 0)
+            cat = item.get("category", "altro")
+            categories_count[cat] = categories_count.get(cat, 0) + 1
+            killed_pids.append(pid)
+            try:
+                p.terminate()
+            except Exception:
+                pass
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    # Breve pausa per permettere chiusura ordinata, poi kill forzato
+    if killed_pids:
+        time.sleep(0.3)
+        for pid in killed_pids:
+            try:
+                if psutil.pid_exists(pid):
+                    p = psutil.Process(pid)
+                    p.kill()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+    summary_parts = []
+    if categories_count.get("pytest"):
+        summary_parts.append(f"{categories_count['pytest']} pytest")
+    if categories_count.get("test_wrapper"):
+        summary_parts.append(f"{categories_count['test_wrapper']} wrapper shell")
+    if categories_count.get("llama_engine"):
+        summary_parts.append(f"{categories_count['llama_engine']} llama-server")
+    if categories_count.get("duplicate_server"):
+        summary_parts.append(f"{categories_count['duplicate_server']} server orfani")
+    if categories_count.get("duplicate_launcher"):
+        summary_parts.append(f"{categories_count['duplicate_launcher']} launcher orfani")
+    if categories_count.get("abandoned_worker"):
+        summary_parts.append(f"{categories_count['abandoned_worker']} worker orfani")
+    if not summary_parts and killed_pids:
+        summary_parts.append(f"{len(killed_pids)} processi")
+
+    return {
+        "success": True,
+        "count": len(killed_pids),
+        "freed_bytes": freed_rss,
+        "freed_formatted": _format_bytes(freed_rss),
+        "summary": ", ".join(summary_parts) if summary_parts else "nessun processo orfano"
+    }
+
+
+def _format_bytes(bytes_count: int) -> str:
+    """Formats bytes into human readable string (B, KB, MB, GB)."""
+    if bytes_count < 1024:
+        return f"{bytes_count} B"
+    elif bytes_count < 1024 * 1024:
+        return f"{bytes_count / 1024:.1f} KB"
+    elif bytes_count < 1024 * 1024 * 1024:
+        return f"{bytes_count / (1024 * 1024):.1f} MB"
+    else:
+        return f"{bytes_count / (1024 * 1024 * 1024):.2f} GB"
+
+
+def _get_dir_size_and_count(dir_path: str | os.PathLike) -> tuple[int, int]:
+    """Returns (total_bytes, file_count) for a directory tree safely."""
+    total_size = 0
+    file_count = 0
+    p = os.path.abspath(dir_path)
+    if not os.path.exists(p):
+        return 0, 0
+    if os.path.isfile(p):
+        try:
+            return os.path.getsize(p), 1
+        except OSError:
+            return 0, 0
+    for root, _, files in os.walk(p):
+        for f in files:
+            fp = os.path.join(root, f)
+            try:
+                if not os.path.islink(fp):
+                    total_size += os.path.getsize(fp)
+                    file_count += 1
+            except OSError:
+                continue
+    return total_size, file_count
+
+
+def get_cleanup_stats() -> Dict[str, Any]:
+    """
+    Computes real-time sizes, counts, and reclaimable resources for all system areas:
+    - Active Background Tasks & Memory (RAM/VRAM)
+    - Tasks & Roadmap files
+    - Chat & Execution History
+    - File Backup Snapshots (.sigma_backups)
+    - Temp & Python Caches
+    """
+    from core import paths
+
+    # 1. Memory & Resident Models
+    loaded_model = None
+    loaded_engine = None
+    try:
+        from core.engine.unified_runtime import sigma_engine
+        loaded_model = sigma_engine.loaded_model_name
+        loaded_engine = getattr(sigma_engine, "active_provider", None)
+    except Exception:
+        pass
+
+    vram_bytes = 0
+    try:
+        import torch
+        if torch.cuda.is_available():
+            vram_bytes = torch.cuda.memory_allocated()
+    except Exception:
+        pass
+
+    ram_bytes = 0
+    try:
+        import psutil
+        process = psutil.Process(os.getpid())
+        ram_bytes = process.memory_info().rss
+    except Exception:
+        pass
+
+    # 2. Background Tasks Count
+    active_downloads = 0
+    try:
+        from core.modules.sigma_model_hub.backend.downloader_engine import downloader_manager
+        with downloader_manager.lock:
+            active_downloads = sum(1 for t in downloader_manager.tasks.values() if getattr(t, "status", None) in ("downloading", "queued"))
+    except Exception:
+        pass
+
+    active_conversions = 0
+    try:
+        from core.engine.gguf_converter import gguf_converter
+        active_conversions = sum(1 for j in getattr(gguf_converter, "jobs", {}).values() if getattr(j, "status", None) in ("converting", "quantizing", "queued"))
+    except Exception:
+        pass
+
+    # 3. Tasks files size
+    data_dir = str(paths.data_dir()) if hasattr(paths, "data_dir") else "data"
+    dev_tasks_file = os.path.join(data_dir, "developer_tasks.json")
+    tasks_file = os.path.join(data_dir, "tasks.json")
+    agent_tasks_file = os.path.join(data_dir, "agent_tasks_cache.json")
+    training_jobs_file = os.path.join(data_dir, "training_jobs.json")
+
+    tasks_bytes = 0
+    tasks_count = 0
+    for tf in (dev_tasks_file, tasks_file, agent_tasks_file, training_jobs_file):
+        if os.path.exists(tf):
+            try:
+                tasks_bytes += os.path.getsize(tf)
+                tasks_count += 1
+            except OSError:
+                pass
+
+    # 4. History and context shares
+    history_bytes = 0
+    history_count = 0
+    conversations_dir = os.path.join(data_dir, "conversations")
+    if os.path.exists(conversations_dir):
+        sz, cnt = _get_dir_size_and_count(conversations_dir)
+        history_bytes += sz
+        history_count += cnt
+
+    # 5. Backup Snapshots (backups/)
+    backups_dir = os.path.join(os.getcwd(), "backups")
+    if not os.path.exists(backups_dir):
+        backups_dir = os.path.join(os.getcwd(), ".sigma_backups")
+    backups_bytes, backups_count = _get_dir_size_and_count(backups_dir)
+
+    # 6. Cache & Temp Files
+    cache_bytes = 0
+    cache_count = 0
+    for root_dir in ("core", "tests"):
+        for root, dirs, files in os.walk(root_dir):
+            if "__pycache__" in dirs:
+                pyc_dir = os.path.join(root, "__pycache__")
+                sz, cnt = _get_dir_size_and_count(pyc_dir)
+                cache_bytes += sz
+                cache_count += cnt
+            if ".pytest_cache" in dirs:
+                pyt_dir = os.path.join(root, ".pytest_cache")
+                sz, cnt = _get_dir_size_and_count(pyt_dir)
+                cache_bytes += sz
+                cache_count += cnt
+
+    # System RAM stats (RAM globale fisica e virtuale)
+    sys_ram_total = 0
+    sys_ram_used = 0
+    sys_ram_avail = 0
+    sys_ram_pct = 0
+    try:
+        import psutil
+        vmem = psutil.virtual_memory()
+        sys_ram_total = vmem.total
+        sys_ram_used = vmem.used
+        sys_ram_avail = vmem.available
+        sys_ram_pct = vmem.percent
+    except Exception:
+        pass
+
+    # Orphan processes detection
+    orphans_data = detect_orphan_processes(os.getpid())
+
+    total_disk_bytes = tasks_bytes + history_bytes + backups_bytes + cache_bytes
+
+    return {
+        "success": True,
+        "system_ram": {
+            "total_bytes": sys_ram_total,
+            "used_bytes": sys_ram_used,
+            "available_bytes": sys_ram_avail,
+            "percent": sys_ram_pct,
+            "total_formatted": _format_bytes(sys_ram_total),
+            "used_formatted": _format_bytes(sys_ram_used),
+            "available_formatted": _format_bytes(sys_ram_avail)
+        },
+        "orphans": {
+            "count": orphans_data["count"],
+            "bytes": orphans_data["total_rss"],
+            "formatted": orphans_data["formatted"],
+            "total_vms": orphans_data["total_vms"],
+            "total_vms_formatted": orphans_data["total_vms_formatted"],
+            "items": orphans_data["items"]
+        },
+        "memory": {
+            "loaded_model": loaded_model,
+            "provider": loaded_engine,
+            "vram_bytes": vram_bytes,
+            "vram_formatted": _format_bytes(vram_bytes) if vram_bytes > 0 else "0 B",
+            "ram_bytes": ram_bytes,
+            "ram_formatted": _format_bytes(ram_bytes) if ram_bytes > 0 else "~350 MB",
+            "is_model_loaded": bool(loaded_model)
+        },
+        "background_tasks": {
+            "active_downloads": active_downloads,
+            "active_conversions": active_conversions,
+            "total_active": active_downloads + active_conversions
+        },
+        "tasks": {
+            "bytes": tasks_bytes,
+            "formatted": _format_bytes(tasks_bytes),
+            "count": tasks_count,
+            "description": f"{tasks_count} registri task salvati (Developer Studio, Roadmap, Training)"
+        },
+        "history": {
+            "bytes": history_bytes,
+            "formatted": _format_bytes(history_bytes),
+            "count": history_count,
+            "description": f"{history_count} file di cronologia chat e sessioni salvate"
+        },
+        "backups": {
+            "bytes": backups_bytes,
+            "formatted": _format_bytes(backups_bytes),
+            "count": backups_count,
+            "description": f"{backups_count} snapshot di backup file (.sigma_backups)"
+        },
+        "cache": {
+            "bytes": cache_bytes,
+            "formatted": _format_bytes(cache_bytes),
+            "count": cache_count,
+            "description": f"{cache_count} file di cache Python e temporanei"
+        },
+        "total_disk_bytes": total_disk_bytes,
+        "total_disk_formatted": _format_bytes(total_disk_bytes)
+    }
+
+
+def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Executes selective cleanup based on user choices without stopping Sigma Studio:
+    - free_memory (bool): Unloads resident LLM models and triggers garbage collection.
+    - terminate_orphans (bool): Kills orphaned pytest runners, dead servers and llama processes.
+    - stop_background_tasks (bool): Cancels running downloads, conversions, and background jobs.
+    - clear_tasks (bool): Cleans tasks.json, developer_tasks.json and agent cache.
+    - clear_history (bool): Cleans conversation logs and context shares.
+    - clear_backups (bool): Removes snapshots in .sigma_backups.
+    - clear_cache (bool): Clears Python bytecode and test cache.
+    """
+    from core import paths
+    cleaned = []
+    freed_bytes_estimate = 0
+
+    do_free_memory = bool(options.get("free_memory") or options.get("freeMemory")) if ("free_memory" in options or "freeMemory" in options) else True
+    do_terminate_orphans = bool(options.get("terminate_orphans") if "terminate_orphans" in options else (options.get("terminateOrphans") if "terminateOrphans" in options else True))
+    do_stop_tasks = bool(options.get("stop_background_tasks") or options.get("stopBackgroundTasks"))
+    do_clear_tasks = bool(options.get("clear_tasks") or options.get("clearTasks"))
+    do_clear_history = bool(options.get("clear_history") or options.get("clearHistory") or options.get("clearChat"))
+    do_clear_backups = bool(options.get("clear_backups") or options.get("clearBackups"))
+    do_clear_cache = bool(options.get("clear_cache") or options.get("clearCache"))
+
+    # 0. Terminate Orphan & Zombie Processes (pytest, llama-server, dead servers)
+    if do_terminate_orphans:
+        try:
+            res_orphans = terminate_orphan_processes(os.getpid())
+            if res_orphans.get("count", 0) > 0:
+                cleaned.append(f"Terminati {res_orphans['count']} processi orfani ({res_orphans['summary']}) — {res_orphans['freed_formatted']} liberati")
+                freed_bytes_estimate += res_orphans.get("freed_bytes", 0)
+        except Exception as exc:
+            log.warning("Orphan processes cleanup error: %s", exc)
+
+    # 1. Free Memory (RAM/VRAM)
+    if do_free_memory:
+        try:
+            from core.engine.unified_runtime import sigma_engine
+            if sigma_engine.loaded_model_name:
+                model_name = sigma_engine.loaded_model_name
+                sigma_engine.unload()
+                cleaned.append(f"Modello '{model_name}' scaricato dalla VRAM")
+        except Exception as e:
+            log.warning("Memory free error: %s", e)
+
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                cleaned.append("Cache CUDA VRAM liberata")
+        except Exception:
+            pass
+
+        if os.name == "nt":
+            try:
+                import ctypes
+                ctypes.windll.psapi.EmptyWorkingSet(ctypes.c_size_t(-1))
+            except Exception:
+                pass
+
+        cleaned.append("Garbage Collection eseguita (RAM liberata)")
+
+    # 2. Stop Background Tasks
+    if do_stop_tasks:
+        try:
+            from core.modules.sigma_model_hub.backend.downloader_engine import downloader_manager
+            with downloader_manager.lock:
+                for task in list(downloader_manager.tasks.values()):
+                    if getattr(task, "status", None) in ("downloading", "queued"):
+                        task.cancel()
+            cleaned.append("Download in corso arrestati")
+        except Exception:
+            pass
+
+        try:
+            from core.engine.gguf_converter import gguf_converter
+            for job in getattr(gguf_converter, "jobs", {}).values():
+                if getattr(job, "status", None) in ("converting", "quantizing", "queued"):
+                    job.status = "cancelled"
+            cleaned.append("Conversioni GGUF arrestate")
+        except Exception:
+            pass
+
+    # 3. Clear Tasks
+    if do_clear_tasks:
+        data_dir = str(paths.data_dir()) if hasattr(paths, "data_dir") else "data"
+        for fname in ("developer_tasks.json", "tasks.json", "agent_tasks_cache.json"):
+            fp = os.path.join(data_dir, fname)
+            if os.path.exists(fp):
+                try:
+                    freed_bytes_estimate += os.path.getsize(fp)
+                    with open(fp, "w", encoding="utf-8") as f:
+                        f.write("[]" if "tasks" in fname else "{}")
+                    cleaned.append(f"Registro {fname} azzerato")
+                except Exception as e:
+                    log.warning("Clear task file %s error: %s", fname, e)
+
+    # 4. Clear History (ONLY if explicitly requested)
+    if do_clear_history:
+        try:
+            from core.context_broker import context_broker
+            context_broker.shares.clear()
+            cleaned.append("Context Broker shares azzerate")
+        except Exception:
+            pass
+
+        data_dir = str(paths.data_dir()) if hasattr(paths, "data_dir") else "data"
+        conversations_dir = os.path.join(data_dir, "conversations")
+        if os.path.exists(conversations_dir):
+            import shutil
+            sz, _ = _get_dir_size_and_count(conversations_dir)
+            freed_bytes_estimate += sz
+            shutil.rmtree(conversations_dir, ignore_errors=True)
+            os.makedirs(conversations_dir, exist_ok=True)
+            cleaned.append("Cronologia sessioni chat rimossa")
+
+    # 5. Clear Backups
+    if do_clear_backups:
+        for b_name in ("backups", ".sigma_backups"):
+            b_dir = os.path.join(os.getcwd(), b_name)
+            if os.path.exists(b_dir):
+                import shutil
+                sz, _ = _get_dir_size_and_count(b_dir)
+                freed_bytes_estimate += sz
+                shutil.rmtree(b_dir, ignore_errors=True)
+                os.makedirs(os.path.join(b_dir, "chat"), exist_ok=True)
+                os.makedirs(os.path.join(b_dir, "development"), exist_ok=True)
+                cleaned.append(f"Snapshot backup ({b_name}) rimossi ({_format_bytes(sz)})")
+
+    # 6. Clear Cache
+    if do_clear_cache:
+        import shutil
+        for root_dir in ("core", "tests"):
+            for root, dirs, _ in os.walk(root_dir):
+                if "__pycache__" in dirs:
+                    pyc = os.path.join(root, "__pycache__")
+                    sz, _ = _get_dir_size_and_count(pyc)
+                    freed_bytes_estimate += sz
+                    shutil.rmtree(pyc, ignore_errors=True)
+                if ".pytest_cache" in dirs:
+                    pyt = os.path.join(root, ".pytest_cache")
+                    sz, _ = _get_dir_size_and_count(pyt)
+                    freed_bytes_estimate += sz
+                    shutil.rmtree(pyt, ignore_errors=True)
+        cleaned.append("Cache temporanee e bytecode rimosse")
+
+    gc.collect()
+
+    return {
+        "success": True,
+        "message": "Pulizia selettiva completata con successo. Sigma Studio è attivo e le risorse sono state liberate.",
+        "cleaned": cleaned,
+        "freed_disk_bytes": freed_bytes_estimate,
+        "freed_disk_formatted": _format_bytes(freed_bytes_estimate)
+    }
+
+
+def clear_system_memory(clear_tasks: bool = True, clear_history: bool = False) -> Dict[str, Any]:
+    """Legacy wrapper for clearing memory, tasks and background tasks."""
+    return execute_selective_cleanup({
+        "free_memory": True,
+        "stop_background_tasks": False,
+        "clear_tasks": clear_tasks,
+        "clear_history": clear_history,
+        "clear_backups": False,
+        "clear_cache": True
+    })
+
+
+def handle_system_clear_memory(self):
+    """POST / GET /api/system/clear-memory — Legacy route adapter."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        res = execute_selective_cleanup(body)
+        self.send_json_response(res)
+    except Exception as exc:
+        log.error("Error in handle_system_clear_memory: %s", exc)
+        self.send_json_response({"success": False, "error": str(exc)}, 500)
+
+
+# Register atexit handler so normal Python exit also detaches all tasks
+atexit.register(shutdown_all_tasks)
+

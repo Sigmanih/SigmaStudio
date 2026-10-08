@@ -12,8 +12,8 @@ export function useFileOps({ fetchManifesti, fetchModules, openTab, openTabs, ha
     if (type === 'whitepaper') {
       finalPath = `${folder}/docs/WHITEPAPER_${filename}`;
     }
-    if (type === 'ruoli' || type === 'manifesti') {
-      finalPath = `Ruoli/${filename}`;
+    if (type === 'ruoli' || type === 'manifesti' || type === 'roles') {
+      finalPath = `roles/${filename}`;
     }
 
     const initialContent = (type === 'scripts' || type === 'test') 

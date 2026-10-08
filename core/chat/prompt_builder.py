@@ -182,10 +182,12 @@ def _get_manifesto_content(manifesto_path: str) -> str:
         else:
             # Try looking inside Ruoli/, ruoli/, or manifesti/ directory
             from core import paths
-            r_dir = paths.ruoli_dir()
+            r_dir = paths.roles_dir()
             bname = os.path.basename(manifesto_path)
             alt_candidates = [
+                r_dir,
                 r_dir / bname,
+                paths.project_root() / "roles" / bname,
                 paths.project_root() / "Ruoli" / bname,
                 paths.project_root() / "ruoli" / bname,
                 paths.project_root() / "manifesti" / bname,
@@ -213,7 +215,7 @@ def _resolve_manifesto_for_model(model_name: str) -> str:
     """Find the best matching role/manifesto for *model_name*.
 
     Search order:
-    1. Exact filename matches in ``Ruoli/``, ``ruoli/``, or ``manifesti/``.
+    1. Exact filename matches in ``roles/``, ``Ruoli/``, ``ruoli/``, or ``manifesti/``.
     2. Prefix match (model name starts with manifesto name).
 
     Returns:
@@ -223,12 +225,12 @@ def _resolve_manifesto_for_model(model_name: str) -> str:
         return ""
 
     from core import paths
-    ruoli_folder = str(paths.ruoli_dir())
+    roles_folder = str(paths.roles_dir())
     root_str = str(paths.project_root())
-    rel_folder = os.path.relpath(ruoli_folder, root_str).replace("\\", "/")
+    rel_folder = os.path.relpath(roles_folder, root_str).replace("\\", "/")
 
     base_name = model_name.replace(":latest", "").replace(":", "_")
-    for folder in [rel_folder, "Ruoli", "ruoli", "manifesti"]:
+    for folder in [rel_folder, "roles", "Ruoli", "ruoli", "manifesti"]:
         candidates = [
             f"{folder}/{model_name}.md",
             f"{folder}/{base_name}.md",
@@ -239,7 +241,7 @@ def _resolve_manifesto_for_model(model_name: str) -> str:
             if os.path.exists(candidate):
                 return candidate
 
-    for d in [ruoli_folder, "Ruoli", "ruoli", "manifesti"]:
+    for d in [roles_folder, "roles", "Ruoli", "ruoli", "manifesti"]:
         if os.path.isdir(d):
             for fname in sorted(os.listdir(d)):
                 if fname.endswith(".md"):
@@ -449,7 +451,7 @@ def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -
     msg_lower = message.lower().strip()
 
     def _trova_ruolo(nome: str) -> Optional[str]:
-        for d in ("Ruoli", "ruoli", "manifesti"):
+        for d in ("roles", "Ruoli", "ruoli", "manifesti"):
             p = f"{d}/{nome}.md"
             if os.path.exists(p):
                 return p
@@ -639,4 +641,4 @@ def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -
     except Exception as exc:
         log.debug("Embedding Router unavailable (%s); using the front desk.", exc)
 
-    return _trova_ruolo("sigma_assistant") or "Ruoli/sigma_assistant.md"
+    return _trova_ruolo("sigma_assistant") or "roles/sigma_assistant.md"

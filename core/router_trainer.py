@@ -388,7 +388,7 @@ def classify_agent_with_router(message: str, timeout: float = 8.0) -> str:
             )
             if match:
                 agent_id = match.group(1).lower()
-                for r_prefix in ("Ruoli", "ruoli", "manifesti"):
+                for r_prefix in ("roles", "Ruoli", "ruoli", "manifesti"):
                     manifesto_path = f"{r_prefix}/{agent_id}.md"
                     if os.path.exists(manifesto_path):
                         log.info("🧠 Ollama Router (%sms) → agent: %s", dur, agent_id)
@@ -403,12 +403,12 @@ def classify_agent_with_router(message: str, timeout: float = 8.0) -> str:
 # Dataset generation (maintained for backward compatibility)
 # ---------------------------------------------------------------------------
 
-def generate_routing_dataset(output_path: str = "training/datasets/router_dataset.jsonl") -> int:
-    """Generate a basic routing fine-tuning dataset.
-
-    For the full Ailo fine-tuning dataset, use:
-        python training/scripts/generate_sigma_intent_dataset.py
-    """
+def generate_routing_dataset(output_path: str | None = None) -> int:
+    """Generate a basic routing fine-tuning dataset."""
+    if output_path is None:
+        from core.paths import store_dir
+        target_dir = store_dir() / "training" / "datasets"
+        output_path = str(target_dir / "router_dataset.jsonl")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     dataset = [
         {"input": "Vorrei studiare le proprietà degli insiemi aperti in R^n", "target": "math_researcher"},

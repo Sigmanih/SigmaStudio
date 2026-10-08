@@ -3,7 +3,7 @@
 # Sigma Studio v8 — Kernel Test Suite
 # ==============================================================================
 import unittest
-from benchmarks.engine_vs_rust_benchmark import (
+from tools.benchmarks.engine_vs_rust_benchmark import (
     bench_prefix_cache_lookup,
     bench_grammar_validation,
     bench_agent_event_bus,

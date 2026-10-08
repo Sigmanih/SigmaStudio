@@ -122,17 +122,17 @@ class TestIntegrazioneHarnessEFSManager:
 
 class TestConoscenzaSigmaStudio:
     def test_architettura_md_e_presente_tra_i_documenti_canonici(self):
-        """architettura.md deve essere elencato nei documenti canonici del progetto."""
+        """ARCHITECTURE.md deve essere elencato nei documenti canonici del progetto."""
         nomi_doc = [nome for nome, _ in DOCUMENTI]
-        assert "architettura.md" in nomi_doc
+        assert "ARCHITECTURE.md" in nomi_doc
 
     def test_consulta_architettura_trova_sezioni_reali(self):
-        """La consultazione su architettura deve estrarre le sezioni reali da architettura.md."""
+        """La consultazione su architettura deve estrarre le sezioni reali da ARCHITECTURE.md."""
         esito = consulta("architettura")
         assert esito["ok"] is True
         assert len(esito["sezioni"]) > 0
         testo_sezioni = " ".join(s.get("testo", "") for s in esito["sezioni"])
-        assert "kernel" in testo_sezioni.lower() or "moduli" in testo_sezioni.lower()
+        assert "kernel" in testo_sezioni.lower() or "moduli" in testo_sezioni.lower() or "module" in testo_sezioni.lower()
 
     def test_scheda_progetto_include_kernel_e_ruoli_reali(self):
         """La scheda generata per la chat e l'harness deve contenere i fatti reali."""
@@ -140,4 +140,4 @@ class TestConoscenzaSigmaStudio:
         assert "Sigma Studio" in testo_scheda
         assert "core/harness/" in testo_scheda
         assert "I ruoli dell'harness" in testo_scheda
-        assert "architettura.md" in testo_scheda
+        assert "ARCHITECTURE.md" in testo_scheda

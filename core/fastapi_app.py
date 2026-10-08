@@ -582,7 +582,7 @@ def _handle_router_train(self):
         return self.send_json_response({
             "success": True,
             "message": f"Modello router 'sigma-router' inizializzato con successo. Generati {dataset_count} esempi nel dataset.",
-            "dataset_path": "training/datasets/router_dataset.jsonl",
+            "dataset_path": "store/training/datasets/router_dataset.jsonl",
             "model": "sigma-router",
             "status": "ready"
         })
@@ -1942,7 +1942,7 @@ async def serve_static_or_spa(path: str):
     if target_data.exists() and target_data.is_file():
         return FileResponse(target_data)
 
-    for r_cand in (_ROOT / "Ruoli" / path, _ROOT / "ruoli" / path, _ROOT / "manifesti" / path):
+    for r_cand in (_ROOT / "roles" / path, _ROOT / "Ruoli" / path, _ROOT / "ruoli" / path, _ROOT / "manifesti" / path):
         if r_cand.exists() and r_cand.is_file():
             return FileResponse(r_cand)
 

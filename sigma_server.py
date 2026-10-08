@@ -308,8 +308,8 @@ def _get_configured_host_port_ssl() -> tuple[str, int, bool, str | None, str | N
     ssl_certfile = None
     ssl_keyfile = None
     try:
-        from core.paths import provider_config_file, project_root
-        cfg_files = [provider_config_file(), project_root() / "config.json"]
+        from core.paths import provider_config_file, config_file, project_root
+        cfg_files = [provider_config_file(), config_file(), project_root() / "config.json"]
 
         for cfg_path in cfg_files:
             if cfg_path.exists():

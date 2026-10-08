@@ -595,10 +595,10 @@ export default function WelcomeDashboard({ modules, openTab }) {
             </button>
             <span className="home-footer-bullet">•</span>
             <button
-              onClick={() => openTab({ path: 'architettura.md', filename: 'architettura.md' }, 'editor')}
+              onClick={() => openTab({ path: 'ARCHITECTURE.md', filename: 'ARCHITECTURE.md' }, 'editor')}
               className="home-footer-link"
             >
-              🏛️ Architettura Kernel
+              🏛️ Architecture
             </button>
             <span className="home-footer-bullet">•</span>
             <a
