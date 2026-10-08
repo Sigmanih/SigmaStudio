@@ -1952,8 +1952,20 @@ class GgufConverter:
         if not testo or not os.path.isfile(testo):
             testo = str(calib_root / "imatrix_calibration.txt")
         if not os.path.isfile(testo):
-            log.warning("[GgufConverter] File calibrazione %s non trovato: imatrix saltata.", testo)
-            return None
+            try:
+                os.makedirs(calib_root, exist_ok=True)
+                with open(testo, "w", encoding="utf-8") as f_cal:
+                    f_cal.write(
+                        "SigmaStudio Calibrazione Multilingua e Multi-Dominio.\n"
+                        "L'intelligenza artificiale e l'inferenza neurale operano su pesi quantizzati.\n"
+                        "def test_eval(x: float, y: int) -> float:\n"
+                        "    return float(x ** 2 + y * 3.14159)\n"
+                        "Language models process tokens through multi-head attention and feed-forward networks.\n"
+                        "Quantization maps floating point values into discrete low-bit integer representations.\n"
+                    )
+            except Exception as e_w:
+                log.warning("[GgufConverter] Creazione file calibrazione predefinito fallita: %s", e_w)
+                return None
 
         testo = os.path.abspath(testo)
         source_gguf = os.path.abspath(source_gguf)
@@ -1966,19 +1978,17 @@ class GgufConverter:
                 nome_pulito = nome_pulito[:-len(sfx)]
                 break
 
+        # Candidati esistenti rigorosamente pertinenti a questo specifico modello
         candidati_esistenti = [
             imatrix_out,
             str(calib_root / f"{nome_pulito}.imatrix.dat"),
             str(calib_root / f"{nome_file_sorgente}.imatrix.dat"),
-            str(calib_root / "qwen27b.imatrix.dat"),
-            str(calib_root / "Qwen--Qwen3.8-27B.imatrix.dat"),
             os.path.join(os.path.dirname(source_gguf), f"{nome_pulito}.imatrix.dat"),
             os.path.join(os.path.dirname(source_gguf), f"{nome_file_sorgente}.imatrix.dat"),
-            os.path.join(os.path.dirname(source_gguf), "Qwen--Qwen3.8-27B.imatrix.dat"),
         ]
         for c in candidati_esistenti:
-            if os.path.isfile(c) and os.path.getsize(c) > 1024:
-                log.info("[GgufConverter] Matrice d'importanza gia' presente e valida: %s", c)
+            if cls._imatrix_compatibile_con_modello(c, source_gguf):
+                log.info("[GgufConverter] Matrice d'importanza compatibile gia' presente e valida: %s", c)
                 return os.path.abspath(c)
 
         # Destinazione permanente nella cache di calibrazione
@@ -1986,10 +1996,24 @@ class GgufConverter:
         os.makedirs(os.path.dirname(calib_cache), exist_ok=True)
         dest_effettiva = calib_cache
 
-        # Calcolo dinamico: per modelli grandi (> 16 GB) evita l'offload cieco -ngl 99
-        # che esaurisce la VRAM (RTX 5070 Ti 16 GB), usando la CPU (96 GB RAM)
+        # Calcolo dinamico: per evitare crash OOM su GPU con VRAM limitata o modelli ampi,
+        # impostiamo CPU diretta per modelli pesanti o parametri protetti
         source_size_gb = os.path.getsize(source_gguf) / 2**30
-        usare_cpu = source_size_gb > 16.0
+        usare_cpu = source_size_gb > 10.0
+        try:
+            import torch
+            if torch.cuda.is_available():
+                free_bytes = torch.cuda.mem_get_info()[0]
+                free_gb = free_bytes / 2**30
+                if (source_size_gb * 0.9) > (free_gb - 1.5):
+                    usare_cpu = True
+        except Exception:
+            pass
+
+        ctx_size = 512
+        batch_size = 512
+        threads = max((os.cpu_count() or 4) - 2, 4)
+        chunks_count = 4 if usare_cpu else 8
 
         comando = [
             binario,
@@ -1999,31 +2023,33 @@ class GgufConverter:
             "--output-format", "dat",
             "--no-ppl",
             "-ngl", "0" if usare_cpu else "99",
-            "-t", str(max((os.cpu_count() or 4) - 2, 4)),
-            "-c", "256" if usare_cpu else "512",
-            "--chunks", "8" if usare_cpu else "32",
+            "-t", str(threads),
+            "-c", str(ctx_size),
+            "-b", str(batch_size),
+            "--chunks", str(chunks_count),
         ]
         log.info("[GgufConverter] Calcolo matrice d'importanza imatrix: %s", " ".join(comando))
         try:
             res = subprocess.run(
                 comando, capture_output=True, text=True, errors="replace",
-                timeout=30 * 60, cwd=os.path.dirname(binario),
+                timeout=45 * 60, cwd=os.path.dirname(binario),
             )
-            if res.returncode == 0 and os.path.isfile(dest_effettiva) and os.path.getsize(dest_effettiva) > 0:
+            if res.returncode == 0 and os.path.isfile(dest_effettiva) and os.path.getsize(dest_effettiva) > 1024:
                 log.info("[GgufConverter] Matrice d'importanza calcolata con successo: %s", dest_effettiva)
                 return dest_effettiva
             elif not usare_cpu:
-                log.warning("[GgufConverter] Tentativo CUDA fallito, ripiego su CPU/RAM di sistema...")
+                log.warning("[GgufConverter] Tentativo CUDA fallito (codice %s), ripiego automatico su CPU...", res.returncode)
                 comando_cpu = [
                     binario, "-m", source_gguf, "-f", testo, "-o", dest_effettiva,
                     "--output-format", "dat", "--no-ppl", "-ngl", "0",
-                    "-t", str(max((os.cpu_count() or 4) - 2, 4)), "-c", "256", "--chunks", "8",
+                    "-t", str(threads), "-c", str(ctx_size), "-b", str(batch_size),
+                    "--chunks", "4",
                 ]
                 res_cpu = subprocess.run(
                     comando_cpu, capture_output=True, text=True, errors="replace",
-                    timeout=30 * 60, cwd=os.path.dirname(binario),
+                    timeout=45 * 60, cwd=os.path.dirname(binario),
                 )
-                if res_cpu.returncode == 0 and os.path.isfile(dest_effettiva) and os.path.getsize(dest_effettiva) > 0:
+                if res_cpu.returncode == 0 and os.path.isfile(dest_effettiva) and os.path.getsize(dest_effettiva) > 1024:
                     log.info("[GgufConverter] Matrice d'importanza calcolata con successo su CPU: %s", dest_effettiva)
                     return dest_effettiva
             log.warning("[GgufConverter] llama-imatrix fallito (codice %s): %s", res.returncode, (res.stderr or "")[-400:])
@@ -2032,17 +2058,17 @@ class GgufConverter:
         return None
 
     @classmethod
-    def _chiavi_imatrix(cls, imatrix_path: str) -> set:
-        """Estrae l'elenco dei nomi dei tensori presenti in un file imatrix .dat."""
+    def _dettagli_imatrix(cls, imatrix_path: str) -> Dict[str, int]:
+        """Estrae mappa {nome_tensore: n_elementi} da un file imatrix .dat."""
         import struct
-        nomi = set()
+        mappa = {}
         if not imatrix_path or not os.path.isfile(imatrix_path):
-            return nomi
+            return mappa
         try:
             with open(imatrix_path, "rb") as f:
                 header = f.read(4)
                 if len(header) < 4:
-                    return nomi
+                    return mappa
                 n_entries = struct.unpack("i", header)[0]
                 for _ in range(n_entries):
                     len_bytes = f.read(4)
@@ -2056,10 +2082,53 @@ class GgufConverter:
                         break
                     n_elem = struct.unpack("i", n_elem_bytes)[0]
                     f.seek(n_elem * 4, 1)  # salta array float
-                    nomi.add(nome)
+                    mappa[nome] = n_elem
         except Exception as exc:
             log.debug("[GgufConverter] Lettura header imatrix non riuscita: %s", exc)
-        return nomi
+        return mappa
+
+    @classmethod
+    def _chiavi_imatrix(cls, imatrix_path: str) -> set:
+        """Estrae l'elenco dei nomi dei tensori presenti in un file imatrix .dat."""
+        return set(cls._dettagli_imatrix(imatrix_path).keys())
+
+    @classmethod
+    def _imatrix_compatibile_con_modello(cls, imatrix_path: str, source_gguf: str) -> bool:
+        """Verifica che il file imatrix appartenga a questo modello e ne rispetti i tensori e le dimensioni."""
+        if not imatrix_path or not os.path.isfile(imatrix_path) or os.path.getsize(imatrix_path) < 1024:
+            return False
+        try:
+            dettagli = cls._dettagli_imatrix(imatrix_path)
+            if not dettagli:
+                return False
+            from gguf.gguf_reader import GGUFReader
+            reader = GGUFReader(source_gguf)
+            try:
+                tensori_2d = [
+                    t for t in getattr(reader, "tensors", [])
+                    if len(t.shape) >= 2 and not any(k in str(t.name).lower() for k in ("token_embd", "output", "wte"))
+                ]
+                if not tensori_2d:
+                    return True
+                validi = 0
+                for t in tensori_2d:
+                    nome = str(t.name)
+                    if nome in dettagli:
+                        nelem = dettagli[nome]
+                        shape = t.shape
+                        if nelem in (shape[0], shape[1] if len(shape) > 1 else shape[0]):
+                            validi += 1
+                rapporto = validi / len(tensori_2d)
+                return rapporto >= 0.80
+            finally:
+                if hasattr(reader, "data") and hasattr(reader.data, "_mmap") and reader.data._mmap is not None:
+                    try:
+                        reader.data._mmap.close()
+                    except Exception:
+                        pass
+        except Exception as exc:
+            log.debug("[GgufConverter] Verifica compatibilita imatrix fallita: %s", exc)
+            return False
 
     @staticmethod
     def _tensori_incompatibili_k(gguf_path: str) -> List[str]:
@@ -2198,19 +2267,6 @@ class GgufConverter:
                 tmp_f.close()
                 file_tmp_tipi = tmp_f.name
                 comando += ["--tensor-type-file", file_tmp_tipi]
-
-                # Per i tipi IQ che richiedono imatrix, --exclude-weights evita il fatal error
-                # 'Missing importance matrix for tensor ...' sui tensori rimappati a q4_0
-                if any(tipo_normalizzato.startswith(pfx) for pfx in ("IQ1", "IQ2", "IQ3", "IQ4")):
-                    prefissi_esclusi = set()
-                    for t_nome in override_mappa.keys():
-                        if t_nome.startswith("blk.") and "." in t_nome[4:]:
-                            b_id = t_nome.split(".")[1]
-                            prefissi_esclusi.add(f"blk.{b_id}")
-                        else:
-                            prefissi_esclusi.add(t_nome)
-                    for pfx in sorted(prefissi_esclusi):
-                        comando.extend(["--exclude-weights", pfx])
 
             if cls._va_riquantizzato(source):
                 # llama.cpp rifiuta di default di ripartire da un file gia'
@@ -2651,6 +2707,8 @@ class GgufConverter:
         ("require an imatrix",
          "La quantizzazione richiesta esige una matrice d'importanza (imatrix) per preservare "
          "i tensori critici a 2-bit. Assicurati che esista data/calibration/imatrix_calibration.txt."),
+        ("requires an importance matrix",
+         "La quantizzazione richiesta esige una matrice d'importanza (imatrix) specifica per i tensori di questo modello."),
         ("missing importance matrix",
          "Il modello presenta tensori 2D assenti nell'imatrix (es. layer speculativi MTP blk.64). "
          "I tensori orfani vengono ora mappati automaticamente a q4_0 per stabilizzare il processo."),
@@ -2676,6 +2734,10 @@ class GgufConverter:
         testo = " ".join(righe)
         for indizio, spiegazione in cls._CAUSE_NOTE:
             if indizio.lower() in testo.lower():
+                # Cerca se c'è un tensore incriminato segnalato nel log
+                offending = [r.strip() for r in righe if "offending tensor" in r.lower()]
+                if offending:
+                    return spiegazione + " (" + offending[0] + ")"
                 return spiegazione
         # Cerca preferibilmente righe contenenti indicazioni di errore o fallimento reale
         for r in reversed(righe):
