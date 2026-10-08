@@ -145,7 +145,8 @@
 }
 
 /* Panel */
-.ai-chat-panel { position: fixed; bottom: 80px; right: 24px; width: 800px; height: 620px; max-height: calc(100vh - 120px); z-index: 999; background: var(--surface-bright); border: 1px solid var(--border-bright); border-radius: var(--radius-m); box-shadow: var(--shadow-l); backdrop-filter: var(--glass); animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1); overflow: hidden; resize: both; min-width: 360px; min-height: 400px; display: flex; flex-direction: column; }
+.ai-chat-panel { position: fixed; bottom: 80px; right: 24px; width: 800px; height: 620px; max-height: calc(100vh - 120px); z-index: 999; background: var(--bg); border: 1px solid var(--border-bright); border-radius: var(--radius-m); box-shadow: var(--shadow-l); backdrop-filter: var(--glass); animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1); overflow: hidden; resize: both; min-width: 360px; min-height: 400px; display: flex; flex-direction: column; }
+.ai-chat-panel > *:not(canvas) { position: relative; z-index: 1; }
 
 /* Header */
 .chat-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,0.2); user-select: none; overflow: visible; }
@@ -2953,7 +2954,13 @@ table.chat-table tr:hover td {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  background: rgba(12, 12, 20, 0.98);
+  position: relative;
+  background: var(--bg);
+}
+
+.chat-workspace-root > *:not(canvas) {
+  position: relative;
+  z-index: 1;
 }
 
 /* Hero Visual Banner */

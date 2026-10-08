@@ -10,8 +10,11 @@ import QuickConfigPanel from '../ui/QuickConfigPanel';
 import useChatResize from '../useChatResize';
 import useChatDrag from '../useChatDrag';
 import { exportChatPdf } from '../../../utils/exportChatPdf';
+import { useApp } from '../../../contexts/AppContext';
+import TechSpaceCanvas from '../../common/TechSpaceCanvas';
 
 export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, onTasksUpdated, addToast }) {
+  const { theme } = useApp();
   const core = useChatCore({ openFiles, onTasksUpdated, addToast });
   const { panelPos, setPanelPos, isDragging, startDrag } = useChatDrag({ width: 800, height: 600 });
   const { panelSize, resizing, resizeHandles, handleResizeStart } = useChatResize(panelPos, setPanelPos);
@@ -64,6 +67,9 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
       onDragLeave={core.handleDragLeave}
       onDrop={core.handleDrop}
     >
+      {/* Animated Translucent Cyber Space Background Canvas (stesso di MCP Tools) */}
+      <TechSpaceCanvas isLight={theme === 'light'} />
+
       {resizeHandles.map(rh => (
         <div key={rh.dir} className={`chat-resize-handle ${rh.className}`} style={{ cursor: rh.cursor }}
           onMouseDown={(e) => handleResizeStart(rh.dir, e)} />

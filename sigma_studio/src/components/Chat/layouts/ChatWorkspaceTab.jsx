@@ -11,6 +11,7 @@ import ActionsBar from '../ActionsBar';
 import QuickConfigPanel from '../ui/QuickConfigPanel';
 import { exportChatPdf } from '../../../utils/exportChatPdf';
 import { loadMessagesFromStorage } from '../chatStorage';
+import TechSpaceCanvas from '../../common/TechSpaceCanvas';
 
 export default function ChatWorkspaceTab() {
   const { theme } = useApp();
@@ -42,6 +43,9 @@ export default function ChatWorkspaceTab() {
 
   return (
     <div className="chat-workspace-root">
+      {/* Animated Translucent Cyber Space Background Canvas (stesso di MCP Tools) */}
+      <TechSpaceCanvas isLight={theme === 'light'} />
+
       {/* Minimal Chat AI Header */}
       <ChatHeader
         isPanel={false}
