@@ -693,7 +693,7 @@
   .chat-input-row,
   .chat-workspace-input-row {
     display: flex !important;
-    align-items: center !important;
+    align-items: flex-end !important;
     gap: 5px !important;
     width: 100% !important;
     box-sizing: border-box !important;
@@ -702,7 +702,7 @@
   /* 16px previene lo zoom forzato su iOS Safari/WebKit quando l'input riceve il focus */
   .chat-input {
     min-height: 52px !important;
-    max-height: 140px !important;
+    max-height: 240px !important;
     font-size: 16px !important;
     padding: 9px 12px !important;
     border-radius: 10px !important;
@@ -710,6 +710,8 @@
     min-width: 0 !important;
     box-sizing: border-box !important;
     line-height: 1.45 !important;
+    overflow-wrap: break-word !important;
+    word-break: break-word !important;
   }
 
   .chat-header {

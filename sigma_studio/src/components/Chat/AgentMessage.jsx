@@ -1034,10 +1034,10 @@ export default function AgentMessage({
                       ? (rawGenDuration >= 1000 ? `${(rawGenDuration / 1000).toFixed(2)}s` : `${Math.round(rawGenDuration)}ms`)
                       : null;
 
-                    const rawTps = m.tokens_per_second ?? m.metrics?.tokens_per_second ?? first.tokens_per_second ?? first.metrics?.tokens_per_second;
-                    const pureTps = (rawTokens && rawGenDuration && rawGenDuration > 0)
-                      ? (rawTokens / (rawGenDuration / 1000.0))
-                      : (rawTps !== undefined && rawTps !== null ? (typeof rawTps === 'number' ? rawTps : parseFloat(rawTps)) : null);
+                    const rawTps = m.tokens_per_second ?? m.metrics?.tokens_per_second ?? m.decode_tokens_per_second ?? m.metrics?.decode_tokens_per_second ?? first.tokens_per_second ?? first.metrics?.tokens_per_second;
+                    const pureTps = (rawTps !== undefined && rawTps !== null)
+                      ? (typeof rawTps === 'number' ? rawTps : parseFloat(rawTps))
+                      : ((rawTokens && rawGenDuration && rawGenDuration > 0) ? (rawTokens / (rawGenDuration / 1000.0)) : null);
                     const tpsDisplay = pureTps !== undefined && pureTps !== null && !isNaN(pureTps)
                       ? `${pureTps.toFixed(1)}`
                       : null;

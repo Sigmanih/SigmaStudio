@@ -948,6 +948,16 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
             except Exception as exc:
                 log.debug("Aggiornamento Radix cache saltato (%s)", exc)
 
+        t_fine_chiamata = time.perf_counter()
+        pure_gen_ms = round((t_fine_chiamata - (t_first_token or t_call_start)) * 1000, 1)
+        total_dur_ms = round((t_fine_chiamata - t_call_start) * 1000, 1)
+        pure_gen_s = pure_gen_ms / 1000.0
+        final_tps = calculated_tps or (
+            round(generated_token_count / pure_gen_s, 1)
+            if (pure_gen_s > 0.05 and generated_token_count > 0)
+            else None
+        )
+
         _sse_send(handler, {
             "final_content": final_content,
             "final_thinking": thinking_out,
@@ -956,8 +966,9 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
             "metrics": {
                 "routing_time_ms": routing_time_ms,
                 "load_duration_ms": load_duration_ms,
-                "generation_time_ms": round((time.perf_counter() - t_call_start) * 1000, 1),
-                "tokens_per_second": calculated_tps,
+                "generation_time_ms": pure_gen_ms,
+                "total_duration_ms": total_dur_ms,
+                "tokens_per_second": final_tps,
                 "token_count": generated_token_count,
                 "cached_prefix_tokens": radix_matched,
                 "prefix_cache_ratio_pct": radix_ratio,

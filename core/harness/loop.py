@@ -4707,7 +4707,8 @@ def _stream_agent_turn_impl(
     metriche = {
         "load_duration_ms": 1.28,
         "routing_time_ms": run_metrics.get("ttft_ms"),
-        "tokens_per_second": calc_tps,
+        "tokens_per_second": decode_tps,
+        "total_tokens_per_second": calc_tps,
         "decode_tokens_per_second": decode_tps,
         "token_count": total_generated_tokens,
         "elapsed_s": elapsed_total_s,
@@ -4724,7 +4725,8 @@ def _stream_agent_turn_impl(
         "metrics": metriche,
         "meta": {
             "load_duration_ms": 1.28,
-            "tokens_per_second": calc_tps,
+            "tokens_per_second": decode_tps,
+            "total_tokens_per_second": calc_tps,
             "decode_tokens_per_second": decode_tps,
             "ttft_ms": run_metrics.get("ttft_ms"),
             "reuse_tokens": metriche["reuse_tokens"],

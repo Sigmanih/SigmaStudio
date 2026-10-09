@@ -604,10 +604,16 @@ export function useChatStreaming({
               if (p.metrics.hardware_note) {
                 streamHardwareNote = p.metrics.hardware_note;
               }
-              if (p.metrics.tokens_per_second !== undefined && p.metrics.tokens_per_second !== null) {
-                streamTps = p.metrics.tokens_per_second;
+              const incomingTps = p.metrics.decode_tokens_per_second ?? p.metrics.tokens_per_second;
+              if (incomingTps !== undefined && incomingTps !== null) {
+                streamTps = incomingTps;
                 tpsFromRuntime = true;
               }
+            }
+
+            if (p.speed_tok_s !== undefined && p.speed_tok_s !== null && p.speed_tok_s > 0) {
+              streamTps = p.speed_tok_s;
+              tpsFromRuntime = true;
             }
 
             if (p.tool_result) {
@@ -666,8 +672,9 @@ export function useChatStreaming({
               if (p.meta.load_duration_ms !== undefined && p.meta.load_duration_ms !== null) {
                 streamLoadDurationMs = p.meta.load_duration_ms;
               }
-              if (p.meta.tokens_per_second !== undefined && p.meta.tokens_per_second !== null) {
-                streamTps = p.meta.tokens_per_second;
+              const metaTps = p.meta.decode_tokens_per_second ?? p.meta.tokens_per_second;
+              if (metaTps !== undefined && metaTps !== null) {
+                streamTps = metaTps;
                 tpsFromRuntime = true;
               }
               if (p.meta.hardware_note) {
@@ -833,12 +840,12 @@ export function useChatStreaming({
         }
 
         // La velocità pura t/s è rigorosamente Token / Tempo Generazione (solo per risposte andate a buon fine)
-        if (streamTokenCount && streamGenerationTimeMs && streamGenerationTimeMs > 0) {
-          streamTps = parseFloat((streamTokenCount / (streamGenerationTimeMs / 1000)).toFixed(1));
-        } else if (!streamTps && firstTokenTime) {
-          const elapsedSec = (performance.now() - firstTokenTime) / 1000;
-          if (elapsedSec > 0.2) {
-            if (!tpsFromRuntime) {
+        if (!streamTps || !tpsFromRuntime) {
+          if (streamTokenCount && streamGenerationTimeMs && streamGenerationTimeMs > 0) {
+            streamTps = parseFloat((streamTokenCount / (streamGenerationTimeMs / 1000)).toFixed(1));
+          } else if (firstTokenTime) {
+            const elapsedSec = (performance.now() - firstTokenTime) / 1000;
+            if (elapsedSec > 0.2) {
               streamTps = parseFloat((generatedTokenCount / elapsedSec).toFixed(1));
             }
           }

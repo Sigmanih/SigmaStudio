@@ -38,6 +38,14 @@ export default function ChatInput({
 
   // Ridimensionamento dinamico della textarea quando si scrive codice o testo multilinea
   // e reset automatico all'altezza iniziale compatta quando il messaggio viene inviato
+  const adjustHeight = (el) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    const scrollH = el.scrollHeight;
+    const newHeight = Math.min(Math.max(scrollH, 44), 380);
+    el.style.height = `${newHeight}px`;
+  };
+
   useEffect(() => {
     const el = refs?.input?.current;
     if (!el) return;
@@ -45,10 +53,13 @@ export default function ChatInput({
       el.style.height = '44px';
       return;
     }
-    el.style.height = 'auto';
-    const newHeight = Math.min(Math.max(el.scrollHeight, 44), 320);
-    el.style.height = `${newHeight}px`;
+    adjustHeight(el);
   }, [input, refs?.input]);
+
+  const handleInputChange = (e) => {
+    setInput(e.target.value);
+    adjustHeight(e.target);
+  };
 
   const effectiveFavs = Array.isArray(favoriteModels) && favoriteModels.length > 0 
     ? favoriteModels 
@@ -403,10 +414,14 @@ export default function ChatInput({
             : `Chiedi qualcosa a ${selectedModel}...`
           }
           value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
+          onChange={handleInputChange}
+          onKeyDown={e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              if (!loading) onSend();
+            }
+          }}
           rows={1}
-          disabled={loading}
           style={
             isRecording ? { borderColor: '#ff5555', background: 'rgba(255, 85, 85, 0.06)' }
             : smartMicState === 'listening' ? { borderColor: '#4ade80', background: 'rgba(74, 222, 128, 0.06)' }

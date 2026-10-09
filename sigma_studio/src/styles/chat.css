@@ -1381,13 +1381,13 @@
 }
 
 .chat-input-bottom-row { display: flex; align-items: flex-end; gap: 8px; width: 100%; margin: 0; box-sizing: border-box; }
-.chat-input-row { display: flex; align-items: center; gap: 8px; width: 100%; margin: 0; box-sizing: border-box; }
-.chat-input { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 11px 16px; font-size: 0.84rem; color: var(--text); font-family: 'Inter', sans-serif; resize: none; min-height: 44px; height: 44px; max-height: 320px; outline: none; overflow-y: auto; transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease; line-height: 1.45; }
+.chat-input-row { display: flex; align-items: flex-end; gap: 8px; width: 100%; margin: 0; box-sizing: border-box; }
+.chat-input { flex: 1; min-width: 0; width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 11px 16px; font-size: 0.84rem; color: var(--text); font-family: 'Inter', sans-serif; resize: none; min-height: 44px; max-height: 380px; outline: none; overflow-y: auto; overflow-wrap: break-word; word-break: break-word; white-space: pre-wrap; transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease; line-height: 1.45; }
 .chat-input:focus { border-color: var(--primary-border); background: rgba(255,255,255,0.05); }
 .chat-input::placeholder { color: var(--text-dark); }
 .chat-workspace-footer { display: none !important; }
 
-.chat-send-btn { width: 40px; height: 40px; border-radius: 10px; background: var(--primary); color: #000; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: var(--trans-fast); flex-shrink: 0; }
+.chat-send-btn { width: 40px; height: 40px; border-radius: 10px; background: var(--primary); color: #000; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: var(--trans-fast); flex-shrink: 0; margin-bottom: 2px; }
 .chat-send-btn:hover:not(:disabled) { box-shadow: 0 0 20px rgba(0,210,255,0.3); }
 .chat-send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .chat-send-btn.stop { background: var(--error) !important; animation: pulseStop 1.8s ease-in-out infinite; }
@@ -1879,6 +1879,7 @@
   transition: all 0.2s ease; 
   flex-shrink: 0; 
   position: relative;
+  margin-bottom: 2px;
 }
 .chat-attach-inline-btn:hover { 
   background: rgba(0,210,255,0.06); 
