@@ -20,6 +20,7 @@ const TITOLI_DA_URL = {
   account: 'Impostazioni',
   settings: 'Impostazioni',
   creative_studio: 'Creative',
+  video_studio: 'Video Studio',
   domotica: 'Domotica',
   music: 'Musica',
   audio_studio: 'Musica',
@@ -75,7 +76,7 @@ export function useTabs() {
       'model_hub', 'hf_hub', 'ai_config', 'config', 'mcp_hub',
       'theme', 'palette', 'domotica', 'home_assistant',
       'music', 'music_lounge', 'audio_studio',
-      'creative_studio', 'voice_studio', 'developer_studio', 'developer_lab',
+      'creative_studio', 'video_studio', 'voice_studio', 'developer_studio', 'developer_lab',
       'network_lab', 'sigma_network', 'email_client', 'messaging_hub'
     ];
     const tabId = SINGLETON_TYPES.includes(normType)

@@ -70,10 +70,6 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
       {/* Animated Translucent Cyber Space Background Canvas (stesso di MCP Tools) */}
       <TechSpaceCanvas isLight={theme === 'light'} />
 
-      {resizeHandles.map(rh => (
-        <div key={rh.dir} className={`chat-resize-handle ${rh.className}`} style={{ cursor: rh.cursor }}
-          onMouseDown={(e) => handleResizeStart(rh.dir, e)} />
-      ))}
 
       <ChatHeader
         isPanel={true}
@@ -277,6 +273,11 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
           onPcFilesChange={core.setPcFiles}
         />
       )}
+      {/* Resize handles assoluti perimetrali */}
+      {resizeHandles.map(rh => (
+        <div key={rh.dir} className={`chat-resize-handle ${rh.className}`} style={{ cursor: rh.cursor }}
+          onMouseDown={(e) => handleResizeStart(rh.dir, e)} />
+      ))}
     </div>
   );
 }

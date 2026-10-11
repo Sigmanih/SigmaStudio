@@ -1602,6 +1602,165 @@ def update_model_card(local_ref: str, repo_id: Optional[str] = None,
             "characters": len(str(testo))}
 
 
+def batch_update_all_cards(token: Optional[str] = None,
+                           models: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """Riscrive e aggiorna le schede (README.md) di tutti i modelli pubblicati su Hugging Face.
+
+    Recupera tutti i modelli locali già pubblicati su HF (tramite il registro
+    delle pubblicazioni ed eventuale discovery), rigenera per ciascuno la scheda
+    completa con i benchmark ufficiali aggiornati, metriche hardware correnti,
+    tag e descrizioni bilingue, ed esegue un commit su Hugging Face.
+    Questo fa riapparire i modelli fra i primi aggiornati su HF e ne stimola la
+    visibilità e i download.
+    """
+    from core.modules.sigma_model_hub.backend import publications
+    from core.modules.sigma_model_hub.backend.model_inventory import scan_local_models
+
+    local_models = models if models is not None else scan_local_models()
+
+    # 1. Prova a scoprire automaticamente eventuali repository HF corrispondenti non ancora collegati
+    try:
+        disc = discover_publications(local_models, token=token)
+        for prop in disc.get("proposte") or []:
+            if prop.get("repo_id") and prop.get("local_ref"):
+                publications.record_publication(
+                    prop["local_ref"], prop["repo_id"], prop.get("url", "")
+                )
+    except Exception as disc_err:
+        log.debug("Auto-discovery preliminare saltata o non riuscita: %s", disc_err)
+
+    # 2. Raccoglie tutti i modelli pubblicati da noi con un repo_id valido
+    tutte_pub = publications.all_publications()
+
+    our_namespaces = {"sigmanih"}
+    try:
+        from core.modules.sigma_model_hub.backend.uploader_engine import uploader_manager
+        who = uploader_manager.get_whoami(token=token)
+        if who.get("authenticated") and who.get("username"):
+            our_namespaces.add(who["username"].lower())
+            for o in who.get("orgs") or []:
+                if isinstance(o, str):
+                    our_namespaces.add(o.lower())
+                elif isinstance(o, dict) and o.get("name"):
+                    our_namespaces.add(o["name"].lower())
+    except Exception:
+        pass
+
+    # Mappa i modelli locali per identificativo / path / filename per estrarne le info recenti
+    loc_by_key: Dict[str, Dict[str, Any]] = {}
+    for m in local_models:
+        for k in (m.get("path"), m.get("model_id"), m.get("filename"), m.get("clean_name")):
+            if k:
+                loc_by_key[str(k).strip().lower()] = m
+                loc_by_key[str(k).replace("--", "/").strip().lower()] = m
+
+    # Raccogli target da aggiornare (univoci per repo_id, solo repos di nostra proprietà)
+    targets: Dict[str, Dict[str, Any]] = {}
+    for k, v in tutte_pub.items():
+        if not isinstance(v, dict):
+            continue
+        repo_id = (v.get("repo_id") or "").strip()
+        if not repo_id or "/" not in repo_id:
+            continue
+        owner = repo_id.split("/")[0].lower()
+        if owner not in our_namespaces:
+            continue
+        local_ref = v.get("local_ref") or k
+
+        # Trova il modello locale associato se esiste
+        matched_model = (
+            loc_by_key.get(str(local_ref).strip().lower())
+            or loc_by_key.get(str(k).strip().lower())
+            or loc_by_key.get(repo_id.split("/")[-1].lower())
+            or {}
+        )
+
+        targets[repo_id] = {
+            "repo_id": repo_id,
+            "local_ref": local_ref,
+            "model_id": matched_model.get("model_id") or repo_id.split("/")[-1],
+            "clean_name": matched_model.get("clean_name") or "",
+            "benchmark_summary": matched_model.get("benchmark_summary") or None,
+            "path": matched_model.get("path") or local_ref,
+        }
+
+    # Se ci sono modelli locali con publication che non erano nel registro principale
+    for m in local_models:
+        pub = m.get("publication")
+        if isinstance(pub, dict) and pub.get("repo_id"):
+            rid = pub["repo_id"].strip()
+            if rid and rid not in targets:
+                targets[rid] = {
+                    "repo_id": rid,
+                    "local_ref": m.get("path") or m.get("model_id") or m.get("filename"),
+                    "model_id": m.get("model_id") or rid.split("/")[-1],
+                    "clean_name": m.get("clean_name") or "",
+                    "benchmark_summary": m.get("benchmark_summary") or None,
+                    "path": m.get("path") or m.get("filename"),
+                }
+
+    if not targets:
+        return {
+            "success": True,
+            "total_found": 0,
+            "updated_count": 0,
+            "error_count": 0,
+            "updated": [],
+            "errors": [],
+            "message": "Nessun modello risulta attualmente pubblicato o collegato a Hugging Face."
+        }
+
+    updated = []
+    errors = []
+
+    for repo_id, info in targets.items():
+        try:
+            res = update_model_card(
+                info["local_ref"],
+                repo_id=repo_id,
+                token=token,
+                model_id=info["model_id"],
+                include_benchmarks=True,
+                include_hardware=True,
+                benchmark_summary=info["benchmark_summary"],
+            )
+            if res.get("success"):
+                updated.append({
+                    "repo_id": repo_id,
+                    "model_id": info["model_id"],
+                    "url": res.get("url") or f"https://huggingface.co/{repo_id}",
+                    "characters": res.get("characters", 0),
+                })
+            else:
+                errors.append({
+                    "repo_id": repo_id,
+                    "model_id": info["model_id"],
+                    "error": res.get("error") or "Errore sconosciuto",
+                })
+        except Exception as e:
+            errors.append({
+                "repo_id": repo_id,
+                "model_id": info["model_id"],
+                "error": str(e),
+            })
+
+    total_up = len(updated)
+    total_err = len(errors)
+    msg = f"Aggiornati con successo {total_up} modelli su Hugging Face con benchmark e specifiche recenti."
+    if total_err > 0:
+        msg += f" ({total_err} errori riscontrati)."
+
+    return {
+        "success": total_up > 0 or total_err == 0,
+        "total_found": len(targets),
+        "updated_count": total_up,
+        "error_count": total_err,
+        "updated": updated,
+        "errors": errors,
+        "message": msg,
+    }
+
+
 def rename_hf_repo(from_id: str, to_id: str,
                    token: Optional[str] = None) -> Dict[str, Any]:
     """Sposta un repository a un altro nome, mantenendo cronologia e download.

@@ -10,7 +10,8 @@ import React from 'react';
 const installedModules = import.meta.glob([
   './*/index.jsx',
   './*/index.js',
-  './*/DomoticaTab.jsx'
+  './*/DomoticaTab.jsx',
+  './*/VideoStudio.jsx'
 ]);
 
 // Scansiona dinamicamente tutti i Floating Panel opzionali presenti nella directory
@@ -24,6 +25,7 @@ const TAB_TO_FOLDER = {
   sigma_network: 'sigma_network',
   // Multimodale & Grafica
   creative_studio: 'sigma_creative_lab',
+  video_studio:    'sigma_creative_lab',
 
   // Audio & Streaming
   music:           'sigma_audio_studio',
@@ -65,9 +67,16 @@ const TAB_TO_FOLDER = {
   home_assistant:  'sigma_domotica',
 };
 
+// Un modulo puo' offrire piu' tab: questa tabella dice quale file apre ciascuna,
+// invece dell'index.jsx predefinito.
+const TAB_ENTRY = {
+  video_studio: 'VideoStudio.jsx',
+};
+
 function findModuleImport(tabType) {
   const folder = TAB_TO_FOLDER[tabType] || tabType;
   const candidates = [
+    ...(TAB_ENTRY[tabType] ? [`./${folder}/${TAB_ENTRY[tabType]}`] : []),
     `./${folder}/index.jsx`,
     `./${folder}/index.js`,
     `./${folder}/DomoticaTab.jsx`,

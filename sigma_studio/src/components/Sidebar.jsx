@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Home, FileText, Activity, PieChart, Layers, ChevronRight, ChevronDown, MessageSquare,
-  FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun,
+  FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, Clapperboard,
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
   Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2,
   Share2, Plus, Search, HardDrive, Copy, UserCheck, Award, CircuitBoard
@@ -844,6 +844,14 @@ export default function Sidebar({
                       badgeColor="rgba(255,80,100,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('creative_studio')}
                       onClick={() => openTab({ name: 'Creative' }, 'creative_studio')}
+                    />
+                  )}
+                  {isCreativeInstalled && (
+                    <SidebarItem
+                      icon={Clapperboard}
+                      label="Video Studio"
+                      active={activeTabId != null && activeTabId.startsWith('video_studio')}
+                      onClick={() => openTab({ name: 'Video Studio' }, 'video_studio')}
                     />
                   )}
 

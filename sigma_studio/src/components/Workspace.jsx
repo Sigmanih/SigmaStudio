@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, Settings, Sliders, Menu, Award, CircuitBoard } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, Settings, Sliders, Menu, Award, CircuitBoard, Clapperboard } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import SkillsHub from './SkillsHub';
 import StudioEditor from './Workspace/StudioEditor';
@@ -42,6 +42,7 @@ const FileIcon = ({ type }) => {
     case 'model_hub': return <DownloadCloud size={16} />;
     case 'account': case 'settings': return <Settings size={16} />;
     case 'creative_studio': return <Palette size={16} />;
+    case 'video_studio': return <Clapperboard size={16} />;
     case 'skills_hub': return <Blocks size={16} />;
     case 'marketplace': return <Store size={16} />;
     case 'image_viewer': return <Image size={16} />;
@@ -311,6 +312,18 @@ export default function Workspace({
       return (
         <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Creative Lab...</div>}>
           <LazyCreative openTab={openTab} />
+        </React.Suspense>
+      );
+    }
+    if (tab.type === 'video_studio') {
+      const isCreativeInstalled = modulesState.sigma_creative_lab === true;
+      const LazyVideo = getLazyModule('video_studio');
+      if (!isCreativeInstalled || !LazyVideo) {
+        return <ModuleNotInstalled tabType="creative_studio" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Video Studio...</div>}>
+          <LazyVideo openTab={openTab} />
         </React.Suspense>
       );
     }

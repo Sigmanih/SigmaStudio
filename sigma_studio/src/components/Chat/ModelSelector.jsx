@@ -51,7 +51,9 @@ export default function ModelSelector({
   }, []);
 
   const activeSpecs = useMemo(() => {
-    return getModelSpecs(effectiveModelName || selectedModel, models);
+    const target = effectiveModelName || selectedModel;
+    const activeObj = (models || []).find(m => m && (m.name === target || m.filename === target || m.model_id === target || m.display_name === target));
+    return getModelSpecs(activeObj || target, models);
   }, [effectiveModelName, selectedModel, models, speedVersion]);
 
   const favList = useMemo(() => {
@@ -141,16 +143,12 @@ export default function ModelSelector({
   // Compute available families for the family filter bar
   const familyPills = useMemo(() => {
     const counts = { all: modelsInCurrentTab.length };
-    counts.sigmanih = modelsInCurrentTab.filter(m => isSigmanihModel(m)).length;
-
     modelsInCurrentTab.forEach(m => {
       const fam = detectModelFamily(m);
-      if (fam !== 'sigmanih') {
-        counts[fam] = (counts[fam] || 0) + 1;
-      }
+      counts[fam] = (counts[fam] || 0) + 1;
     });
 
-    const familyKeys = ['all', 'sigmanih', 'gemma', 'qwen', 'llama', 'deepseek', 'mistral', 'phi', 'glm', 'altro'];
+    const familyKeys = ['all', 'gemma', 'qwen', 'llama', 'deepseek', 'mistral', 'phi', 'glm', 'altro'];
     
     return familyKeys
       .filter(k => k === 'all' || (counts[k] && counts[k] > 0))
@@ -189,11 +187,7 @@ export default function ModelSelector({
 
       let matchesFamily = true;
       if (familyFilter !== 'all') {
-        if (familyFilter === 'sigmanih') {
-          matchesFamily = isSigmanihModel(m);
-        } else {
-          matchesFamily = (detectModelFamily(m) === familyFilter);
-        }
+        matchesFamily = (detectModelFamily(m) === familyFilter);
       }
 
       const matchesSearch = !searchQuery.trim() || m.name.toLowerCase().includes(searchQuery.toLowerCase().trim());
@@ -458,7 +452,7 @@ export default function ModelSelector({
               const isSelected = selectedModel === m.name;
               const isFavorite = favList.includes(m.name);
               const isPrimary = m.name === primaryFav;
-              const itemSpecs = getModelSpecs(m.name, models);
+              const itemSpecs = getModelSpecs(m, models);
               const isSig = isSigmanihModel(m);
               const famKey = detectModelFamily(m);
               const familyConf = FAMILY_CONFIG[famKey] || FAMILY_CONFIG.altro;
@@ -478,7 +472,14 @@ export default function ModelSelector({
 
               // Live Speed (tokens/sec)
               const chatTps = getModelChatSpeed(m.name, m) ?? (m.benchmark_summary?.tokens_per_sec || null);
-              const isPublished = Boolean(m.publication?.repo_id || itemSpecs?.publication?.repo_id || itemSpecs?.isPublished);
+              const pubRepo = String(m.publication?.repo_id || itemSpecs?.publication?.repo_id || '').toLowerCase();
+              const pubOwner = pubRepo.includes('/') ? pubRepo.split('/')[0] : '';
+              const isPublished = Boolean(
+                m.is_published_by_us ||
+                itemSpecs?.is_published_by_us ||
+                (pubOwner === 'sigmanih') ||
+                ((m.is_published || itemSpecs?.isPublished) && pubOwner === 'sigmanih')
+              );
 
               return (
                 <div
@@ -542,7 +543,7 @@ export default function ModelSelector({
                     )}
 
                     {/* Family chip if recognized */}
-                    {famKey && famKey !== 'altro' && famKey !== 'sigmanih' && (
+                    {famKey && famKey !== 'altro' && (
                       <span
                         title={`Famiglia architetturale: ${familyConf.title}`}
                         style={{
@@ -620,18 +621,20 @@ export default function ModelSelector({
                       <span>{hasTool ? `${Math.round(tScore)}%` : '-'}</span>
                     </span>
 
-                    {/* Flag Pubblicato */}
+                    {/* Flag Pubblicato ad altissima visibilità su Hugging Face */}
                     {isPublished && (
                       <span
                         title={`Pubblicato su Hugging Face (${m.publication?.repo_id || itemSpecs?.publication?.repo_id || ''})`}
                         style={{
-                          fontSize: '0.58rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
-                          background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#10b981',
+                          fontSize: '0.58rem', fontWeight: 900, padding: '1px 6px', borderRadius: '4px',
+                          background: 'linear-gradient(135deg, rgba(255, 184, 108, 0.28) 0%, rgba(255, 153, 0, 0.22) 100%)',
+                          border: '1px solid #ffb86c', color: '#ffd21e',
+                          boxShadow: '0 0 8px rgba(255, 184, 108, 0.25)',
                           display: 'inline-flex', alignItems: 'center', gap: '3px'
                         }}
                       >
-                        <CheckCircle2 size={9} color="#10b981" />
-                        <span>Pubblicato</span>
+                        <span style={{ fontSize: '0.68rem', lineHeight: 1 }}>🤗</span>
+                        <span>HF</span>
                       </span>
                     )}
 

@@ -94,10 +94,10 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "moe_placement", "numeri_del_provider", "objective_inference",
         "prefix_cache_slots", "quantize_diagnosi", "radix_cache_integration",
         "rust_kernel_simd", "sigmarust_backend", "transformers_5_compat",
-        "mlx_weights",
+        "mlx_weights", "gpu_lease",
     ),
     "moduli": (
-        "capability_manager", "docker_fs", "dynamic_swarm", "eda_harness_tools",
+        "capability_manager", "creative_judge", "creative_ltx", "creative_media", "creative_production", "creative_scene", "creative_speech_qa", "creative_timeline", "docker_fs", "dynamic_swarm", "eda_harness_tools",
         "eda_lab", "email_client", "frontend_diagnostics",
         "fusione_a_tre_vie", "i18n_translator", "kicad_agent",
         "kicad_edit_tools", "kicad_editor_contract", "kicad_harness_tools",

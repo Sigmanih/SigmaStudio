@@ -534,6 +534,20 @@ def handle_models_local_list(self):
             log.debug("Referti di benchmark non disponibili: %s", err)
             normalizza = None
 
+        our_namespaces = {"sigmanih"}
+        try:
+            from core.modules.sigma_model_hub.backend.uploader_engine import uploader_manager
+            whoami_info = uploader_manager.get_whoami()
+            if whoami_info.get("authenticated") and whoami_info.get("username"):
+                our_namespaces.add(whoami_info["username"].lower())
+                for org in whoami_info.get("orgs") or []:
+                    if isinstance(org, str):
+                        our_namespaces.add(org.lower())
+                    elif isinstance(org, dict) and org.get("name"):
+                        our_namespaces.add(org["name"].lower())
+        except Exception:
+            pass
+
         for m in models:
             summary = None
             if normalizza is not None:
@@ -563,15 +577,23 @@ def handle_models_local_list(self):
             except Exception:
                 m["publication"] = None
 
-            # Accurate publisher & attribution resolution
+            # Accurate publisher & attribution resolution:
+            # Segna come pubblicato SOLO se lo abbiamo pubblicato noi (sigmanih o account HF autenticato)
             pub = m.get("publication")
             repo_id = (pub.get("repo_id") if isinstance(pub, dict) else "") or ""
-            m["is_published"] = bool(repo_id)
-            m["published"] = bool(repo_id)
+            repo_owner = repo_id.split("/")[0].lower() if ("/" in repo_id) else ""
+            is_published_by_us = bool(repo_id and repo_owner in our_namespaces)
+
+            m["is_published"] = is_published_by_us
+            m["published"] = is_published_by_us
+            m["is_published_by_us"] = is_published_by_us
+            if not is_published_by_us:
+                m["publication"] = None
+
             raw_author = m.get("author") or ""
             raw_name = m.get("clean_name") or m.get("display_name") or m.get("filename") or ""
 
-            if repo_id.lower().startswith("sigmanih/") or raw_author.lower() == "sigmanih" or "sigmanih" in raw_name.lower():
+            if is_published_by_us or repo_id.lower().startswith("sigmanih/") or raw_author.lower() == "sigmanih" or "sigmanih" in raw_name.lower():
                 m["author"] = "sigmanih"
                 m["publisher"] = "sigmanih"
                 m["is_official"] = True
@@ -774,6 +796,18 @@ def handle_models_hf_card_update(self):
         self.send_json_response(esito, 200 if esito.get("success") else 400)
     except Exception as e:
         log.error("Error in handle_models_hf_card_update: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_models_hf_batch_update_cards(self):
+    """POST /api/models/hf/batch_update_cards — Riscrive e aggiorna le schede di tutti i modelli pubblicati su HF."""
+    try:
+        body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
+        from core.modules.sigma_model_hub.backend.uploader_engine import batch_update_all_cards
+        esito = batch_update_all_cards(token=body.get("token"))
+        self.send_json_response(esito, 200 if esito.get("success") else 400)
+    except Exception as e:
+        log.error("Error in handle_models_hf_batch_update_cards: %s", e)
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
@@ -1405,6 +1439,8 @@ def register_routes(app=None) -> None:
         '/api/models/hf/repo/discover': handle_models_hf_repo_discover,
         '/api/models/hf/repo/attach': handle_models_hf_repo_attach,
         '/api/models/hf/card/update': handle_models_hf_card_update,
+        '/api/models/hf/batch_update_cards': handle_models_hf_batch_update_cards,
+        '/api/models/hf/cards/update_all': handle_models_hf_batch_update_cards,
         '/api/models/hf/publish/card': handle_models_hf_card_update,
         '/api/models/publication/forget': handle_models_publication_forget,
         '/api/models/hf/repo/rename': handle_models_hf_repo_rename,

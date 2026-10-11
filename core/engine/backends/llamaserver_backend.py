@@ -321,6 +321,12 @@ def plan_to_args(settings: Dict[str, Any]) -> List[str]:
     return argomenti
 
 
+def _numero_gpu(hardware: Dict[str, Any]) -> int:
+    """GPU CUDA viste dal probe: serve a rinumerare i device quando un lease ne esclude qualcuna."""
+    acceleratori = (hardware or {}).get("accelerators") or []
+    return sum(1 for a in acceleratori if str(a.get("type", "")).upper().endswith("CUDA"))
+
+
 def _porta_libera() -> int:
     """Una porta che il sistema dichiara libera adesso.
 
@@ -622,6 +628,13 @@ class LlamaServerBackend(InferenceBackend):
                         if arg_val == "-mg" and idx_arg + 1 < len(comando):
                             comando[idx_arg + 1] = "0"
                             break
+
+            # Un render video lungo puo' aver riservato una GPU: caricarci sopra
+            # l'LLM lo manderebbe in out-of-memory a meta' lavoro.
+            from core.engine.gpu_lease import apply_to_llama_command
+            nota_lease = apply_to_llama_command(sub_env, comando, _numero_gpu(hardware))
+            if nota_lease:
+                log.info("[LlamaServer] %s", nota_lease)
 
             try:
                 self._processo = subprocess.Popen(

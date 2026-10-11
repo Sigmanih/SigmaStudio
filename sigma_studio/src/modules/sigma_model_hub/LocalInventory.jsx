@@ -14,14 +14,6 @@ import DownloadLogSidebar from './DownloadLogSidebar.jsx';
 // Family Metadata Definitions (Coloring, Badges, Brand Labels)
 // ==============================================================================
 const FAMILY_CONFIG = {
-  sigmanih: {
-    title: 'Modelli & Release Ufficiali Sigmanih',
-    brand: 'Sigmanih Ecosystem',
-    icon: Sparkles,
-    color: '#ffb86c',
-    gradient: 'linear-gradient(135deg, rgba(255, 184, 108, 0.20) 0%, rgba(0, 210, 255, 0.14) 100%)',
-    borderColor: 'rgba(255, 184, 108, 0.40)'
-  },
   gemma: {
     title: 'Famiglia Gemma',
     brand: 'Google DeepMind',
@@ -107,7 +99,7 @@ export default function LocalInventory({
 
   // Search, Filters & Sorting state
   const [searchQuery, setSearchQuery] = useState('');
-  const [familyFilter, setFamilyFilter] = useState('all');       // 'all' | 'sigmanih' | 'gemma' | 'qwen' | 'llama' | 'deepseek' | 'mistral' | 'phi' | 'glm' | 'altro'
+  const [familyFilter, setFamilyFilter] = useState('all');       // 'all' | 'gemma' | 'qwen' | 'llama' | 'deepseek' | 'mistral' | 'phi' | 'glm' | 'altro'
   const [categoryFilter, setCategoryFilter] = useState('all');   // 'all' | 'sigmanih' | 'reasoning' | 'code' | 'vision' | 'moe' | 'llm' | 'gguf' | 'safetensors' | 'benchmarked' | 'published'
   const [publisherFilter, setPublisherFilter] = useState('all'); // 'all' | 'sigmanih' | 'google' | 'qwen' | 'meta' | 'deepseek' | 'mistralai' | 'microsoft'
   const [storageFilter, setStorageFilter] = useState('all');     // 'all' | 'primary' | 'extra'
@@ -123,7 +115,20 @@ export default function LocalInventory({
   const [renamingPath, setRenamingPath] = useState(null);
   const [updatingCard, setUpdatingCard] = useState(null);
   const [discovering, setDiscovering] = useState(false);
+  const [updatingAllHf, setUpdatingAllHf] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [hfUser, setHfUser] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/models/hf/whoami')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.authenticated) {
+          setHfUser(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const cardBg = isLight ? '#ffffff' : 'rgba(15, 18, 28, 0.85)';
   const cardBorder = isLight ? '1px solid rgba(190, 160, 110, 0.28)' : '1px solid rgba(255, 255, 255, 0.08)';
@@ -402,6 +407,41 @@ export default function LocalInventory({
     }
   };
 
+  const handleBatchUpdateHfCards = async () => {
+    if (updatingAllHf) return;
+    setUpdatingAllHf(true);
+    if (addToast) addToast('🚀 Aggiornamento schede e benchmark su Hugging Face in corso...', 'info', 4000);
+    try {
+      const res = await fetch('/api/models/hf/batch_update_cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        const count = json.updated_count || 0;
+        const errCount = json.error_count || 0;
+        if (count > 0) {
+          if (addToast) {
+            addToast(`✨ Aggiornati ${count} modelli su Hugging Face con benchmark e specifiche correnti!`, 'success', 6000);
+          }
+        } else if (errCount === 0) {
+          if (addToast) addToast(json.message || 'Nessun modello attualmente pubblicato da aggiornare.', 'info', 4000);
+        }
+        if (errCount > 0 && addToast) {
+          addToast(`⚠️ ${errCount} modelli non aggiornati (verifica permessi/token Hugging Face).`, 'warning', 6000);
+        }
+        fetchLocalModels();
+      } else if (addToast) {
+        addToast(`❌ Aggiornamento fallito: ${json.error || 'Errore sconosciuto'}`, 'error', 5000);
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore di rete: ${e.message}`, 'error', 5000);
+    } finally {
+      setUpdatingAllHf(false);
+    }
+  };
+
   const handleRenameHfRepoFromInventory = async (model) => {
     const vecchioRepo = model.publication?.repo_id || model.repo_id;
     if (!vecchioRepo) return;
@@ -473,8 +513,7 @@ export default function LocalInventory({
 
     // Categoria
     let category = m.category || 'llm';
-    if (isSigmanih) category = 'sigmanih';
-    else if (combinedText.includes('r1') || combinedText.includes('reason') || combinedText.includes('think') || combinedText.includes('qwq')) category = 'reasoning';
+    if (combinedText.includes('r1') || combinedText.includes('reason') || combinedText.includes('think') || combinedText.includes('qwq')) category = 'reasoning';
     else if (combinedText.includes('coder') || combinedText.includes('code') || combinedText.includes('dev')) category = 'code';
     else if (m.is_multimodal || combinedText.includes('vision') || combinedText.includes('vl') || combinedText.includes('clip')) category = 'vision';
     else if (combinedText.includes('moe') || combinedText.includes('expert') || combinedText.includes('8x')) category = 'moe';
@@ -492,6 +531,24 @@ export default function LocalInventory({
     else familyKey = fLower;
 
 
+    // Un modello è considerato "Pubblicato" SOLO se lo abbiamo pubblicato noi su Hugging Face
+    const repoNamespace = repoId.includes('/') ? repoId.split('/')[0].toLowerCase() : '';
+    const myNamespaces = new Set(['sigmanih']);
+    if (hfUser?.username) myNamespaces.add(hfUser.username.toLowerCase());
+    if (Array.isArray(hfUser?.orgs)) {
+      hfUser.orgs.forEach(o => {
+        if (typeof o === 'string') myNamespaces.add(o.toLowerCase());
+        else if (o?.name) myNamespaces.add(o.name.toLowerCase());
+      });
+    }
+
+    const isPublishedByUs = Boolean(
+      m.is_published_by_us ||
+      (repoId && myNamespaces.has(repoNamespace)) ||
+      (m.is_published && myNamespaces.has(repoNamespace)) ||
+      (m.is_published && isSigmanih)
+    );
+
     return {
       isGguf,
       isSafetensors,
@@ -501,7 +558,7 @@ export default function LocalInventory({
       familyKey,
       category,
       hasBenchmark: !!m.benchmark_summary?.has_benchmarks,
-      isPublished: Boolean(repoId || m.is_published || m.published || m.publication?.repo_id)
+      isPublished: isPublishedByUs
     };
   };
 
@@ -558,11 +615,7 @@ export default function LocalInventory({
 
     // 1. Filtro Settore / Famiglia
     if (familyFilter !== 'all') {
-      if (familyFilter === 'sigmanih') {
-        if (!info.isSigmanih) return false;
-      } else {
-        if (info.familyKey !== familyFilter) return false;
-      }
+      if (info.familyKey !== familyFilter) return false;
     }
 
     // 2. Filtro Publisher / Autore
@@ -571,7 +624,6 @@ export default function LocalInventory({
     }
 
     // 3. Filtro Categoria & Formato
-    if (categoryFilter === 'sigmanih' && !info.isSigmanih) return false;
     if (categoryFilter === 'reasoning' && info.category !== 'reasoning') return false;
     if (categoryFilter === 'code' && info.category !== 'code') return false;
     if (categoryFilter === 'vision' && info.category !== 'vision') return false;
@@ -628,14 +680,13 @@ export default function LocalInventory({
   });
 
   // Raggruppamento per Famiglia
-  const familyOrder = ['sigmanih', 'gemma', 'qwen', 'llama', 'deepseek', 'mistral', 'phi', 'glm', 'altro'];
+  const familyOrder = ['gemma', 'qwen', 'llama', 'deepseek', 'mistral', 'phi', 'glm', 'altro'];
   const groupedByFamily = familyOrder.reduce((acc, famKey) => {
     if (familyFilter !== 'all' && famKey !== familyFilter) {
       return acc;
     }
     const items = sortedModels.filter(m => {
       const info = getModelInfo(m);
-      if (famKey === 'sigmanih') return info.isSigmanih;
       return info.familyKey === famKey;
     });
     if (items.length > 0) {
@@ -687,7 +738,6 @@ export default function LocalInventory({
   // Count models per family
   const getFamilyCount = (key) => {
     if (key === 'all') return models.length;
-    if (key === 'sigmanih') return models.filter(m => getModelInfo(m).isSigmanih).length;
     return models.filter(m => getModelInfo(m).familyKey === key).length;
   };
 
@@ -727,12 +777,20 @@ export default function LocalInventory({
             }}>
               📦 <b>{totalModelsCount}</b> Modelli
             </span>
-            <span style={{
-              fontSize: '0.70rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
-              background: 'rgba(255, 184, 108, 0.12)', border: '1px solid rgba(255, 184, 108, 0.3)', color: '#ffb86c'
-            }}>
-              ✨ <b>{sigmanihCount}</b> Sigmanih
-            </span>
+            <button
+              onClick={() => setPublisherFilter(prev => prev === 'sigmanih' ? 'all' : 'sigmanih')}
+              title={publisherFilter === 'sigmanih' ? 'Rimuovi filtro autore Sigmanih' : 'Filtra per autore Sigmanih'}
+              style={{
+                fontSize: '0.70rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+                background: publisherFilter === 'sigmanih' ? 'rgba(255, 184, 108, 0.25)' : 'rgba(255, 184, 108, 0.12)',
+                border: publisherFilter === 'sigmanih' ? '1.5px solid #ffb86c' : '1px solid rgba(255, 184, 108, 0.3)',
+                color: '#ffb86c', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                boxShadow: publisherFilter === 'sigmanih' ? '0 0 10px rgba(255, 184, 108, 0.35)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <span>✨ <b>{sigmanihCount}</b> Autore Sigmanih</span>
+            </button>
             <span style={{
               fontSize: '0.70rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
               background: 'rgba(16, 185, 129, 0.10)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#10b981'
@@ -756,6 +814,23 @@ export default function LocalInventory({
 
         {/* Right: Quick Global Action Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <button
+            onClick={handleBatchUpdateHfCards}
+            disabled={updatingAllHf}
+            title="Riscrive e aggiorna le schede (README.md) di tutti i modelli pubblicati su Hugging Face con i benchmark e i test più recenti, facendoli riapparire tra i primi aggiornati su HF per stimolarne il download"
+            style={{
+              padding: '5px 11px', borderRadius: '7px',
+              border: '1px solid rgba(0, 210, 255, 0.45)',
+              background: 'linear-gradient(135deg, rgba(0, 210, 255, 0.16) 0%, rgba(188, 140, 255, 0.14) 100%)',
+              color: '#00d2ff', fontSize: '0.68rem', fontWeight: 800, cursor: updatingAllHf ? 'wait' : 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              boxShadow: '0 2px 8px rgba(0, 210, 255, 0.12)'
+            }}
+          >
+            <Upload size={11} className={updatingAllHf ? 'spin' : ''} />
+            {updatingAllHf ? 'Aggiorno HF...' : 'Aggiorna modelli HF'}
+          </button>
+
           <button
             onClick={handleDiscoverRepos}
             disabled={discovering}
@@ -838,7 +913,6 @@ export default function LocalInventory({
               if (count === 0) return null;
               const Icon = conf.icon;
               const active = familyFilter === fKey;
-              const isSig = fKey === 'sigmanih';
 
               return (
                 <button
@@ -847,9 +921,7 @@ export default function LocalInventory({
                   style={{
                     padding: '6px 12px', borderRadius: '8px',
                     border: active ? `1.5px solid ${conf.color}` : subBorder,
-                    background: active
-                      ? (isSig ? 'linear-gradient(135deg, rgba(255, 184, 108, 0.25), rgba(0, 210, 255, 0.15))' : `${conf.color}18`)
-                      : cardBg,
+                    background: active ? `${conf.color}18` : cardBg,
                     color: active ? conf.color : textMuted,
                     fontSize: '0.72rem', fontWeight: active ? 900 : 700, cursor: 'pointer', whiteSpace: 'nowrap',
                     display: 'inline-flex', alignItems: 'center', gap: '5px',
@@ -858,7 +930,7 @@ export default function LocalInventory({
                   }}
                 >
                   <Icon size={12} color={active ? conf.color : textMuted} />
-                  <span>{isSig ? 'Sigmanih' : conf.title.replace('Famiglia ', '')}</span>
+                  <span>{conf.title.replace('Famiglia ', '')}</span>
                   <span style={{
                     fontSize: '0.60rem', padding: '1px 5px', borderRadius: '4px',
                     background: active ? `${conf.color}25` : subBg, color: active ? conf.color : textMuted,
@@ -1248,7 +1320,7 @@ export default function LocalInventory({
                                     </span>
                                   )}
 
-                                  {/* Flag "Pubblicato" accanto al tag della % dei test fatti dal benchmark */}
+                                  {/* Flag "HF Pubblicato" ad altissima visibilità su Hugging Face */}
                                   {isPublished && (
                                     <a
                                       href={m.publication?.url || (m.publication?.repo_id ? `https://huggingface.co/${m.publication.repo_id}` : '#')}
@@ -1257,16 +1329,20 @@ export default function LocalInventory({
                                       title={`Pubblicato su Hugging Face: ${m.publication?.repo_id || ''}\nClicca per aprire la scheda online`}
                                       onClick={(e) => e.stopPropagation()}
                                       style={{
-                                        fontSize: '0.58rem', fontWeight: 800, padding: '2px 7px', borderRadius: '5px',
-                                        background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.38)', color: '#10b981',
-                                        display: 'inline-flex', alignItems: 'center', gap: '3px', textDecoration: 'none', cursor: 'pointer',
+                                        fontSize: '0.62rem', fontWeight: 900, padding: '2px 8px', borderRadius: '6px',
+                                        background: 'linear-gradient(135deg, rgba(255, 184, 108, 0.28) 0%, rgba(255, 153, 0, 0.22) 100%)',
+                                        border: '1px solid #ffb86c',
+                                        color: '#ffd21e',
+                                        display: 'inline-flex', alignItems: 'center', gap: '4px', textDecoration: 'none', cursor: 'pointer',
+                                        boxShadow: '0 0 10px rgba(255, 184, 108, 0.28)',
+                                        letterSpacing: '0.01em',
                                         transition: 'all 0.15s ease'
                                       }}
                                     >
-                                      <CheckCircle2 size={10} color="#10b981" />
-                                      <span>Pubblicato</span>
+                                      <span style={{ fontSize: '0.74rem', lineHeight: 1 }}>🤗</span>
+                                      <span>HF Pubblicato</span>
                                       {m.publication?.repo_id && (
-                                        <ExternalLink size={9} style={{ opacity: 0.75 }} />
+                                        <ExternalLink size={10} color="#ffd21e" style={{ opacity: 0.9 }} />
                                       )}
                                     </a>
                                   )}
@@ -1501,24 +1577,28 @@ export default function LocalInventory({
                                               </span>
                                             )}
 
-                                            {/* Flag Pubblicato */}
+                                            {/* Flag "HF Pubblicato" ad altissima visibilità su Hugging Face */}
                                             {isPublished && (
                                               <a
                                                 href={m.publication?.url || (m.publication?.repo_id ? `https://huggingface.co/${m.publication.repo_id}` : '#')}
                                                 target="_blank"
                                                 rel="noreferrer"
-                                                title={`Modello pubblicato su Hugging Face: ${m.publication?.repo_id || ''}`}
+                                                title={`Modello pubblicato su Hugging Face: ${m.publication?.repo_id || ''}\nClicca per aprire la scheda online`}
                                                 onClick={(e) => e.stopPropagation()}
                                                 style={{
-                                                  fontSize: '0.70rem', fontWeight: 800, color: '#10b981',
-                                                  padding: '2px 8px', borderRadius: '5px', background: 'rgba(16, 185, 129, 0.15)',
-                                                  border: '1px solid rgba(16, 185, 129, 0.38)', display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                                  textDecoration: 'none', cursor: 'pointer'
+                                                  fontSize: '0.72rem', fontWeight: 900, color: '#ffd21e',
+                                                  padding: '3px 10px', borderRadius: '6px',
+                                                  background: 'linear-gradient(135deg, rgba(255, 184, 108, 0.28) 0%, rgba(255, 153, 0, 0.22) 100%)',
+                                                  border: '1px solid #ffb86c',
+                                                  boxShadow: '0 0 12px rgba(255, 184, 108, 0.32)',
+                                                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                  textDecoration: 'none', cursor: 'pointer',
+                                                  transition: 'all 0.15s ease'
                                                 }}
                                               >
-                                                <CheckCircle2 size={11} color="#10b981" />
-                                                <span>Pubblicato</span>
-                                                {m.publication?.repo_id && <ExternalLink size={10} style={{ opacity: 0.8 }} />}
+                                                <span style={{ fontSize: '0.82rem', lineHeight: 1 }}>🤗</span>
+                                                <span>HF Pubblicato</span>
+                                                {m.publication?.repo_id && <ExternalLink size={11} color="#ffd21e" style={{ opacity: 0.9 }} />}
                                               </a>
                                             )}
 

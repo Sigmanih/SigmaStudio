@@ -8,14 +8,6 @@ let _localModelsCache = [];
 const SPEED_STORAGE_KEY = 'sigma_model_chat_speeds';
 
 export const FAMILY_CONFIG = {
-  sigmanih: {
-    id: 'sigmanih',
-    title: 'Sigmanih',
-    brand: 'Sigmanih Ecosystem',
-    color: '#ffb86c',
-    bg: 'rgba(255, 184, 108, 0.15)',
-    border: 'rgba(255, 184, 108, 0.35)'
-  },
   gemma: {
     id: 'gemma',
     title: 'Gemma',
@@ -120,10 +112,6 @@ export function detectModelFamily(modelOrName) {
   if (combined.includes('mistral') || combined.includes('mixtral') || combined.includes('codestral') || combined.includes('pixtral') || combined.includes('ministral')) return 'mistral';
   if (combined.includes('phi')) return 'phi';
   if (combined.includes('glm') || combined.includes('chatglm') || combined.includes('zai')) return 'glm';
-
-  if (isSigmanihModel(model)) {
-    return 'sigmanih';
-  }
 
   if (model.family) {
     const fLower = String(model.family).toLowerCase();
@@ -301,31 +289,72 @@ export function getModelSpecs(modelName, availableModels = []) {
     : _localModelsCache;
 
   // 1. Search in candidate pool (o usa direttamente inputObj se già fornito e ha dati)
-  let found = inputObj;
+  let found = (inputObj && (inputObj.size_gb !== undefined || inputObj.size_label || inputObj.path)) ? inputObj : null;
   if (!found && candidatePool.length > 0) {
     const rawSlash = cleanRaw.replace(/--/g, '/');
     const rawTail = cleanRaw.split('/').pop().split('--').pop();
+    const quantInRaw = (cleanRaw.match(/(Q[0-9]_[A-Z0-9_]+|IQ[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2|F16|F32)/i)?.[1] || '').toUpperCase();
 
+    // Passo 1: Match ESATTO (score massimo)
     found = candidatePool.find(m => {
       if (!m) return false;
       const mName = stripPrefixes(m.name);
       const mFile = stripPrefixes(m.filename);
       const mId = stripPrefixes(m.id || m.model_id);
       const mDisp = stripPrefixes(m.display_name);
-
-      const targets = [cleanRaw, rawSlash, rawTail].filter(Boolean);
       const cands = [mName, mFile, mId, mDisp].filter(Boolean);
-
-      for (const t of targets) {
-        for (const c of cands) {
-          if (c === t || c.replace(/--/g, '/') === t) return true;
-          const cTail = c.split('/').pop().split('--').pop();
-          if (cTail && cTail === t) return true;
-          if (t.includes(c) || c.includes(t)) return true;
-        }
+      for (const c of cands) {
+        if (c === cleanRaw || c === rawSlash || c.replace(/--/g, '/') === rawSlash) return true;
       }
       return false;
     });
+
+    // Passo 2: Match esatto su Tail con verifica di quantizzazione
+    if (!found) {
+      found = candidatePool.find(m => {
+        if (!m) return false;
+        const mName = stripPrefixes(m.name);
+        const mFile = stripPrefixes(m.filename);
+        const mId = stripPrefixes(m.id || m.model_id);
+        const mDisp = stripPrefixes(m.display_name);
+        const cands = [mName, mFile, mId, mDisp].filter(Boolean);
+        for (const c of cands) {
+          const cTail = c.split('/').pop().split('--').pop();
+          if (cTail === rawTail) {
+            // Se nel nome cercato c'era una quantizzazione, assicurati che coincida
+            if (quantInRaw) {
+              const cQuant = (c.match(/(Q[0-9]_[A-Z0-9_]+|IQ[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2|F16|F32)/i)?.[1] || '').toUpperCase();
+              if (cQuant && cQuant !== quantInRaw) return false;
+            }
+            return true;
+          }
+        }
+        return false;
+      });
+    }
+
+    // Passo 3: Fallback su coincidenza del prefisso base SOLO se la quantizzazione è identica
+    if (!found) {
+      found = candidatePool.find(m => {
+        if (!m) return false;
+        const mName = stripPrefixes(m.name);
+        const mFile = stripPrefixes(m.filename);
+        const mId = stripPrefixes(m.id || m.model_id);
+        const mDisp = stripPrefixes(m.display_name);
+        const cands = [mName, mFile, mId, mDisp].filter(Boolean);
+        for (const c of cands) {
+          const cSlash = c.replace(/--/g, '/');
+          const cQuant = (c.match(/(Q[0-9]_[A-Z0-9_]+|IQ[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2|F16|F32)/i)?.[1] || '').toUpperCase();
+          if (quantInRaw && cQuant && quantInRaw !== cQuant) continue;
+          if (cSlash === rawSlash || (rawSlash.startsWith(cSlash) && !quantInRaw)) return true;
+        }
+        return false;
+      });
+    }
+
+    if (!found && inputObj) {
+      found = inputObj;
+    }
   }
 
   // Se trovato in candidatePool o passato direttamente come oggetto
@@ -347,19 +376,27 @@ export function getModelSpecs(modelName, availableModels = []) {
     // Dynamic Quantization
     const quant = found.quantization && found.quantization !== 'Standard' && found.quantization !== 'Native/FlashAttn' && found.quantization !== 'Loaded'
       ? found.quantization
-      : (raw.match(/(Q[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2)/i)?.[1]?.toUpperCase() || '');
+      : (raw.match(/(Q[0-9]_[A-Z0-9_]+|IQ[0-9]_[A-Z0-9_]+|FP16|FP32|BF16|FP8|INT8|INT4|AWQ|EXL2|F16|F32)/i)?.[1]?.toUpperCase() || '');
 
     // Dynamic Format
     let format = found.format || (lower.includes('gguf') ? 'GGUF' : (lower.includes('safetensors') ? 'Safetensors' : ''));
-    if (!format && (lower.includes('.gguf') || (quant && quant.startsWith('Q')))) format = 'GGUF';
+    if (!format && (lower.includes('.gguf') || (quant && (quant.startsWith('Q') || quant.startsWith('IQ'))))) format = 'GGUF';
     if (format === 'GGUF' && quant && !format.includes(quant)) {
       format = `GGUF (${quant})`;
     }
 
     // Real disk size measured from host storage
     let size = found.size_label;
-    if (!size && found.size_gb) {
-      size = found.size_gb >= 1000 ? `~${(found.size_gb / 1024).toFixed(1)} TB` : `~${found.size_gb.toFixed(1)} GB`;
+    if (!size && found.size_gb !== undefined && found.size_gb !== null && !isNaN(found.size_gb)) {
+      const gb = Number(found.size_gb);
+      if (gb >= 1000) size = `~${(gb / 1024).toFixed(1)} TB`;
+      else if (gb >= 1) size = `~${gb.toFixed(1)} GB`;
+      else if (gb > 0) size = `~${Math.round(gb * 1024)} MB`;
+    } else if (!size && found.size_bytes !== undefined && found.size_bytes !== null && !isNaN(found.size_bytes)) {
+      const gb = Number(found.size_bytes) / (1024 ** 3);
+      if (gb >= 1000) size = `~${(gb / 1024).toFixed(1)} TB`;
+      else if (gb >= 1) size = `~${gb.toFixed(1)} GB`;
+      else if (gb > 0) size = `~${Math.round(gb * 1024)} MB`;
     } else if (!size && found.size) {
       size = found.size;
     }
@@ -389,7 +426,11 @@ export function getModelSpecs(modelName, availableModels = []) {
       toolStats: toolStats,
       chatSpeed: chatSpeed !== null ? chatSpeed : null,
       publication: found.publication || null,
-      isPublished: Boolean(found.publication?.repo_id || found.is_published || found.published),
+      isPublished: Boolean(
+        found.is_published_by_us ||
+        (found.publication?.repo_id && String(found.publication.repo_id).toLowerCase().startsWith('sigmanih/')) ||
+        (found.is_published && (!found.publication?.repo_id || String(found.publication.repo_id).toLowerCase().startsWith('sigmanih/')))
+      ),
       rawModel: found
     };
   }
@@ -561,8 +602,8 @@ export function sortModelsList(modelsList = [], sortBy = 'default', sortOrder = 
   }
 
   const sorted = [...modelsList].sort((a, b) => {
-    const specsA = getModelSpecs(a.name, allModelsPool);
-    const specsB = getModelSpecs(b.name, allModelsPool);
+    const specsA = getModelSpecs(a, allModelsPool);
+    const specsB = getModelSpecs(b, allModelsPool);
 
     let valA = 0;
     let valB = 0;

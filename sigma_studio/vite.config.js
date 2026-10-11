@@ -1,6 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Backend a cui inoltrare le API: si cambia con SIGMA_API per provare una
+// seconda istanza senza toccare quella in uso.
+const API_TARGET = process.env.SIGMA_API || 'http://127.0.0.1:8000'
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -28,12 +32,19 @@ export default defineConfig({
 
   server: {
     proxy: {
+      // 127.0.0.1 e non localhost: Node risolve localhost su ::1 e il server
+      // ascolta solo su IPv4, quindi ogni chiamata API rispondeva 502.
       '/api': {
-        target: 'http://localhost:8000',
+        target: API_TARGET,
         changeOrigin: true,
       },
       '/web_explorer': {
-        target: 'http://localhost:8000',
+        target: API_TARGET,
+        changeOrigin: true,
+      },
+      // Media generati (clip, miniature, audio) serviti dal backend sotto /data.
+      '/data': {
+        target: API_TARGET,
         changeOrigin: true,
       },
     },

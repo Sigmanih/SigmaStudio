@@ -739,7 +739,12 @@ export default function AIConfigTab() {
         hasBenchmark: hasBm,
         benchmarkScore: bmScore,
         publication: m.publication || specs?.publication || null,
-        isPublished: Boolean(m.publication?.repo_id || specs?.isPublished || m.is_published || m.published)
+        isPublished: Boolean(
+          m.is_published_by_us ||
+          specs?.is_published_by_us ||
+          (m.publication?.repo_id && String(m.publication.repo_id).toLowerCase().startsWith('sigmanih/')) ||
+          (specs?.isPublished && String(m.publication?.repo_id || specs?.publication?.repo_id || '').toLowerCase().startsWith('sigmanih/'))
+        )
       });
     });
 
@@ -2304,25 +2309,26 @@ export default function AIConfigTab() {
                               </span>
                             )}
 
-                            {/* Flag Pubblicato */}
+                            {/* Flag Pubblicato ad altissima visibilità su Hugging Face */}
                             {item.isPublished && (
                               <span
                                 title={`Pubblicato su Hugging Face (${item.publication?.repo_id || ''})`}
                                 style={{
                                   fontSize: '0.62rem',
-                                  padding: '2px 7px',
-                                  borderRadius: '4px',
-                                  background: 'rgba(16, 185, 129, 0.16)',
-                                  color: '#10b981',
-                                  border: '1px solid rgba(16, 185, 129, 0.4)',
-                                  fontWeight: 800,
+                                  padding: '2px 8px',
+                                  borderRadius: '5px',
+                                  background: 'linear-gradient(135deg, rgba(255, 184, 108, 0.28) 0%, rgba(255, 153, 0, 0.22) 100%)',
+                                  color: '#ffd21e',
+                                  border: '1px solid #ffb86c',
+                                  boxShadow: '0 0 10px rgba(255, 184, 108, 0.25)',
+                                  fontWeight: 900,
                                   display: 'inline-flex',
                                   alignItems: 'center',
-                                  gap: '3px'
+                                  gap: '4px'
                                 }}
                               >
-                                <CheckCircle2 size={10} />
-                                <span>Pubblicato</span>
+                                <span style={{ fontSize: '0.72rem', lineHeight: 1 }}>🤗</span>
+                                <span>HF Pubblicato</span>
                               </span>
                             )}
 

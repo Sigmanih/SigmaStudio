@@ -38,6 +38,7 @@ export default function ChatHeader({
         background: 'rgba(10, 14, 26, 0.75)',
         backdropFilter: 'blur(10px)',
         minHeight: '38px',
+        margin: 0,
         boxSizing: 'border-box'
       }}
     >
