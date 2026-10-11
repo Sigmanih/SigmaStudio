@@ -66,6 +66,14 @@ ALIASES: Dict[str, str] = {
     "visual_check": "screenshot",
     "guarda": "screenshot",
     "screenshot": "screenshot",
+    # ricerca ed esplorazione web
+    "web_search": "web_search",
+    "search_web": "web_search",
+    "cerca_web": "web_search",
+    "web_browse": "web_browse",
+    "browse_web": "web_browse",
+    "read_web_page": "web_browse",
+    "fetch_web_page": "web_browse",
     # controllo
     "spec": "spec",
     "requirements": "spec",
@@ -131,7 +139,7 @@ EDA_WRITE_TOOLS: Set[str] = {
 
 READ_ONLY_TOOLS: Set[str] = {
     "spec", "read_file", "list_dir", "glob", "search_code", "find_symbol",
-    "screenshot", "pipeline", "queue_add", "complete_goal"
+    "screenshot", "web_search", "web_browse", "pipeline", "queue_add", "complete_goal"
 } | EDA_READ_TOOLS
 
 

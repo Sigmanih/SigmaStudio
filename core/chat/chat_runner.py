@@ -989,26 +989,42 @@ def _try_fast_web_search(message: str):
 
     Il modello piccolo (qwen3.5:0.8b) spiega come usare search_web invece di
     chiamarlo. Per le ricerche non c'è ambiguità — l'intento è sempre chiaro
-    — quindi saltiamo il LLM e andiamo direttamente su DuckDuckGo/YouTube.
+    — quindi eseguiamo direttamente la scansione e ricerca web avanzata.
     """
     import re
-    from core.chat.web_search import _perform_web_search
+    from core.chat.web_search import _perform_web_search, deep_web_search
 
     m = message.strip()
     ml = m.lower()
 
     # Patterns that signal a search intent (not a conversation)
     search_patterns = [
-        r"\b(?:cerca|cercami|search|trova|trovami|fammi una ricerca|fai una ricerca)\b",
+        r"\b(?:cerca|cercami|search|trova|trovami|fammi una ricerca|fai una ricerca|esplora il web|scannerizza)\b",
         r"\b(?:cerca su|cercami su|search on|find on)\b",
         r"\b(?:video(?: di| su)? )youtube\b",
         r"\b(?:apri|visit|go to|vai a|naviga)\s+(?:il sito\s+)?(?:https?://|www\.)",
     ]
     is_search = any(re.search(p, ml) for p in search_patterns)
-    # "cerca su youtube" or "video youtube" explicitly
     is_youtube = bool(re.search(r"youtube", ml)) or bool(re.search(r"\bvideo\b", ml))
-    # Explicit URL
     url_match = re.search(r"(https?://[^\s]+)", m)
+
+    # Se il messaggio contiene verbi o intenti conversazionali, analitici o esplicativi,
+    # DEVE essere elaborato dal modello LLM (che leggerà la pagina nel contesto) e NON intercettato!
+    conversational_patterns = [
+        r"\b(?:descrivi|descrivimi|analizza|analizzami|spiega|spiegami|riassumi|riassumimi|leggi|leggimi|dimmi|cosa|come|perch[eé]|traduci|valuta|parlami|mostrami|estrai|confronta|chiariscimi)\b"
+    ]
+    has_conversational_intent = any(re.search(p, ml) for p in conversational_patterns)
+
+    # Se ha intenti conversazionali/esplicativi, lascia che sia il modello a rispondere
+    if has_conversational_intent:
+        return None
+
+    # Se c'è un URL ma non è una ricerca esplicita né un link solitario
+    if url_match and not is_search and not is_youtube:
+        # Se il messaggio non è solo l'URL da solo o 'apri <url>', lascia al modello
+        cleaned_url_msg = re.sub(r"^(?:apri|vai a|visit|naviga)\s+", "", ml).strip()
+        if cleaned_url_msg != url_match.group(0).lower():
+            return None
 
     if not is_search and not is_youtube and not url_match:
         return None
@@ -1017,7 +1033,7 @@ def _try_fast_web_search(message: str):
     query = m
     for prefix in ["cerca su ", "cercami su ", "cerca ", "cercami ", "search on ", "search for ", "search ", 
                     "trova ", "trovami ", "find ", "fammi una ricerca su ", "fammi una ricerca ",
-                    "fai una ricerca su ", "fai una ricerca "]:
+                    "fai una ricerca su ", "fai una ricerca ", "esplora il web per ", "esplora il web su ", "esplora "]:
         if ml.startswith(prefix):
             query = m[len(prefix):]
             break
@@ -1027,8 +1043,24 @@ def _try_fast_web_search(message: str):
 
     log.info("Fast web search for: %s", query)
     
+    # Se la ricerca è approfondita o l'utente chiede un dossier/analisi
+    wants_deep = any(kw in ml for kw in ("ricerca", "approfondisci", "esplora", "scannerizza", "dettagli", "tutto il browser", "trova")) and not is_youtube
+
+    if wants_deep and not url_match:
+        try:
+            dossier = deep_web_search(query, max_results=5, deep_scan_top_n=3)
+            return {
+                "response": dossier.get("formatted_markdown", f"Nessun risultato per {query}"),
+                "thinking": f"🌐 Scansione profonda web eseguita: analizzate {dossier.get('results_count', 0)} fonti con estrazione contenuti live.",
+                "actions_log": [],
+                "created_files": [],
+                "error": None,
+            }
+        except Exception as exc:
+            log.debug("Deep search fallback su standard search: %s", exc)
+
     try:
-        results = _perform_web_search(query)
+        results = _perform_web_search(query, max_results=5)
     except Exception as exc:
         return {"response": f"🔍 Ricerca web fallita: {exc}", "thinking": "", "actions_log": [],
                 "created_files": [], "error": str(exc)}
@@ -1048,11 +1080,12 @@ def _try_fast_web_search(message: str):
         else:
             lines.append(f"**{i}. {title}**")
         if body:
-            lines.append(f"> {body[:300]}")
+            clean_body = body.strip().replace("\n", "\n> ")
+            lines.append(f"> {clean_body}")
         lines.append("")
     
     response = "\n".join(lines)
-    return {"response": response, "thinking": f"Ricerca web eseguita direttamente per: {query}",
+    return {"response": response, "thinking": f"Ricerca web eseguita per: {query}",
             "actions_log": [], "created_files": [], "error": None}
 
 
@@ -1464,6 +1497,25 @@ Contenuto completo...
 
         # Attached PC files
         uploaded_files = req.get("uploaded_files", [])
+
+        # Rilevamento automatico di URL nel messaggio: scansione profonda della pagina per il contesto LLM
+        url_in_msg = re.search(r"(https?://[^\s]+)", message)
+        if url_in_msg:
+            extracted_url = url_in_msg.group(1).rstrip(".,;:!?)'\"")
+            try:
+                from core.chat.web_search import deep_scan_page
+                log.info("[ChatRunner] Deep scan automatico di %s per arricchire il contesto del modello", extracted_url)
+                scanned_data = deep_scan_page(extracted_url, max_chars=12000)
+                if scanned_data.get("success") and scanned_data.get("markdown"):
+                    page_desc = scanned_data.get("description", "")
+                    desc_part = f"\n**Descrizione:** {page_desc}" if page_desc else ""
+                    volatile_parts.append(
+                        f"## 🌐 CONTENUTO ESTRATTO DALLA PAGINA WEB ({extracted_url}):\n"
+                        f"**Titolo:** {scanned_data.get('title', extracted_url)}{desc_part}\n\n"
+                        f"### Contenuto della pagina:\n{scanned_data['markdown']}"
+                    )
+            except Exception as web_scan_err:
+                log.debug("[ChatRunner] Scansione web per URL in chat fallita: %s", web_scan_err)
         if uploaded_files:
             for uf in uploaded_files:
                 if isinstance(uf, dict):

@@ -139,7 +139,23 @@ class RilevatoreCicli:
         if percorso is None:
             self._fallite.clear()
             return
-        self._fallite = {k: v for k, v in self._fallite.items() if v != percorso}
+        p_clean = str(percorso).replace("\\", "/").strip().lower()
+        p_base = os.path.basename(p_clean)
+        self._fallite = {
+            k: v for k, v in self._fallite.items()
+            if not (v and (v.replace("\\", "/").strip().lower() == p_clean or os.path.basename(str(v).replace("\\", "/").strip().lower()) == p_base))
+        }
+
+    def file_letto(self, percorso: Optional[str] = None) -> None:
+        """Un file e' stato letto: le chiamate fallite di modifica su quel file possono essere ritentate con cognizione."""
+        if not percorso:
+            return
+        p_clean = str(percorso).replace("\\", "/").strip().lower()
+        p_base = os.path.basename(p_clean)
+        self._fallite = {
+            k: v for k, v in self._fallite.items()
+            if not (v and (v.replace("\\", "/").strip().lower() == p_clean or os.path.basename(str(v).replace("\\", "/").strip().lower()) == p_base))
+        }
 
     def registra_inerte(self, tool: str, params: Any) -> None:
         self._inerti.add(firma(tool, params, self.radice))
@@ -147,6 +163,23 @@ class RilevatoreCicli:
     # -- interrogazione -----------------------------------------------------
 
     def gia_fallita(self, tool: str, params: Any) -> bool:
+        if tool in ("edit_file", "write_file", "append_file"):
+            # Se la chiamata precedente era read_file per questo stesso file, non e' un tentativo cieco ripetuto
+            if self._finestra:
+                prev_tool, prev_corpo, prev_ok = self._finestra[-1]
+                if prev_tool in ("read_file", "read_file_window") and prev_ok:
+                    target = _percorso_toccato(params, self.radice)
+                    prev_target = ""
+                    try:
+                        import json
+                        prev_target = json.loads(prev_corpo).get("path", "")
+                    except Exception:
+                        pass
+                    if target and prev_target:
+                        t1 = target.replace("\\", "/").lower()
+                        t2 = prev_target.replace("\\", "/").lower()
+                        if t1 == t2 or os.path.basename(t1) == os.path.basename(t2):
+                            return False
         return firma(tool, params, self.radice) in self._fallite
 
     def gia_inerte(self, tool: str, params: Any) -> bool:

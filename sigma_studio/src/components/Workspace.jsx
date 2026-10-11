@@ -339,9 +339,9 @@ export default function Workspace({
         </React.Suspense>
       );
     }
-    if (tab.type === 'developer_studio' || tab.type === 'developer_lab') {
+    if (tab.type === 'developer_studio' || tab.type === 'developer_lab' || tab.type === 'developer' || tab.type === 'dev') {
       const isDevInstalled = modulesState.sigma_developer_lab === true;
-      const LazyDev = getLazyModule('developer_studio') || getLazyModule('developer_lab');
+      const LazyDev = getLazyModule('developer_studio') || getLazyModule('developer_lab') || getLazyModule('developer');
       if (!isDevInstalled || !LazyDev) {
         return <ModuleNotInstalled tabType="developer_studio" openTab={openTab} />;
       }

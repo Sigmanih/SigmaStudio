@@ -22,19 +22,18 @@ function appendAndSave(sid, msg, setFn) {
 export function stripLiveToolBlocks(text) {
   if (!text) return '';
   let cleaned = text;
-  // 1. Rimuove blocchi recintati completi o aperti (1-6 backtick) con sigma-tool, tool o mcp
-  cleaned = cleaned.replace(/`{1,6}\s*(?:sigma-tool|tool:?|mcp)?\s*\n*\{[\s\S]*?`{1,6}/gi, '');
-  cleaned = cleaned.replace(/`{1,6}\s*(?:sigma-tool|tool:?|mcp)[\s\S]*?`{1,6}/gi, '');
+  // 1. Rimuove blocchi recintati completi o aperti di tool (es. ```tool:write_file ...)
+  cleaned = cleaned.replace(/`{1,6}\s*(?:sigma-tool|tool:\w+|mcp)\s*\n*\{[\s\S]*?`{1,6}/gi, '');
+  cleaned = cleaned.replace(/`{1,6}\s*(?:sigma-tool|tool:\w+|mcp)[\s\S]*?`{1,6}/gi, '');
   cleaned = cleaned.replace(/`{1,6}\s*sigma-tool[\s\S]*?(?:`{1,6}|$)/gi, '');
   // 2. Rimuove payload JSON tool nudi: {"tool": "...", "arguments": ...}
   cleaned = cleaned.replace(/\{\s*"tool"\s*:\s*"[^"]*"[\s\S]*?\}/gi, '');
   // 3. Rimuove tag XML completi o aperti di chiamata tool
   cleaned = cleaned.replace(/<(?:tool_call|tool|action)>[\s\S]*?<\/(?:tool_call|tool|action)>/gi, '');
   cleaned = cleaned.replace(/<(?:tool_call|tool|action)>[\s\S]*$/gi, '');
-  // 4. Rimuove frammenti residui di sigma-tool o JSON aperti a fine stream in-flight
-  cleaned = cleaned.replace(/`{1,6}\s*(?:sigma-tool|tool:?|mcp)[\s\S]*$/gi, '');
+  // 4. Rimuove frammenti residui di tool a fine stream in-flight
+  cleaned = cleaned.replace(/`{1,6}\s*(?:sigma-tool|tool:\w+|mcp)[\s\S]*$/gi, '');
   cleaned = cleaned.replace(/\{\s*"tool"\s*:\s*"[^"]*"[\s\S]*$/gi, '');
-  cleaned = cleaned.replace(/`{1,6}$/g, '');
   return cleaned;
 }
 
@@ -57,18 +56,18 @@ function cleanModelTags(text) {
   // 2. Remove "Here's a thinking process:" and English self-analysis blocks
   cleaned = cleaned.replace(/^(?:We\s+need\s+to|We\s+must|Need\s+(?:maybe|to|include|ensure)|Let'?s\s+(?:craft|think|final|structure)|Let\s+me\s+think|The\s+instruction:|Potential\s+issue:|Here'?s\s+a\s+thinking\s+process|Analyze\s+User\s+Input|Determine\s+Output\s+Structure|Draft\s+Content|Self-Correction|Execution|Plan|Requirements\s+from\s+System\s+Prompt)[\s\S]*?(?=\n#|\nEcco|\n1️⃣|\n[A-ZÀ-Ü]|\n\{|\n\n|\Z)/gi, '');
   cleaned = cleaned.replace(/^(?:-\s*(?:Request|Language|Domain|Requirements|Identity|Rules|Structure):[^\n]*\n)+/gi, '');
-  cleaned = cleaned.replace(/\n*📁\s+\*\*File creati e salvati su disco:\*\*[\s\S]*$/gi, '');
-  cleaned = cleaned.replace(/\n*###\s+📋\s+Sintesi dei Contenuti Generati[\s\S]*?(?=\n\n|\Z)/gi, '');
 
-  // 3. Extract "response" value if raw JSON object string was outputted by LLM
-  if (cleaned.trim().startsWith('{') && cleaned.includes('"response"')) {
+  // 3. Extract "summary" or "response" value if raw JSON object string was outputted by LLM
+  if (cleaned.trim().startsWith('{') && (cleaned.includes('"summary"') || cleaned.includes('"response"'))) {
     try {
       const parsed = JSON.parse(cleaned.trim());
-      if (parsed.response && typeof parsed.response === 'string') {
+      if (parsed.summary && typeof parsed.summary === 'string') {
+        cleaned = parsed.summary;
+      } else if (parsed.response && typeof parsed.response === 'string') {
         cleaned = parsed.response;
       }
     } catch (e) {
-      const match = cleaned.match(/"response"\s*:\s*"([\s\S]*?)"\s*,\s*"thinking"/);
+      const match = cleaned.match(/"(?:summary|response)"\s*:\s*"([\s\S]*?)"(?:\s*,\s*"(?:thinking|criteria|status)"|\s*\})/);
       if (match && match[1]) {
         cleaned = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
       }
@@ -126,7 +125,7 @@ export function useChatStreaming({
   const [expandedThinking, setExpandedThinking] = useState({});
   const [autoScroll, setAutoScroll] = useState(true);
   const [webSearch, setWebSearch] = useState(false);
-  const [loopMaxIterations, setLoopMaxIterations] = useState(25);
+  const [loopMaxIterations, setLoopMaxIterations] = useState(999);
   const [loopIteration, setLoopIteration] = useState(0);
   const [loopActive, setLoopActive] = useState(false);
   const [actionStrategy, setActionStrategy] = useState('bilanciata');
@@ -570,8 +569,8 @@ export function useChatStreaming({
               streamActionsLog = [...streamActionsLog, fileAct];
             }
             if (p.type === 'goal_complete') {
-              if (p.summary && (!fullText || !fullText.includes(p.summary))) {
-                fullText = fullText ? `${fullText}\n\n${p.summary}` : p.summary;
+              if (p.summary) {
+                fullText = p.summary;
               }
               streamDone = true;
             }
@@ -1138,6 +1137,7 @@ export function useChatStreaming({
           model: effectiveModel,
           auto_execute_tools: true,
           context_tokens: quickConfig.context_tokens || 32768,
+          max_turns: (loopMaxIterations === 999 || loopMaxIterations >= 100 || devModeEnabled) ? 1000 : (loopMaxIterations > 1 ? loopMaxIterations * 10 : 500),
           session_id: currentSessionId,
           review_writes: false,
           isolate_worktree: false,

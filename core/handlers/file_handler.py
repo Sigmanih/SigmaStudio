@@ -17,6 +17,10 @@ def _resolve_real_file_path(path: str) -> str:
     if clean.startswith('./data/'):
         clean = clean[2:]
     
+    # Se il file esiste direttamente su disco (sia percorso assoluto che relativo), restituiscilo subito
+    if os.path.isfile(clean):
+        return clean
+    
     # Normalize path formatting
     clean = re.sub(r'/(?:[0-9]{2}|\.\.)_\.\.\./', '/', clean)
     clean = re.sub(r'/(?:[0-9]{2}|\.\.)_\.\.\.', '', clean)

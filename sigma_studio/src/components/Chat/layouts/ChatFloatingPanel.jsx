@@ -70,88 +70,93 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
       {/* Animated Translucent Cyber Space Background Canvas (stesso di MCP Tools) */}
       <TechSpaceCanvas isLight={theme === 'light'} />
 
+      {(() => {
+        const agentState = core.loading 
+          ? (core.actionsLog?.some(a => !a.done && (String(a.tool || a.type).includes('web') || String(a.tool || a.type).includes('browse'))) ? 'browsing'
+             : core.actionsLog?.some(a => !a.done) ? 'executing' 
+             : 'thinking')
+          : 'idle';
+        return (
+          <ChatHeader
+            isPanel={true}
+            agentState={agentState}
+            isDragging={isDragging}
+            onStartDrag={startDrag}
+            onNewSession={handleNewSession}
+            onOpenConfig={onOpenConfig}
+            onClose={onClose}
+            contextStats={core.contextStats}
+            onCopyAll={() => {
+              const msgs = core.messages || [];
+              if (msgs.length === 0) return;
+              const formatted = msgs.map(m => {
+                const role = m.role === 'user' ? '👤 Tu' : `🤖 ${m.agentRole || m.agentName || 'AI'}`;
+                const parts = [];
 
-      <ChatHeader
-        isPanel={true}
-        isDragging={isDragging}
-        onStartDrag={startDrag}
-        onNewSession={handleNewSession}
-        onOpenConfig={onOpenConfig}
-        onClose={onClose}
-        contextStats={core.contextStats}
-        onCopyAll={() => {
-          const msgs = core.messages || [];
-          if (msgs.length === 0) return;
-          const formatted = msgs.map(m => {
-            const role = m.role === 'user' ? '👤 Tu' : `🤖 ${m.agentRole || m.agentName || 'AI'}`;
-            const parts = [];
+                if (m.thinking && typeof m.thinking === 'string' && m.thinking.trim()) {
+                  parts.push(`💭 RAGIONAMENTO:\n${m.thinking.trim()}`);
+                }
 
-            // 1. Ragionamento / Thinking
-            if (m.thinking && typeof m.thinking === 'string' && m.thinking.trim()) {
-              parts.push(`💭 RAGIONAMENTO:\n${m.thinking.trim()}`);
-            }
+                const tools = m.tools || m.tool_calls || m.actions || [];
+                if (Array.isArray(tools) && tools.length > 0) {
+                  const toolLines = tools.map((t, i) => {
+                    const name = t.name || t.tool || `Tool #${i + 1}`;
+                    const args = t.arguments || t.args || t.input;
+                    const argsStr = args ? (typeof args === 'string' ? args : JSON.stringify(args)) : '';
+                    const result = t.output || t.result || t.response;
+                    const resStr = result ? ` -> ${typeof result === 'string' ? result : JSON.stringify(result)}` : '';
+                    return `⚙️ Azione: ${name}${argsStr ? ` (${argsStr})` : ''}${resStr}`;
+                  }).join('\n');
+                  parts.push(`🔧 STRUMENTI E AZIONI:\n${toolLines}`);
+                }
 
-            // 2. Div Azioni / Tools
-            const tools = m.tools || m.tool_calls || m.actions || [];
-            if (Array.isArray(tools) && tools.length > 0) {
-              const toolLines = tools.map((t, i) => {
-                const name = t.name || t.tool || `Tool #${i + 1}`;
-                const args = t.arguments || t.args || t.input;
-                const argsStr = args ? (typeof args === 'string' ? args : JSON.stringify(args)) : '';
-                const result = t.output || t.result || t.response;
-                const resStr = result ? ` -> ${typeof result === 'string' ? result : JSON.stringify(result)}` : '';
-                return `⚙️ Azione: ${name}${argsStr ? ` (${argsStr})` : ''}${resStr}`;
-              }).join('\n');
-              parts.push(`🔧 STRUMENTI E AZIONI:\n${toolLines}`);
-            }
+                if (m.content && typeof m.content === 'string' && m.content.trim()) {
+                  parts.push(m.content.trim());
+                }
 
-            // 3. Contenuto principale
-            if (m.content && typeof m.content === 'string' && m.content.trim()) {
-              parts.push(m.content.trim());
-            }
+                const metrics = m.metrics || {};
+                const tps = metrics.tokens_per_second ?? m.tps;
+                const ttft = metrics.routing_time_ms ?? m.ttft_ms ?? metrics.ttft_ms;
+                const tokens = metrics.token_count ?? m.tokens ?? metrics.tokens;
+                const dur = m.duration_s ?? (metrics.generation_time_ms ? (metrics.generation_time_ms / 1000).toFixed(2) : null);
 
-            // 4. Metriche di prestazione (tps, ttft, token, durata)
-            const metrics = m.metrics || {};
-            const tps = metrics.tokens_per_second ?? m.tps;
-            const ttft = metrics.routing_time_ms ?? m.ttft_ms ?? metrics.ttft_ms;
-            const tokens = metrics.token_count ?? m.tokens ?? metrics.tokens;
-            const dur = m.duration_s ?? (metrics.generation_time_ms ? (metrics.generation_time_ms / 1000).toFixed(2) : null);
+                const metricParts = [];
+                if (tps) metricParts.push(`⚡ ${tps} t/s`);
+                if (ttft !== undefined && ttft !== null) metricParts.push(`⏱️ TTFT: ${Math.round(ttft)}ms`);
+                if (tokens) metricParts.push(`🔢 Token: ${tokens}`);
+                if (dur) metricParts.push(`🕒 Durata: ${dur}s`);
 
-            const metricParts = [];
-            if (tps) metricParts.push(`⚡ ${tps} t/s`);
-            if (ttft !== undefined && ttft !== null) metricParts.push(`⏱️ TTFT: ${Math.round(ttft)}ms`);
-            if (tokens) metricParts.push(`🔢 Token: ${tokens}`);
-            if (dur) metricParts.push(`🕒 Durata: ${dur}s`);
+                if (metricParts.length > 0) {
+                  parts.push(`📊 METRICHE: ${metricParts.join(' | ')}`);
+                }
 
-            if (metricParts.length > 0) {
-              parts.push(`📊 METRICHE: ${metricParts.join(' | ')}`);
-            }
+                if (parts.length === 0) return null;
+                return `${role}:\n${parts.join('\n\n')}`;
+              }).filter(Boolean).join('\n\n---\n\n');
 
-            if (parts.length === 0) return null;
-            return `${role}:\n${parts.join('\n\n')}`;
-          }).filter(Boolean).join('\n\n---\n\n');
-
-          if (formatted) {
-            navigator.clipboard.writeText(formatted);
-          }
-        }}
-        onExportPdf={() => {
-          const msgs = core.messages || [];
-          if (msgs.length === 0) {
-            if (addToast) addToast('Nessun messaggio da salvare in PDF', 'warning');
-            return;
-          }
-          const currentSession = core.sessions.find(s => s.id === core.activeSessionId) || {
-            name: 'Conversazione AI',
-            model: core.selectedModel
-          };
-          exportChatPdf({
-            session: currentSession,
-            messages: msgs,
-            selectedModel: core.selectedModel
-          });
-        }}
-      />
+              if (formatted) {
+                navigator.clipboard.writeText(formatted);
+              }
+            }}
+            onExportPdf={() => {
+              const msgs = core.messages || [];
+              if (msgs.length === 0) {
+                if (addToast) addToast('Nessun messaggio da salvare in PDF', 'warning');
+                return;
+              }
+              const currentSession = core.sessions.find(s => s.id === core.activeSessionId) || {
+                name: 'Conversazione AI',
+                model: core.selectedModel
+              };
+              exportChatPdf({
+                session: currentSession,
+                messages: msgs,
+                selectedModel: core.selectedModel
+              });
+            }}
+          />
+        );
+      })()}
 
       <div className="chat-body" style={{ flex: 1, minHeight: 0 }}>
         <ChatMessages

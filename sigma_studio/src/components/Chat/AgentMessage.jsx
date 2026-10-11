@@ -345,8 +345,11 @@ export default function AgentMessage({
       localStorage.setItem('sigma_dev_pending_open_file', clean);
     } catch (e) { }
     window.dispatchEvent(new CustomEvent('sigma_dev_open_file', { detail: { path: clean } }));
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('sigma_dev_open_file', { detail: { path: clean } }));
+    }, 150);
     if (openTab) {
-      openTab({ name: 'Developer Studio' }, 'developer');
+      openTab({ name: 'Developer Studio', title: 'Developer Studio' }, 'developer_studio');
     }
   };
 

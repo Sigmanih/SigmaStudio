@@ -24,7 +24,7 @@ mermaid.initialize({
 function detectFileType(path) {
   if (!path) return 'teoria';
   const p = path.toLowerCase();
-  if (p.endsWith('.py')) return 'scripts';
+  if (p.endsWith('.py') || p.endsWith('.jsx') || p.endsWith('.js') || p.endsWith('.tsx') || p.endsWith('.ts') || p.endsWith('.css') || p.endsWith('.json') || p.endsWith('.sh') || p.endsWith('.bat') || p.endsWith('.rs') || p.endsWith('.c') || p.endsWith('.cpp')) return 'scripts';
   if (p.endsWith('.html') || p.includes('/viz/')) return 'viz';
   if (p.includes('/scripts/') || p.includes('/test/')) return 'scripts';
   if (p.includes('/docs/')) {

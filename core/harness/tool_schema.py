@@ -136,6 +136,10 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
        "fallisce: quello vuol dire che il lavoro non e' finito.",
        {"command": _STRINGA, "reason": _STRINGA},
        ["command", "reason"]),
+    _f("web_search", "Cerca sul web informazioni, librerie e documentazione tecnica con scansione profonda.",
+       {"query": _STRINGA, "deep_scan": {"type": "boolean"}, "limit": _INTERO}, ["query"]),
+    _f("web_browse", "Visita una pagina web o documentazione online ed estrae il contenuto pulito in Markdown strutturato con sezioni e link.",
+       {"url": _STRINGA, "max_chars": _INTERO}, ["url"]),
     _f("complete_goal", "Dichiara finito il lavoro. Per richieste esplicative, panoramiche o domande dell'utente, il campo summary DEVE contenere la risposta e spiegazione ricca, dettagliata ed esaustiva da presentare all'utente in chat. Per compiti di programmazione, contiene il riassunto delle modifiche e verifiche.",
        {"summary": _STRINGA,
         "criteria": {"type": "array", "items": {

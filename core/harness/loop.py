@@ -1605,20 +1605,18 @@ def _salva_corpo_prosa(raw_body: str, tool_name: str) -> Optional[Dict[str, Any]
         return None
     taglio = raw_body.find(":")
     if taglio == -1:
-        return None
+        testo = raw_body.strip().lstrip("\"{'\n\r\t ").rstrip("\"}'\n\r\t ")
+        return {"summary": testo} if testo else None
     resto = raw_body[taglio + 1:].strip()
-    if not resto or resto[0] not in "\"'":
+    if not resto:
         return None
-    testo = resto[1:]
-    # Si taglia all'ULTIMA virgoletta, non alla prima: una virgoletta dentro la
-    # prosa e' esattamente il motivo per cui siamo qui.
-    ultima = max(testo.rfind('"'), testo.rfind("'"))
-    if ultima > 0:
-        testo = testo[:ultima]
+    testo = resto.lstrip("\"{'\n\r\t ")
+    # Rimuovi l'eventuale chiusura JSON/virgoletta finale senza troncare il testo a metà
+    testo = testo.rstrip("\"}'\n\r\t ")
     for sequenza, carattere in (("\\n", "\n"), ("\\r", "\r"), ("\\t", "\t"),
                                 ('\\"', '"'), ("\\'", "'"), ("\\\\", "\\")):
         testo = testo.replace(sequenza, carattere)
-    testo = testo.strip().rstrip("}").strip()
+    testo = testo.strip()
     return {"summary": testo} if testo else None
 
 
@@ -1736,22 +1734,56 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
 
     # 1. Matches ```tool:name ... ```
     # Il recinto deve stare a INIZIO RIGA o seguire immediatamente un tag di pensiero.
-    tool_named_block = re.compile(
-        r"(?:^|\n|</?(?:think|thinking|thought)>)[ \t]*`{2,4}tool:(\w+)\s*([\s\S]*?)`{2,4}",
+    tool_named_header = re.compile(
+        r"(?:^|\n|</?(?:think|thinking|thought)>)[ \t]*`{2,4}tool:(\w+)[ \t]*\n?",
         re.IGNORECASE,
     )
-    for match in tool_named_block.finditer(text):
+    pos = 0
+    while True:
+        match = tool_named_header.search(text, pos)
+        if not match:
+            break
         tool_name = match.group(1).lower()
-        body = match.group(2)
+        start_body = match.end()
+        raw_block_start = match.start()
+
+        fence_matches = list(re.finditer(r"(?:\n|^)[ \t]*`{2,4}[ \t]*(?:\n|$)", text[start_body:]))
+        body = None
+        raw_block_end = len(text)
+        if fence_matches:
+            for fm in fence_matches:
+                cand = text[start_body : start_body + fm.start()].strip()
+                if _loads_forgiving(cand) is not None:
+                    body = cand
+                    raw_block_end = start_body + fm.end()
+                    pos = raw_block_end
+                    break
+            if body is None:
+                for fm in reversed(fence_matches):
+                    cand = text[start_body : start_body + fm.start()].strip()
+                    if cand.count("{") == cand.count("}") and cand.count("{") > 0:
+                        body = cand
+                        raw_block_end = start_body + fm.end()
+                        pos = raw_block_end
+                        break
+            if body is None:
+                fm = fence_matches[-1]
+                body = text[start_body : start_body + fm.start()].strip()
+                raw_block_end = start_body + fm.end()
+                pos = raw_block_end
+        else:
+            body = text[start_body:].strip()
+            raw_block_end = len(text)
+            pos = len(text)
+
         intestazione, corpo = _separa_corpo_grezzo(body)
         chiave = _CORPO_GREZZO.get(tool_name)
         if chiave and corpo is not None:
-            # Il corpo e il contenuto del file, non JSON: si prende com e.
             params = normalize_tool_params(intestazione or body, tool_name)
             params[chiave] = corpo
         else:
             params = normalize_tool_params(body, tool_name)
-        tools.append({"tool": tool_name, "params": params, "raw_block": match.group(0)})
+        tools.append({"tool": tool_name, "params": params, "raw_block": text[raw_block_start:raw_block_end]})
 
     # 2. Matches ```tool\n...``` or ```json\n{"tool": "..."}``` or ```json\n{"action": "..."}```
     if not tools:
@@ -2363,6 +2395,32 @@ def _execute_admin_tool_impl(
         )
         return {"tool": "screenshot", "url": url, **res}
 
+    elif tool_name in ("web_search", "search_web", "cerca_web"):
+        from core.chat.web_search import deep_web_search, _perform_web_search
+        query = params.get("query") or params.get("cerca") or params.get("q") or ""
+        deep = bool(params.get("deep_scan", True))
+        limit = int(params.get("limit") or params.get("max_results") or 5)
+        if deep:
+            dossier = deep_web_search(query, max_results=limit, deep_scan_top_n=3)
+            return {
+                "tool": "web_search",
+                "query": query,
+                "success": True,
+                "results_count": dossier.get("results_count", 0),
+                "summary": dossier.get("summary", ""),
+                "results": dossier.get("results", []),
+                "formatted": dossier.get("formatted_markdown", ""),
+            }
+        results = _perform_web_search(query, max_results=limit)
+        return {"tool": "web_search", "query": query, "success": True, "results": results}
+
+    elif tool_name in ("web_browse", "browse_web", "read_web_page", "fetch_web_page"):
+        from core.chat.web_search import deep_scan_page
+        url = params.get("url") or params.get("indirizzo") or ""
+        max_chars = int(params.get("max_chars") or 8000)
+        res = deep_scan_page(url, max_chars=max_chars, extract_links=True)
+        return {"tool": "web_browse", "url": url, **res}
+
     elif tool_name in ("glob", "find_files", "glob_files"):
         pattern = params.get("pattern") or params.get("glob") or params.get("raw") or "**/*"
         raw_path = params.get("path") or "."
@@ -2715,7 +2773,7 @@ def _stream_agent_turn_impl(
     model_name: Optional[str] = None,
     temperature: float = 0.3,
     auto_execute_tools: bool = True,
-    max_turns: int = 30,
+    max_turns: int = 500,
     should_cancel: Optional[Callable[[], bool]] = None,
     system_prompt_override: Optional[str] = None,
     current_pipeline: Optional[List[Dict[str, Any]]] = None,
@@ -3917,14 +3975,9 @@ def _stream_agent_turn_impl(
                         ),
                     }
                     turn_gave_direction = True
-                    # Senza questo, la stessa chiamata rifiutata tornava
-                    # identica all'infinito: il percorso di rifiuto esce dal
-                    # ciclo prima del punto in cui le firme fallite vengono
-                    # registrate, e un run e' finito con ventitre edit_file
-                    # identici di fila.
-                    failed_call_signatures.add(
-                        (t_name, json.dumps(t_params, sort_keys=True, default=str)[:600])
-                    )
+                    # Il rifiuto per mancata lettura precedente non deve essere registrato in
+                    # failed_call_signatures, altrimenti dopo che l'agente ha eseguito read_file
+                    # la chiamata di edit verrebbe respinta come "gia' effettuata e fallita".
                     ledger.record_tool(t_name, t_params, result)
                     yield {"type": "tool_result", "tool": t_name, "result": result}
                     yield {"type": "ledger", "state": ledger.snapshot()}
@@ -4206,7 +4259,14 @@ def _stream_agent_turn_impl(
                 failed_call_signatures.clear()
                 rilevatore.workspace_cambiato()
             if t_name == "read_file" and result.get("success") and result.get("path"):
-                reads_this_turn.append(str(result["path"]))
+                p_letto = str(result["path"])
+                reads_this_turn.append(p_letto)
+                rilevatore.file_letto(p_letto)
+                # Pulisce firme fallite relative al file letto, permettendo modifiche informate
+                failed_call_signatures = {
+                    s for s in failed_call_signatures
+                    if not (s[0] in ("edit_file", "write_file", "append_file") and p_letto in s[1])
+                }
             # Una scrittura invalida la lettura precedente dello stesso file
             # tanto quanto una rilettura. Senza questo, la vecchia copia
             # restava nel transcritto e la guardia "lo hai gia' letto"
@@ -4216,7 +4276,13 @@ def _stream_agent_turn_impl(
             if (result.get("success")
                     and t_name in ("write_file", "edit_file", "append_file", "restore_file")
                     and result.get("path")):
-                reads_this_turn.append(str(result["path"]))
+                p_scritto = str(result["path"])
+                reads_this_turn.append(p_scritto)
+                rilevatore.file_letto(p_scritto)
+                failed_call_signatures = {
+                    s for s in failed_call_signatures
+                    if not (s[0] in ("edit_file", "write_file", "append_file") and p_scritto in s[1])
+                }
             if result.get("success") and t_name in ("list_dir", "list_directory", "ls", "glob",
                                                      "search_code", "grep"):
                 inert_call_signatures.add(firma_inerte)
@@ -4343,6 +4409,7 @@ def _stream_agent_turn_impl(
                         if evidenze_dettagliate and any(k in summary_text.lower() for k in ("ho letto", "panoramica", "completat", "basat")):
                             summary_text = f"{summary_text}\n\n" + "\n\n".join(f"- {e}" for e in evidenze_dettagliate)
 
+                    full_text = summary_text
                     yield {
                         "type": "goal_complete",
                         "summary": summary_text,
@@ -4432,6 +4499,10 @@ def _stream_agent_turn_impl(
                     if not result.get("success")
                     else f"{obs_str}{describe_screenshot(result)}"
                 )
+            elif t_name == "web_search":
+                obs_str += f"Tool 'web_search': {result.get('summary', '')}\n{result.get('formatted', '')}\n"
+            elif t_name == "web_browse":
+                obs_str += f"Tool 'web_browse': Pagina '{result.get('title', '')}' ({result.get('url', '')})\n{result.get('markdown', '')[:3000]}\n"
             elif t_name == "append_file":
                 if not result.get("success"):
                     obs_str = f"Tool 'append_file' fallito: {result.get('error')}\n"
@@ -4631,7 +4702,10 @@ def _stream_agent_turn_impl(
                     f"{goal_reminder}\n\n"
                     "NON scrivere premesse a vuoto: emetti il PROSSIMO "
                     "blocco tool necessario per avanzare verso l'obiettivo, e "
-                    "nient'altro. Quando tutto e fatto e verificato, emetti "
+                    "nient'altro. Continua ad eseguire tutti i task pianificati (inclusi comandi terminale, "
+                    "costruzione/avvio Docker, configurazioni e verifiche) fino a completamento totale. "
+                    "Non fermarti a meta' percorso: continua finche' l'intero obiettivo non e' realizzato. "
+                    "Quando tutto e fatto, avviato e verificato, emetti "
                     "complete_goal con la spiegazione completa nel summary."
                 )
         observation_prompt = (
@@ -4822,10 +4896,9 @@ def _stream_agent_turn_impl(
     except Exception as exc:  # il resoconto non deve poter far fallire un run
         log.debug("[Resoconto] non prodotto: %s", exc)
 
-    # Se il modello e' uscito senza emettere testo conversazionale (es. turni esauriti
-    # su un blocco tool o troncamento), generiamo una sintesi informativa
-    # sui dati raccolti per non lasciare mai l'utente con "Nessuna risposta".
-    if not (full_text or "").strip() or (full_text or "").strip().startswith("```tool:") or _THINK_BLOCK_RE.sub("", full_text or "").strip().startswith("```tool:"):
+    if goal_reached and (full_text or "").strip():
+        pass
+    elif not (full_text or "").strip() or (full_text or "").strip().startswith("```tool:") or _THINK_BLOCK_RE.sub("", full_text or "").strip().startswith("```tool:"):
         letti = list(getattr(ledger, "read_files", []) or [])
         if letti:
             linee_file = "\n".join(f"- `{f}`" for f in letti[:20])

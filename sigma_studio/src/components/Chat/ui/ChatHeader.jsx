@@ -1,10 +1,11 @@
 import React from 'react';
 import { Settings, MessageSquare, Plus, Download } from 'lucide-react';
+import ThinkingOrb from '../../common/ThinkingOrb';
 
 export default function ChatHeader({
   isDragging, onStartDrag,
   onOpenConfig, onClose, isPanel = false, contextStats, onCopyAll,
-  onNewSession, onExportPdf
+  onNewSession, onExportPdf, agentState = 'idle'
 }) {
   const [copiedAll, setCopiedAll] = React.useState(false);
 
@@ -53,6 +54,9 @@ export default function ChatHeader({
         <span className="chat-header-title" style={{ fontSize: '0.80rem', fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.2px' }}>
           Chat AI
         </span>
+
+        {/* Ambient Thinking Orb */}
+        <ThinkingOrb state={agentState} size={18} showLabel={agentState !== 'idle'} />
 
         {/* Tastino laterale Nuova Conversazione */}
         {onNewSession && (

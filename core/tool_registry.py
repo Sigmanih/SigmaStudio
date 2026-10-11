@@ -218,18 +218,44 @@ def _register_builtin_tools():
         category="filesystem",
     ))
 
+    def _handle_web_search(query: str, max_results: int = 5, deep_scan: bool = True):
+        from core.chat.web_search import deep_web_search, _perform_web_search
+        if deep_scan:
+            return deep_web_search(query, max_results=max_results, deep_scan_top_n=3)
+        return _perform_web_search(query, max_results=max_results)
+
+    def _handle_web_browse(url: str, max_chars: int = 8000):
+        from core.chat.web_search import deep_scan_page
+        return deep_scan_page(url, max_chars=max_chars, extract_links=True)
+
     register_tool(AgentTool(
         name="web_search",
-        description="Cerca informazioni sul web (DuckDuckGo + Wikipedia)",
+        description="Cerca informazioni sul web con scansione e sintesi profonda delle pagine (DuckDuckGo, Wikipedia, deep scan)",
         parameters={
             "type": "object",
             "required": ["query"],
             "properties": {
                 "query": {"type": "string", "description": "Query di ricerca"},
                 "max_results": {"type": "integer", "description": "Numero massimo di risultati (default 5)"},
+                "deep_scan": {"type": "boolean", "description": "Se vero, scannerizza i contenuti live delle pagine primarie"},
             }
         },
-        handler=lambda **kw: kw,
+        handler=_handle_web_search,
+        category="general",
+    ))
+
+    register_tool(AgentTool(
+        name="web_browse",
+        description="Visita un URL web o documentazione online, renderizza il DOM ed estrae il contenuto pulito in Markdown strutturato con sezioni e link",
+        parameters={
+            "type": "object",
+            "required": ["url"],
+            "properties": {
+                "url": {"type": "string", "description": "URL completo della pagina web"},
+                "max_chars": {"type": "integer", "description": "Numero massimo di caratteri (default 8000)"},
+            }
+        },
+        handler=_handle_web_browse,
         category="general",
     ))
 

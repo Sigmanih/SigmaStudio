@@ -110,7 +110,7 @@ ROLE_ARCHITECT = DevRole(
     max_turns=12,
     tools=(
         "list_dir", "glob", "read_file", "search_code", "pipeline",
-        "queue_add", "git_status", "git_log",
+        "queue_add", "git_status", "git_log", "web_search", "web_browse",
     ),
     focus_areas=(
         "architettura del codice", "contratto API e schema dati", "design system e layout",
@@ -150,6 +150,7 @@ ROLE_CODER = DevRole(
     tools=(
         "read_file", "edit_file", "write_file", "search_code", "terminal",
         "list_dir", "glob", "delete", "screenshot", "find_symbol",
+        "web_search", "web_browse",
     ),
     focus_areas=(
         "implementazione corretta", "design ed estetica moderna", "coerenza contrattuale API",

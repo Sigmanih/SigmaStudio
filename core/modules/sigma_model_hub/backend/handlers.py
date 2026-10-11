@@ -604,9 +604,15 @@ def handle_models_local_list(self):
             else:
                 m["publisher"] = raw_author or "Altro"
 
-            # Re-evaluate family and category with full publication context
-            from core.modules.sigma_model_hub.backend.model_inventory import detect_family_and_category
+            # Re-evaluate family, category and task_type with full publication context
+            from core.modules.sigma_model_hub.backend.model_inventory import detect_family_and_category, detect_task_type
             family, category = detect_family_and_category(
+                name=raw_name,
+                architecture=m.get("architecture") or "",
+                author=m.get("publisher") or m.get("author") or "",
+                is_multimodal=m.get("is_multimodal", False)
+            )
+            task_type, task_label = detect_task_type(
                 name=raw_name,
                 architecture=m.get("architecture") or "",
                 author=m.get("publisher") or m.get("author") or "",
@@ -614,6 +620,8 @@ def handle_models_local_list(self):
             )
             m["family"] = family
             m["category"] = category
+            m["task_type"] = m.get("task_type") or task_type
+            m["task_label"] = m.get("task_label") or task_label
 
         self.send_json_response({"success": True, "models": models})
     except Exception as e:

@@ -27,7 +27,11 @@ log = get_logger(__name__)
 # Launched from the drive root, the whole boundary moved there with it, and a
 # request for "data/notes.md" resolved to a path outside the installation that
 # the sandbox then authorised, believing it was inside.
-_PROJECT_ROOT: pathlib.Path = pathlib.Path(__file__).resolve().parent.parent
+try:
+    from core.paths import project_root
+    _PROJECT_ROOT: pathlib.Path = project_root()
+except Exception:
+    _PROJECT_ROOT: pathlib.Path = pathlib.Path(__file__).resolve().parent.parent.parent
 
 # ---------------------------------------------------------------------------
 # Whitelists
@@ -88,11 +92,14 @@ def is_path_allowed(path: str) -> bool:
         return False
 
     # Normalise backslashes so pathlib parses Windows paths correctly
-    normalised = path.replace("\\", "/")
+    normalised = path.replace("\\", "/").strip()
 
     try:
-        # Build absolute candidate path relative to the project root
-        candidate = (_PROJECT_ROOT / normalised).resolve()
+        p_obj = pathlib.Path(normalised)
+        if p_obj.is_absolute():
+            candidate = p_obj.resolve()
+        else:
+            candidate = (_PROJECT_ROOT / normalised).resolve()
     except (OSError, ValueError) as exc:
         log.warning("Cannot resolve path %r: %s", path, exc)
         return False

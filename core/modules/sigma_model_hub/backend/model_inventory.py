@@ -144,6 +144,87 @@ def detect_family_and_category(name: str, architecture: str = "", author: str = 
     return family, category
 
 
+def detect_task_type(
+    name: str,
+    architecture: str = "",
+    author: str = "",
+    is_multimodal: bool = False,
+    config_dict: Optional[Dict[str, Any]] = None
+) -> tuple[str, str]:
+    """Rileva la modalita'/task funzionale del modello (es. text-to-text, text-to-image, image-to-text, ecc.).
+    
+    Restituisce (task_type, task_label):
+    - text-to-text: "Text to Text" (LLM, Chat, Reasoning, Code)
+    - text-to-image: "Text to Image" (Diffusione, Flux, Stable Diffusion)
+    - image-to-text: "Vision (Image to Text)" (VLM, Multimodali, CLIP, LLaVA)
+    - text-to-speech: "Text to Speech" (TTS, Sintesi vocale)
+    - speech-to-text: "Speech to Text" (ASR, Trascrizione vocale, Whisper)
+    - embeddings: "Embeddings & Rerank" (Rappresentazioni vettoriali, RAG)
+    """
+    text = f"{name} {architecture} {author}".lower()
+
+    # 1. Ispezione config_dict se fornito
+    if isinstance(config_dict, dict):
+        pipeline_tag = str(config_dict.get("pipeline_tag", "")).lower()
+        model_type = str(config_dict.get("model_type", "")).lower()
+        class_name = str(config_dict.get("_class_name", "")).lower()
+
+        if pipeline_tag in ("text-to-image", "image-to-image", "text-to-video") or "diffusion" in class_name or "flux" in class_name:
+            return "text-to-image", "Text to Image"
+        if pipeline_tag in ("image-to-text", "visual-question-answering", "image-feature-extraction") or "llava" in class_name or "qwen2vl" in class_name:
+            return "image-to-text", "Vision (Image to Text)"
+        if pipeline_tag in ("automatic-speech-recognition", "speech-to-text") or "whisper" in class_name:
+            return "speech-to-text", "Speech to Text"
+        if pipeline_tag in ("text-to-speech", "audio-to-audio") or "bark" in class_name or "tts" in class_name:
+            return "text-to-speech", "Text to Speech"
+        if pipeline_tag in ("feature-extraction", "sentence-similarity") or ("bert" in model_type and "embed" in text):
+            return "embeddings", "Embeddings & Rerank"
+        if pipeline_tag in ("text-generation", "text2text-generation", "conversational"):
+            return "text-to-text", "Text to Text"
+
+    # 2. Euristica testuale su text e architecture
+    # Text to Image
+    if any(k in text for k in (
+        "flux", "stable-diffusion", "sdxl", "sd-turbo", "sd15", "sd21", "sd-1.5", "sd-2.1",
+        "sd3", "diffusion", "diffusers", "kandinsky", "pixart", "midjourney", "latent-diffusion",
+        "text2img", "text-to-image", "animatediff", "unet", "vae"
+    )) and not any(k in text for k in ("embed", "clip-vit", "mmproj")):
+        return "text-to-image", "Text to Image"
+
+    # Speech to Text (ASR)
+    if any(k in text for k in (
+        "whisper", "speech-to-text", "speech2text", "asr", "sensevoice", "moonshine",
+        "wav2vec", "conformer", "transcrib"
+    )):
+        return "speech-to-text", "Speech to Text"
+
+    # Text to Speech (TTS)
+    if any(k in text for k in (
+        "text-to-speech", "text2speech", "tts", "bark", "xtts", "kokoro", "piper",
+        "vits", "melotts", "fish-speech", "cosyvoice", "speecht5"
+    )):
+        return "text-to-speech", "Text to Speech"
+
+    # Vision / Image to Text (VLM)
+    if is_multimodal or any(k in text for k in (
+        "vision", "vl", "vlm", "clip", "mmproj", "llava", "moondream", "florence",
+        "pixtral", "image-to-text", "image2text", "minicpm-v", "internvl", "ocr",
+        "cogvlm", "paligemma", "bakllava"
+    )):
+        return "image-to-text", "Vision (Image to Text)"
+
+    # Embeddings & Rerank
+    if any(k in text for k in (
+        "embedding", "embeddings", "embed", "bge-", "bge_", "nomic-embed", "e5-", "gte-",
+        "rerank", "reranker", "sentence-transformers", "colbert", "all-minilm"
+    )):
+        return "embeddings", "Embeddings & Rerank"
+
+    # Default per modelli generici, chat, reasoning e coding LLM
+    return "text-to-text", "Text to Text"
+
+
+
 def _scan_single_dir(base_dir: str, is_extra: bool = False) -> List[Dict[str, Any]]:
     """Scansiona una specifica cartella su disco per modelli (.gguf, .safetensors, .bin, multi-shard)."""
     if not os.path.exists(base_dir) or not os.path.isdir(base_dir):
@@ -293,6 +374,26 @@ def _scan_single_dir(base_dir: str, is_extra: bool = False) -> List[Dict[str, An
                     author=author or "",
                     is_multimodal=has_mmproj
                 )
+                
+                # Check model_index.json for diffusion / multimodal pipelines
+                model_idx_path = os.path.join(full_entry_path, "model_index.json")
+                effective_cfg = cfg_data if 'cfg_data' in locals() and isinstance(cfg_data, dict) else {}
+                if os.path.exists(model_idx_path):
+                    try:
+                        with open(model_idx_path, "r", encoding="utf-8") as f_mi:
+                            mi_data = json.load(f_mi)
+                            if isinstance(mi_data, dict):
+                                effective_cfg = {**effective_cfg, **mi_data}
+                    except Exception:
+                        pass
+
+                task_type, task_label = detect_task_type(
+                    name=clean_name or raw_name,
+                    architecture=arch_name or "",
+                    author=author or "",
+                    is_multimodal=has_mmproj,
+                    config_dict=effective_cfg
+                )
 
                 results.append({
                     "filename": raw_name,
@@ -303,6 +404,8 @@ def _scan_single_dir(base_dir: str, is_extra: bool = False) -> List[Dict[str, An
                     "publisher": author or "Altro",
                     "family": family,
                     "category": category,
+                    "task_type": task_type,
+                    "task_label": task_label,
                     "is_official": is_official,
                     "path": full_entry_path,
                     "source_dir": base_dir,
@@ -363,6 +466,12 @@ def _scan_single_dir(base_dir: str, is_extra: bool = False) -> List[Dict[str, An
                     author=author or "",
                     is_multimodal=False
                 )
+                task_type, task_label = detect_task_type(
+                    name=clean_name or entry,
+                    architecture="",
+                    author=author or "",
+                    is_multimodal=False
+                )
 
                 results.append({
                     "filename": entry,
@@ -373,6 +482,8 @@ def _scan_single_dir(base_dir: str, is_extra: bool = False) -> List[Dict[str, An
                     "publisher": author or "Altro",
                     "family": family,
                     "category": category,
+                    "task_type": task_type,
+                    "task_label": task_label,
                     "is_official": is_official,
                     "path": full_entry_path,
                     "source_dir": base_dir,

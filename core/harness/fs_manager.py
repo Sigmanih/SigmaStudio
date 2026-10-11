@@ -166,7 +166,15 @@ def read_file_content(file_path: str, max_bytes: int = 5 * 1024 * 1024) -> Dict[
     """Reads a file in admin mode (utf-8, images, PDFs, media, or detects binary)."""
     p = Path(file_path).resolve()
     if not p.exists():
-        return {"success": False, "error": f"File non trovato: {file_path}"}
+        try:
+            from core.paths import project_root
+            cand = (project_root() / Path(file_path)).resolve()
+            if cand.exists():
+                p = cand
+            else:
+                return {"success": False, "error": f"File non trovato: {file_path}"}
+        except Exception:
+            return {"success": False, "error": f"File non trovato: {file_path}"}
     if p.is_dir():
         return {"success": False, "error": f"Il percorso è una cartella: {file_path}"}
 

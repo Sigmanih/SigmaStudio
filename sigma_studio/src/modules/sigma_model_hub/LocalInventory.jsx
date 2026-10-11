@@ -4,11 +4,72 @@ import {
   Activity, Upload, Download, Search, ChevronDown, ChevronUp, Sliders, Layers, Sparkles,
   Trophy, Award, Gauge, Cpu, ExternalLink,
   RotateCcw, Code, Brain, Eye, Tag, User, Dna, Boxes, CheckCircle2, AlertTriangle, Package,
-  X, Check, ChevronRight, BarChart2, CornerDownRight, Minimize2, Maximize2, Wrench
+  X, Check, ChevronRight, BarChart2, CornerDownRight, Minimize2, Maximize2, Wrench,
+  MessageSquare, Image as ImageIcon, Volume2, Mic
 } from 'lucide-react';
 import HfPublishModal from './HfPublishModal.jsx';
 import InferenceTestModal from './InferenceTestModal.jsx';
 import DownloadLogSidebar from './DownloadLogSidebar.jsx';
+
+// ==============================================================================
+// Task Type & Modality Definitions (Text-to-Text, Text-to-Image, Vision, Audio, etc.)
+// ==============================================================================
+const TASK_TYPE_CONFIG = {
+  'text-to-text': {
+    id: 'text-to-text',
+    label: 'Text to Text',
+    shortLabel: 'Text',
+    icon: MessageSquare,
+    color: '#38bdf8',
+    gradient: 'linear-gradient(135deg, rgba(56, 189, 248, 0.16) 0%, rgba(99, 102, 241, 0.10) 100%)',
+    borderColor: 'rgba(56, 189, 248, 0.35)'
+  },
+  'text-to-image': {
+    id: 'text-to-image',
+    label: 'Text to Image',
+    shortLabel: 'Image Gen',
+    icon: ImageIcon,
+    color: '#f43f5e',
+    gradient: 'linear-gradient(135deg, rgba(244, 63, 94, 0.16) 0%, rgba(239, 68, 68, 0.10) 100%)',
+    borderColor: 'rgba(244, 63, 94, 0.35)'
+  },
+  'image-to-text': {
+    id: 'image-to-text',
+    label: 'Vision (Image to Text)',
+    shortLabel: 'Vision',
+    icon: Eye,
+    color: '#a855f7',
+    gradient: 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(192, 132, 252, 0.10) 100%)',
+    borderColor: 'rgba(168, 85, 247, 0.35)'
+  },
+  'text-to-speech': {
+    id: 'text-to-speech',
+    label: 'Text to Speech (TTS)',
+    shortLabel: 'TTS',
+    icon: Volume2,
+    color: '#10b981',
+    gradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(5, 150, 105, 0.10) 100%)',
+    borderColor: 'rgba(16, 185, 129, 0.35)'
+  },
+  'speech-to-text': {
+    id: 'speech-to-text',
+    label: 'Speech to Text (ASR)',
+    shortLabel: 'Speech to Text',
+    icon: Mic,
+    color: '#fb923c',
+    gradient: 'linear-gradient(135deg, rgba(251, 146, 60, 0.16) 0%, rgba(245, 158, 11, 0.10) 100%)',
+    borderColor: 'rgba(251, 146, 60, 0.35)'
+  },
+  'embeddings': {
+    id: 'embeddings',
+    label: 'Embeddings & Rerank',
+    shortLabel: 'Embeddings',
+    icon: Layers,
+    color: '#06b6d4',
+    gradient: 'linear-gradient(135deg, rgba(6, 182, 212, 0.16) 0%, rgba(14, 165, 233, 0.10) 100%)',
+    borderColor: 'rgba(6, 182, 212, 0.35)'
+  }
+};
 
 // ==============================================================================
 // Family Metadata Definitions (Coloring, Badges, Brand Labels)
@@ -100,6 +161,7 @@ export default function LocalInventory({
   // Search, Filters & Sorting state
   const [searchQuery, setSearchQuery] = useState('');
   const [familyFilter, setFamilyFilter] = useState('all');       // 'all' | 'gemma' | 'qwen' | 'llama' | 'deepseek' | 'mistral' | 'phi' | 'glm' | 'altro'
+  const [taskTypeFilter, setTaskTypeFilter] = useState('all');   // 'all' | 'text-to-text' | 'text-to-image' | 'image-to-text' | 'text-to-speech' | 'speech-to-text' | 'embeddings'
   const [categoryFilter, setCategoryFilter] = useState('all');   // 'all' | 'sigmanih' | 'reasoning' | 'code' | 'vision' | 'moe' | 'llm' | 'gguf' | 'safetensors' | 'benchmarked' | 'published'
   const [publisherFilter, setPublisherFilter] = useState('all'); // 'all' | 'sigmanih' | 'google' | 'qwen' | 'meta' | 'deepseek' | 'mistralai' | 'microsoft'
   const [storageFilter, setStorageFilter] = useState('all');     // 'all' | 'primary' | 'extra'
@@ -549,6 +611,27 @@ export default function LocalInventory({
       (m.is_published && isSigmanih)
     );
 
+    // Riconoscimento Modality / Task Type (Text to Text, Text to Image, Vision, TTS, ASR, Embeddings)
+    let taskType = m.task_type;
+    if (!taskType || !TASK_TYPE_CONFIG[taskType]) {
+      const t = `${rawName} ${m.architecture || ''} ${publisher} ${category}`.toLowerCase();
+      if (t.includes('flux') || t.includes('stable-diffusion') || t.includes('sdxl') || t.includes('diffusion') || t.includes('pixart') || t.includes('kandinsky') || t.includes('sd-turbo') || t.includes('text2img') || t.includes('text-to-image') || t.includes('unet') || t.includes('vae')) {
+        taskType = 'text-to-image';
+      } else if (m.is_multimodal || t.includes('vision') || t.includes('vl') || t.includes('clip') || t.includes('llava') || t.includes('moondream') || t.includes('florence') || t.includes('pixtral') || t.includes('image-to-text') || t.includes('minicpm-v')) {
+        taskType = 'image-to-text';
+      } else if (t.includes('whisper') || t.includes('asr') || t.includes('speech-to-text') || t.includes('speech2text') || t.includes('sensevoice') || t.includes('moonshine') || t.includes('transcrib')) {
+        taskType = 'speech-to-text';
+      } else if (t.includes('tts') || t.includes('bark') || t.includes('xtts') || t.includes('kokoro') || t.includes('piper') || t.includes('vits') || t.includes('text-to-speech') || t.includes('text2speech')) {
+        taskType = 'text-to-speech';
+      } else if (t.includes('embedding') || t.includes('embed') || t.includes('bge-') || t.includes('nomic-embed') || t.includes('e5-') || t.includes('rerank') || t.includes('sentence-transformers')) {
+        taskType = 'embeddings';
+      } else {
+        taskType = 'text-to-text';
+      }
+    }
+    const taskConf = TASK_TYPE_CONFIG[taskType] || TASK_TYPE_CONFIG['text-to-text'];
+    const taskLabel = m.task_label || taskConf.label;
+
     return {
       isGguf,
       isSafetensors,
@@ -557,6 +640,9 @@ export default function LocalInventory({
       family,
       familyKey,
       category,
+      taskType,
+      taskLabel,
+      taskConf,
       hasBenchmark: !!m.benchmark_summary?.has_benchmarks,
       isPublished: isPublishedByUs
     };
@@ -609,21 +695,32 @@ export default function LocalInventory({
   const safetensorsStorageGb = safetensorsModels.reduce((sum, m) => sum + (parseFloat(m.size_gb) || 0), 0);
   const totalStorageGb = (ggufStorageGb + safetensorsStorageGb).toFixed(1);
 
+  // Conteggio modelli per Tipo di Modello / Task Type
+  const taskTypeCounts = Object.keys(TASK_TYPE_CONFIG).reduce((acc, k) => {
+    acc[k] = models.filter(m => getModelInfo(m).taskType === k).length;
+    return acc;
+  }, {});
+
   // Multi-Filter & Search models
   const filteredModels = models.filter(m => {
     const info = getModelInfo(m);
 
-    // 1. Filtro Settore / Famiglia
+    // 1. Filtro Tipo di Modello (Task Modality)
+    if (taskTypeFilter !== 'all' && info.taskType !== taskTypeFilter) {
+      return false;
+    }
+
+    // 2. Filtro Settore / Famiglia
     if (familyFilter !== 'all') {
       if (info.familyKey !== familyFilter) return false;
     }
 
-    // 2. Filtro Publisher / Autore
+    // 3. Filtro Publisher / Autore
     if (publisherFilter !== 'all' && info.publisher.toLowerCase() !== publisherFilter.toLowerCase()) {
       return false;
     }
 
-    // 3. Filtro Categoria & Formato
+    // 4. Filtro Categoria & Formato
     if (categoryFilter === 'reasoning' && info.category !== 'reasoning') return false;
     if (categoryFilter === 'code' && info.category !== 'code') return false;
     if (categoryFilter === 'vision' && info.category !== 'vision') return false;
@@ -633,11 +730,11 @@ export default function LocalInventory({
     if (categoryFilter === 'benchmarked' && !info.hasBenchmark) return false;
     if (categoryFilter === 'published' && !info.isPublished) return false;
 
-    // 4. Filtro Storage (Principale vs Percorsi Aggiuntivi)
+    // 5. Filtro Storage (Principale vs Percorsi Aggiuntivi)
     if (storageFilter === 'primary' && m.is_extra_dir) return false;
     if (storageFilter === 'extra' && !m.is_extra_dir) return false;
 
-    // 5. Ricerca testuale
+    // 6. Ricerca testuale
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = (m.filename || '').toLowerCase().includes(q);
@@ -647,9 +744,10 @@ export default function LocalInventory({
       const matchArch = (m.architecture || '').toLowerCase().includes(q);
       const matchFam = (info.family || '').toLowerCase().includes(q);
       const matchPub = (info.publisher || '').toLowerCase().includes(q);
+      const matchTask = (info.taskLabel || '').toLowerCase().includes(q) || (info.taskType || '').toLowerCase().includes(q);
       const matchSuite = (m.benchmark_summary?.suite_name || '').toLowerCase().includes(q);
       const matchRepo = (m.publication?.repo_id || '').toLowerCase().includes(q);
-      return matchName || matchId || matchDisp || matchQuant || matchArch || matchFam || matchPub || matchSuite || matchRepo;
+      return matchName || matchId || matchDisp || matchQuant || matchArch || matchFam || matchPub || matchTask || matchSuite || matchRepo;
     }
     return true;
   });
@@ -809,6 +907,32 @@ export default function LocalInventory({
             }}>
               💾 <b>{totalStorageGb} GB</b> Totali
             </span>
+
+            {/* Quick Task Type Counters in Header Strip */}
+            {Object.entries(TASK_TYPE_CONFIG).map(([tKey, tConf]) => {
+              const count = taskTypeCounts[tKey] || 0;
+              if (count === 0) return null;
+              const active = taskTypeFilter === tKey;
+              const TIcon = tConf.icon;
+              return (
+                <button
+                  key={tKey}
+                  onClick={() => setTaskTypeFilter(prev => prev === tKey ? 'all' : tKey)}
+                  title={active ? `Rimuovi filtro ${tConf.label}` : `Filtra per ${tConf.label}`}
+                  style={{
+                    fontSize: '0.68rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px',
+                    background: active ? `${tConf.color}25` : `${tConf.color}10`,
+                    border: active ? `1.5px solid ${tConf.color}` : `1px solid ${tConf.color}30`,
+                    color: tConf.color, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                    boxShadow: active ? `0 0 10px ${tConf.color}35` : 'none',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <TIcon size={11} color={tConf.color} />
+                  <span><b>{count}</b> {tConf.shortLabel}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -883,6 +1007,74 @@ export default function LocalInventory({
 
         {/* LEFT / CENTER COLUMN: SECTORIZED MODELS */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+          {/* ── SELETTORE MODALITÀ & TIPI DI MODELLO (TASK TYPES) ── */}
+          <div style={{
+            display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '7px',
+            padding: '8px 12px', borderRadius: '10px',
+            background: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)',
+            border: subBorder
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginRight: '6px' }}>
+              <Layers size={13} color="#00d2ff" />
+              <span style={{ fontSize: '0.70rem', fontWeight: 900, color: textPrimary, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Tipo di Modello:
+              </span>
+            </div>
+
+            <button
+              onClick={() => setTaskTypeFilter('all')}
+              style={{
+                padding: '5px 11px', borderRadius: '7px',
+                border: taskTypeFilter === 'all' ? '1.5px solid #00d2ff' : subBorder,
+                background: taskTypeFilter === 'all' ? 'rgba(0, 210, 255, 0.16)' : cardBg,
+                color: taskTypeFilter === 'all' ? '#00d2ff' : textMuted,
+                fontSize: '0.70rem', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                boxShadow: taskTypeFilter === 'all' ? '0 0 10px rgba(0, 210, 255, 0.25)' : 'none',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <Boxes size={12} />
+              <span>Tutti i Tipi</span>
+              <span style={{ fontSize: '0.60rem', opacity: 0.85 }}>({totalModelsCount})</span>
+            </button>
+
+            {Object.entries(TASK_TYPE_CONFIG).map(([tKey, tConf]) => {
+              const count = taskTypeCounts[tKey] || 0;
+              const TIcon = tConf.icon;
+              const active = taskTypeFilter === tKey;
+
+              return (
+                <button
+                  key={tKey}
+                  onClick={() => setTaskTypeFilter(tKey)}
+                  style={{
+                    padding: '5px 11px', borderRadius: '7px',
+                    border: active ? `1.5px solid ${tConf.color}` : subBorder,
+                    background: active ? `${tConf.color}18` : cardBg,
+                    color: active ? tConf.color : (count > 0 ? textPrimary : textMuted),
+                    fontSize: '0.70rem', fontWeight: active ? 900 : 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    boxShadow: active ? `0 0 10px ${tConf.color}35` : 'none',
+                    opacity: count === 0 ? 0.65 : 1,
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <TIcon size={12} color={active ? tConf.color : (count > 0 ? tConf.color : textMuted)} />
+                  <span>{tConf.label}</span>
+                  <span style={{
+                    fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
+                    background: active ? `${tConf.color}25` : subBg,
+                    color: active ? tConf.color : textMuted,
+                    fontWeight: 800
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
           {/* ── SETTORIALIZZAZIONE RAPIDA: SECTOR TABS (FAMIGLIE MODELLI) ── */}
           <div style={{
@@ -1230,6 +1422,22 @@ export default function LocalInventory({
                                       borderRadius: '5px', padding: '2px 5px'
                                     }}>
                                       {info.publisher}
+                                    </span>
+                                  )}
+
+                                  {/* Task Type / Modality Badge */}
+                                  {info.taskConf && (
+                                    <span
+                                      title={`Tipo di Modello: ${info.taskLabel}`}
+                                      style={{
+                                        fontSize: '0.60rem', fontWeight: 800, padding: '2px 6px', borderRadius: '5px',
+                                        background: `${info.taskConf.color}15`, border: `1px solid ${info.taskConf.color}35`,
+                                        color: info.taskConf.color,
+                                        display: 'inline-flex', alignItems: 'center', gap: '3px'
+                                      }}
+                                    >
+                                      <info.taskConf.icon size={10} color={info.taskConf.color} />
+                                      <span>{info.taskConf.label}</span>
                                     </span>
                                   )}
 
@@ -1662,6 +1870,11 @@ export default function LocalInventory({
                                   {/* ROW 3: FILE OPERATIONS & TECHNICAL DETAILS */}
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', fontSize: '0.68rem', color: textMuted }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                      {info.taskConf && (
+                                        <span style={{ color: info.taskConf.color, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                          <info.taskConf.icon size={11} color={info.taskConf.color} /> Tipo: <b>{info.taskLabel}</b>
+                                        </span>
+                                      )}
                                       {m.architecture && <span>🧬 Architettura: <b>{m.architecture}</b></span>}
                                       {m.added_at && <span>🕒 Aggiunto: <b>{m.added_at}</b></span>}
                                       {m.is_extra_dir && m.source_dir && (

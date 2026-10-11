@@ -1,0 +1,127 @@
+/* ==============================================================================
+   THINKING ORB & AMBIENT AGENT STATE — Styles
+   Componente visuale per lo stato cognitivo ed operativo dell'agente
+   ============================================================================== */
+
+.thinking-orb-container {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  user-select: none;
+}
+
+.thinking-orb-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.thinking-orb-canvas {
+  display: block;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* Bagliore d'atmosfera esterno (ambient glow) */
+.thinking-orb-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(8px);
+  opacity: 0.6;
+  transition: all 0.3s ease;
+}
+
+.thinking-orb-container.state-idle .thinking-orb-glow {
+  background: radial-gradient(circle, rgba(0, 210, 255, 0.25) 0%, transparent 70%);
+  animation: orb-breathe 4s ease-in-out infinite alternate;
+}
+
+.thinking-orb-container.state-thinking .thinking-orb-glow {
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.45) 0%, rgba(0, 210, 255, 0.2) 50%, transparent 75%);
+  animation: orb-pulse-fast 1.6s ease-in-out infinite alternate;
+}
+
+.thinking-orb-container.state-browsing .thinking-orb-glow {
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.5) 0%, rgba(59, 130, 246, 0.25) 55%, transparent 75%);
+  animation: orb-radar-glow 2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.thinking-orb-container.state-executing .thinking-orb-glow {
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.5) 0%, rgba(0, 210, 255, 0.3) 50%, transparent 75%);
+  animation: orb-pulse-fast 1.2s ease-in-out infinite alternate;
+}
+
+.thinking-orb-container.state-done .thinking-orb-glow {
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.4) 0%, transparent 70%);
+  opacity: 0.4;
+}
+
+/* Badge di stato testuale */
+.thinking-orb-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.67rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+  line-height: 1.2;
+}
+
+.thinking-orb-badge.badge-idle {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+.thinking-orb-badge.badge-thinking {
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  color: #c084fc;
+}
+
+.thinking-orb-badge.badge-browsing {
+  background: rgba(0, 210, 255, 0.12);
+  border: 1px solid rgba(0, 210, 255, 0.4);
+  color: #00d2ff;
+}
+
+.thinking-orb-badge.badge-executing {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34d399;
+}
+
+.thinking-orb-badge.badge-done {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: #34d399;
+}
+
+/* Micro-animazioni native */
+@keyframes orb-breathe {
+  0% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.3; }
+  100% { transform: translate(-50%, -50%) scale(1.15); opacity: 0.65; }
+}
+
+@keyframes orb-pulse-fast {
+  0% { transform: translate(-50%, -50%) scale(0.95); opacity: 0.4; }
+  100% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.85; }
+}
+
+@keyframes orb-radar-glow {
+  0% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.3; }
+  50% { transform: translate(-50%, -50%) scale(1.35); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.3; }
+}

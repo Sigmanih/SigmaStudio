@@ -508,9 +508,9 @@ export default function ChatInput({
                 <option value={3}>3x Loop</option>
                 <option value={5}>5x Loop</option>
                 <option value={10}>10x Loop</option>
-                <option value={25}>25x Loop</option>
                 <option value={50}>50x Loop</option>
-                <option value={999}>∞ Infinito</option>
+                <option value={100}>100x Loop</option>
+                <option value={999}>∞ Continuo (fino a completamento)</option>
               </select>
             </div>
             
