@@ -11,7 +11,13 @@ JSON (`data/pipelines.json`).
 | Campo | Tipo | Vincolo / Note |
 |---|---|---|
 | `pipeline_id` | str | PK, generato come `uuid.uuid4()` |
-| `name` | str | nome del pipeline |
+| `name` | str | nome della pipeline, univoco nel progetto |
+| `status` | str | stato corrente: `running`, `stopped`, `completed`, `failed` |
+| `created_at` | datetime | istante di creazione |
+| `updated_at` | datetime | ultimo aggiornamento |
+| `tasks` | list[dict] | elenco dei task della pipeline, ciascuno con `task_id`, `name`, `status`, `result` |
+| `config` | dict | configurazione della pipeline (parametri, risorse) |
+| `metadata` | dict | metadati aggiuntivi (autore, versione, note) |
 | `description` | str | descrizione opzionale |
 | `created_at` | datetime | timestamp di creazione |
 | `updated_at` | datetime | ultimo aggiornamento |
