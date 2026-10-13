@@ -3,9 +3,10 @@ node_modules/
 sigma_studio/node_modules/
 
 # Build output
-dist/
+dist/assets/
 dist-ssr/
-sigma_studio/dist/
+sigma_studio/dist/assets/
+sigma_studio/dist/index.html
 .node_runtime/
 
 
