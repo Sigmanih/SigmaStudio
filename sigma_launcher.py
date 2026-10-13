@@ -630,8 +630,8 @@ def _get_path_hash(path):
 
 _get_directory_hash = _get_path_hash
 
-def check_node_version():
-    """Return major version number of Node.js (e.g. 18, 20, 22) or 0 if not found."""
+def check_node_version_info():
+    """Return (major, minor, patch) of Node.js or (0, 0, 0) if not found."""
     runtime_dir = os.path.abspath(".node_runtime")
     if os.path.exists(runtime_dir):
         bin_dir = runtime_dir if os.name == 'nt' else os.path.join(runtime_dir, "bin")
@@ -642,13 +642,29 @@ def check_node_version():
         cmd = ["node.exe"] if os.name == 'nt' else ["node"]
         out = subprocess.check_output(cmd + ["-v"], stderr=subprocess.DEVNULL).decode().strip()
         if out.startswith("v"):
-            return int(out.lstrip("v").split(".")[0])
+            parts = [int(p) for p in out.lstrip("v").split(".") if p.isdigit()]
+            while len(parts) < 3:
+                parts.append(0)
+            return tuple(parts[:3])
     except Exception:
         pass
-    return 0
+    return (0, 0, 0)
+
+def is_node_supported(ver_info):
+    """Verifica se la versione di Node soddisfa i requisiti di Vite 8 (^20.19.0 || >=22.12.0)."""
+    major, minor, patch = ver_info
+    if major == 20:
+        return minor >= 19
+    if major == 22:
+        return minor >= 12
+    return major > 22
+
+def check_node_version():
+    """Return major version number of Node.js (e.g. 18, 20, 22) or 0 if not found."""
+    return check_node_version_info()[0]
 
 def install_portable_node():
-    """Scarica e configura Node.js 20 LTS standalone in .node_runtime/ (senza permessi admin/sudo)."""
+    """Scarica e configura Node.js 22 LTS standalone in .node_runtime/ (senza permessi admin/sudo)."""
     import urllib.request
     import zipfile
     import tarfile
@@ -662,7 +678,7 @@ def install_portable_node():
     elif "arm" in machine:
         arch = "armv7l"
 
-    node_version = "v20.18.0"
+    node_version = "v22.14.0"
     base_url = f"https://nodejs.org/dist/{node_version}/"
     runtime_dir = os.path.abspath(".node_runtime")
 
@@ -723,19 +739,30 @@ def install_portable_node():
                 pass
         return False
 
+def get_rolldown_binding():
+    """Restituisce il pacchetto del binding nativo C++ di Rolldown specifico per la piattaforma corrente."""
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    if system == "windows":
+        return "@rolldown/binding-win32-arm64-msvc" if machine in ("aarch64", "arm64") else "@rolldown/binding-win32-x64-msvc"
+    elif system == "darwin":
+        return "@rolldown/binding-darwin-arm64" if machine in ("aarch64", "arm64") else "@rolldown/binding-darwin-x64"
+    else:
+        return "@rolldown/binding-linux-arm64-gnu" if machine in ("aarch64", "arm64") else "@rolldown/binding-linux-x64-gnu"
+
 def auto_install_node_npm():
-    """Attempt to automatically install or upgrade to Node.js (>= 20 LTS) using the system package manager or portable standalone."""
-    print_log("[SIGMA] Installing/Upgrading Node.js (>= 20 LTS) and npm...", Colors.OKCYAN)
+    """Attempt to automatically install or upgrade to Node.js (>= 22 LTS) using the system package manager or portable standalone."""
+    print_log("[SIGMA] Installing/Upgrading Node.js (>= 22 LTS) and npm...", Colors.OKCYAN)
     system = platform.system().lower()
     
     try:
         if system == "linux":
             if shutil.which("apt-get"):
-                print_log("[SIGMA] Setting up NodeSource Node.js 20.x LTS repository for Debian/Ubuntu/Raspberry Pi...", Colors.OKCYAN)
+                print_log("[SIGMA] Setting up NodeSource Node.js 22.x LTS repository for Debian/Ubuntu/Raspberry Pi...", Colors.OKCYAN)
                 if not shutil.which("curl"):
                     subprocess.run(["sudo", "apt-get", "update", "-y"], check=False)
                     subprocess.run(["sudo", "apt-get", "install", "-y", "curl", "ca-certificates"], check=False)
-                cmd = "curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"
+                cmd = "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs"
                 subprocess.run(["bash", "-c", cmd], check=False)
             elif shutil.which("dnf"):
                 subprocess.run(["sudo", "dnf", "install", "-y", "nodejs", "npm"], check=False)
@@ -754,9 +781,9 @@ def auto_install_node_npm():
     except Exception as e:
         print_log(f"[SIGMA] Auto-install attempt ended: {e}", Colors.WARNING)
 
-    # Se dopo il package manager Node e' ancora < 20, scarica la versione portable standalone
-    if check_node_version() < 20:
-        print_log("[SIGMA] Ricorso al runtime standalone portatile ufficiale di Node.js...", Colors.OKCYAN)
+    # Se dopo il package manager Node non soddisfa i requisiti di Vite 8, scarica Node.js 22 LTS portable
+    if not is_node_supported(check_node_version_info()):
+        print_log("[SIGMA] Ricorso al runtime standalone portatile ufficiale di Node.js 22 LTS...", Colors.OKCYAN)
         install_portable_node()
 
 def ensure_frontend():
@@ -774,33 +801,35 @@ def ensure_frontend():
     if not npm_bin and os.name == 'nt':
         npm_bin = shutil.which("npm.cmd")
         
-    node_ver = check_node_version()
+    node_info = check_node_version_info()
+    node_ok = is_node_supported(node_info)
+    node_str = f"v{node_info[0]}.{node_info[1]}.{node_info[2]}" if node_info[0] > 0 else "non installato"
     
     has_dist = os.path.exists(os.path.join(dist_dir, "index.html"))
-    if has_dist and (not npm_bin or (node_ver > 0 and node_ver < 20)):
-        print_log(f"[SIGMA] Node.js >= 20 non rilevato (versione: v{node_ver if node_ver > 0 else 'non installato'}). Utilizzo il frontend di produzione pre-compilato in sigma_studio/dist.", Colors.OKGREEN)
+    if has_dist and (not npm_bin or not node_ok):
+        print_log(f"[SIGMA] Node.js 22 LTS non rilevato (versione presente: {node_str}). Utilizzo il frontend di produzione pre-compilato in sigma_studio/dist.", Colors.OKGREEN)
         return
 
-    if not npm_bin or (node_ver > 0 and node_ver < 20):
-        if node_ver > 0 and node_ver < 20:
-            print_log(f"[SIGMA] Rilevato Node.js v{node_ver}. Tentativo di aggiornamento a Node.js >= 20 LTS...", Colors.WARNING)
+    if not npm_bin or not node_ok:
+        if node_info[0] > 0:
+            print_log(f"[SIGMA] Rilevato Node.js {node_str} (richiesto Node.js >= 22 LTS per Vite 8). Avvio aggiornamento...", Colors.WARNING)
         auto_install_node_npm()
         npm_bin = shutil.which("npm") or (shutil.which("npm.cmd") if os.name == 'nt' else None)
-        node_ver = check_node_version()
+        node_info = check_node_version_info()
+        node_ok = is_node_supported(node_info)
+        node_str = f"v{node_info[0]}.{node_info[1]}.{node_info[2]}" if node_info[0] > 0 else "non installato"
 
-    if not npm_bin or (node_ver > 0 and node_ver < 20):
+    if not npm_bin or not node_ok:
         if os.path.exists(os.path.join(dist_dir, "index.html")):
-            print_log(f"[SIGMA] Frontend pronto in sigma_studio/dist (Node.js v{node_ver or 'assente'}). Avvio interfaccia...", Colors.OKGREEN)
+            print_log(f"[SIGMA] Frontend pronto in sigma_studio/dist (Node.js {node_str}). Avvio interfaccia...", Colors.OKGREEN)
             return
-        elif node_ver >= 18 and npm_bin:
-            print_log(f"[SIGMA] Tentativo di build del frontend con Node.js v{node_ver} (supporto compatibilita)...", Colors.OKCYAN)
         else:
-            print_log("[SIGMA] ATTENZIONE: Node.js (>= 20 LTS) non trovato per compilare il frontend dai sorgenti.", Colors.WARNING)
+            print_log("[SIGMA] ATTENZIONE: Node.js (>= 22 LTS) non trovato per compilare il frontend dai sorgenti.", Colors.WARNING)
             print_log("[SIGMA] Genero un'interfaccia di fallback per consentire l'avvio del server e delle API su port 8000.", Colors.OKCYAN)
             os.makedirs(dist_dir, exist_ok=True)
             fallback_html = os.path.join(dist_dir, "index.html")
             with open(fallback_html, "w", encoding="utf-8") as fb:
-                fb.write("<!DOCTYPE html><html><head><title>Sigma Studio Hub</title><style>body{font-family:sans-serif;background:#0b0f19;color:#f1f5f9;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;}a{color:#00d4ff;}</style></head><body><h1>Sigma Studio Core Active</h1><p>Server e API attive su porta 8000. Per compilare la SPA completa installa Node.js 20 LTS.</p><p><a href='/docs'>Documentazione API Swagger</a></p></body></html>")
+                fb.write("<!DOCTYPE html><html><head><title>Sigma Studio Hub</title><style>body{font-family:sans-serif;background:#0b0f19;color:#f1f5f9;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;}a{color:#00d4ff;}</style></head><body><h1>Sigma Studio Core Active</h1><p>Server e API attive su porta 8000. Per compilare la SPA completa installa Node.js 22 LTS.</p><p><a href='/docs'>Documentazione API Swagger</a></p></body></html>")
             return
 
     # Reusing SHA-1 fingerprint logic pattern
@@ -830,20 +859,30 @@ def ensure_frontend():
         print_log("[SIGMA] Running Vite build (npm run build)...", Colors.OKCYAN)
         res = subprocess.run([npm_bin, "run", "build"], cwd=frontend_dir, shell=use_shell)
         
-        # Self-healing for cross-platform optionalDependencies bug (e.g. missing native rolldown/esbuild binding on arm64)
+        # Self-healing for cross-platform optionalDependencies bug (e.g. missing native rolldown/esbuild binding)
         if res.returncode != 0:
-            print_log("[SIGMA] Build failed due to missing platform native bindings. Cleaning stale node_modules & package-lock.json for fresh install...", Colors.WARNING)
-            if os.path.exists(node_modules_dir):
-                shutil.rmtree(node_modules_dir, ignore_errors=True)
-            if os.path.exists(lock_file):
-                try:
-                    os.remove(lock_file)
-                except Exception:
-                    pass
-            print_log("[SIGMA] Reinstalling frontend dependencies with optional native packages...", Colors.OKCYAN)
-            subprocess.run([npm_bin, "install", "--include=optional"], cwd=frontend_dir, check=False, shell=use_shell)
-            print_log("[SIGMA] Retrying Vite build...", Colors.OKCYAN)
+            print_log("[SIGMA] Build iniziale non riuscita. Risoluzione dei binding nativi della piattaforma...", Colors.WARNING)
+            binding = get_rolldown_binding()
+            if binding:
+                print_log(f"[SIGMA] Installazione esplicita del binding nativo {binding}...", Colors.OKCYAN)
+                subprocess.run([npm_bin, "install", binding, "--include=optional", "--no-save"], cwd=frontend_dir, check=False, shell=use_shell)
+            print_log("[SIGMA] Nuovo tentativo di Vite build...", Colors.OKCYAN)
             res = subprocess.run([npm_bin, "run", "build"], cwd=frontend_dir, shell=use_shell)
+
+            if res.returncode != 0:
+                print_log("[SIGMA] Pulizia node_modules per reinstallazione pulita dei pacchetti nativi...", Colors.WARNING)
+                if os.path.exists(node_modules_dir):
+                    shutil.rmtree(node_modules_dir, ignore_errors=True)
+                if os.path.exists(lock_file):
+                    try:
+                        os.remove(lock_file)
+                    except Exception:
+                        pass
+                subprocess.run([npm_bin, "install", "--include=optional", "--force"], cwd=frontend_dir, check=False, shell=use_shell)
+                if binding:
+                    subprocess.run([npm_bin, "install", binding, "--no-save"], cwd=frontend_dir, check=False, shell=use_shell)
+                print_log("[SIGMA] Tentativo finale di Vite build...", Colors.OKCYAN)
+                res = subprocess.run([npm_bin, "run", "build"], cwd=frontend_dir, shell=use_shell)
         
         if res.returncode == 0:
             try:
