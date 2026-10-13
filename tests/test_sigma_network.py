@@ -1144,4 +1144,113 @@ def test_handlers_auth_routes(tmp_path):
     assert resp_li.json()["username"] == "charlie"
 
 
+# ---------------------------------------------------------------------------
+# Test Provider Telemetry, QoS Benchmark & Smart Resource Guard
+# ---------------------------------------------------------------------------
+
+def test_provider_telemetry_and_history():
+    """L'InferenceProvider deve calcolare metriche aggregate e tracciare la cronologia."""
+    from core.modules.sigma_network.provider import InferenceProvider
+    settings = {
+        "sharing_enabled": True,
+        "shared_models": ["model-a"],
+        "rate_tokens_per_coin": 1000,
+        "max_concurrent": 3,
+        "max_tokens_per_request": 512,
+    }
+    p = InferenceProvider(settings)
+
+    # Inizialmente telemetria a zero
+    telem0 = p.get_telemetry()
+    assert telem0["active"] is True
+    assert telem0["metrics"]["total_requests_served"] == 0
+    assert telem0["history"] == []
+    assert "system_memory" in telem0
+
+    # Simula una risposta servita
+    mock_engine = lambda prompt, max_tokens: "Risposta test " * 20
+    res = p.serve("prompt test", model_id="model-a", max_tokens=100, engine_fn=mock_engine, caller_ip="192.168.1.50")
+    assert res["status"] == "ok"
+    assert res["tokens_generated"] > 0
+    assert res["duration_sec"] >= 0
+    assert "earned_ailo" in res
+
+    telem1 = p.get_telemetry()
+    assert telem1["metrics"]["total_requests_served"] == 1
+    assert telem1["metrics"]["total_tokens_served"] == res["tokens_generated"]
+    assert telem1["metrics"]["total_coins_earned"] > 0
+    assert len(telem1["history"]) == 1
+    assert telem1["history"][0]["caller_ip"] == "192.168.1.50"
+
+
+def test_provider_benchmark_qos():
+    """Il benchmark hardware deve calcolare tok/s, assegnare il QoS tier e suggerire la tariffa."""
+    from core.modules.sigma_network.provider import InferenceProvider
+    p = InferenceProvider({"sharing_enabled": True})
+
+    # Benchmark con test_engine veloce (Diamond)
+    fast_engine = lambda prompt, max_tokens: "parola " * max_tokens
+    b_fast = p.benchmark_model("fast-model", test_tokens=32, test_engine_fn=fast_engine)
+    assert b_fast["model_id"] == "fast-model"
+    assert b_fast["tok_per_sec"] > 0
+    assert b_fast["qos_tier"] in ("Diamond", "Gold", "Silver")
+    assert b_fast["suggested_rate"] > 0
+
+    telem = p.get_telemetry()
+    assert "fast-model" in telem["benchmarks"]
+
+
+def test_provider_guard_memory_and_busy():
+    """Smart Resource Guard deve rifiutare richieste se la memoria o l'utente locale sono occupati."""
+    from core.modules.sigma_network.provider import InferenceProvider
+    p = InferenceProvider({"sharing_enabled": True, "shared_models": ["model-a"]})
+
+    # Con soglia normale e non occupato: can_serve OK
+    ok, reason = p.can_serve("model-a")
+    assert ok is True
+
+    # Se l'utente locale sta lavorando e local_user_priority=True: rifiuto
+    p.set_busy_local(True)
+    ok, reason = p.can_serve("model-a")
+    assert ok is False
+    assert "utente locale" in reason
+
+    p.set_busy_local(False)
+
+    # Se impostiamo la soglia di memoria allo 0.01% (superamento garantito): rifiuto
+    p.update_guard(max_memory_percent=0.01)
+    ok, reason = p.can_serve("model-a")
+    assert ok is False
+    assert "RAM" in reason
+
+
+def test_handlers_provider_routes(tmp_path):
+    """Gli endpoint HTTP di telemetria, benchmark e guard devono rispondere correttamente."""
+    import core.modules.sigma_network.handlers as h
+    _reset_singletons()
+    client = _make_client(tmp_path)
+
+    # Telemetry
+    resp_t = client.get("/provider/telemetry")
+    assert resp_t.status_code == 200
+    t_data = resp_t.json()
+    assert "metrics" in t_data
+    assert "system_memory" in t_data
+
+    # Guard update
+    resp_g = client.post("/provider/guard", json={"max_memory_percent": 85.0, "local_user_priority": False})
+    assert resp_g.status_code == 200
+    assert resp_g.json()["guard"]["max_memory_percent"] == 85.0
+    assert resp_g.json()["guard"]["local_user_priority"] is False
+
+    # Benchmark
+    resp_b = client.post("/provider/benchmark", json={"model_id": "test-gguf", "test_tokens": 16})
+    assert resp_b.status_code == 200
+    b_data = resp_b.json()
+    assert b_data["ok"] is True
+    assert b_data["model_id"] == "test-gguf"
+    assert "qos_tier" in b_data
+
+
+
 
