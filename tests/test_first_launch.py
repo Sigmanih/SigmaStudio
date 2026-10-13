@@ -35,7 +35,12 @@ def _executable_lines(script: str) -> str:
 
 
 def _read(name: str) -> str:
-    with io.open(os.path.join(ROOT, name), "r", encoding="utf-8", errors="replace") as fh:
+    path = os.path.join(ROOT, name)
+    if not os.path.exists(path):
+        installer_path = os.path.join(ROOT, "installer", name)
+        if os.path.exists(installer_path):
+            path = installer_path
+    with io.open(path, "r", encoding="utf-8", errors="replace") as fh:
         return fh.read()
 
 

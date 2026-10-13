@@ -168,12 +168,12 @@ cd SigmaStudio
 ### 2. Launch (Automatic Auto-Setup)
 - **Windows**:
   ```powershell
-  .\installer\sigma_studio.bat
+  .\sigma_studio.bat
   ```
 - **Linux / macOS / Raspberry Pi**:
   ```bash
-  chmod +x installer/sigma_studio.sh
-  ./installer/sigma_studio.sh
+  chmod +x sigma_studio.sh
+  ./sigma_studio.sh
   ```
 
 > 💡 *On the very first run, Sigma Studio automatically creates the virtual environment, installs Python requirements, sets up the native inference runtime, builds the frontend if needed, and opens `http://localhost:8000`.*

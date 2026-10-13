@@ -1684,24 +1684,61 @@ except Exception as _sn_exc:
     # Exception e non ImportError soltanto: il modulo esegue codice al
     # caricamento -- identita', registro dei peer -- e un file di stato
     # illeggibile lo ferma senza essere un errore di import.
-    log.warning("[FastAPI] Sigma Network non caricato: %s", _sn_exc, exc_info=True)
-    from fastapi import APIRouter
+    log.warning("[FastAPI] Sigma Network non caricato all'avvio: %s", _sn_exc, exc_info=True)
+    from fastapi import APIRouter, Request, Response
+    from starlette.responses import JSONResponse
 
     _SIGMA_NETWORK_MOTIVO = f"{type(_sn_exc).__name__}: {_sn_exc}"
+    _sigma_network_subapp = None
+
     sigma_network_router = APIRouter()
 
     @sigma_network_router.api_route(
-        "/{path:path}", methods=["GET", "POST", "PUT", "DELETE"]
+        "/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
     )
-    async def _sigma_network_non_disponibile(path: str):
-        # 503 col motivo, non 404: l'endpoint esiste, e' il modulo a non essere
-        # partito. Un 404 muto e' indistinguibile da un errore di routing e
-        # manda a cercare il guasto dalla parte sbagliata.
-        return JSONResponse(status_code=503, content={
-            "error": "Modulo Sigma Network non caricato.",
-            "reason": _SIGMA_NETWORK_MOTIVO,
-            "hint": "pip install -r core/modules/sigma_network/requirements.txt",
-        })
+    async def _sigma_network_gateway(path: str, request: Request):
+        global _sigma_network_subapp
+        try:
+            # Prova a caricare a runtime: se cryptography e dipendenze sono state installate,
+            # rispondiamo direttamente con il router reale invece del 503 fisso.
+            if _sigma_network_subapp is None:
+                from fastapi import FastAPI
+                from core.modules.sigma_network.handlers import router as real_router
+                sub = FastAPI()
+                sub.include_router(real_router)
+                _sigma_network_subapp = sub
+
+            scope = dict(request.scope)
+            scope["path"] = "/" + path.lstrip("/")
+            scope["root_path"] = request.scope.get("root_path", "") + "/api/sigma_network"
+
+            status_code = 200
+            headers = []
+            body_parts = []
+
+            async def receive():
+                return await request.receive()
+
+            async def send(message):
+                nonlocal status_code, headers
+                if message["type"] == "http.response.start":
+                    status_code = message["status"]
+                    headers = [(k.decode("latin1"), v.decode("latin1")) for k, v in message.get("headers", [])]
+                elif message["type"] == "http.response.body":
+                    body_parts.append(message.get("body", b""))
+
+            await _sigma_network_subapp(scope, receive, send)
+
+            raw_body = b"".join(body_parts)
+            h_dict = dict(headers)
+            media_type = h_dict.get("content-type")
+            return Response(content=raw_body, status_code=status_code, headers=h_dict, media_type=media_type)
+        except Exception as exc:
+            return JSONResponse(status_code=503, content={
+                "error": "Modulo Sigma Network non caricato.",
+                "reason": f"{type(exc).__name__}: {exc}",
+                "hint": "pip install -r core/modules/sigma_network/requirements.txt",
+            })
 
     app.include_router(sigma_network_router, prefix="/api/sigma_network",
                        tags=["Sigma Network"])

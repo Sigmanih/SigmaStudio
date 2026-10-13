@@ -828,3 +828,320 @@ def test_receipt_controfirma_senza_alterare_quella_del_provider(tmp_path):
 def test_receipt_senza_campi_obbligatori_400(tmp_path):
     client, _ = _peer_client(tmp_path)
     assert client.post("/p2p/receipt", json={"peer_id": "x" * 32}).status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Task 7 — Mappa Radar, Faucet e Ailo PoUW Mining Engine
+# ---------------------------------------------------------------------------
+
+
+def test_network_map_genera_topologia_e_radar_coords(tmp_path):
+    """get_network_map() deve calcolare coordinate polari, stato e statistiche."""
+    reg = PeerRegistry(str(tmp_path / "peers.json"))
+    reg.add_peer(
+        host="192.168.1.50",
+        port=8000,
+        peer_id="x" * 32,
+        public_key="pk_x",
+        name="peer_x",
+        models=["AILO-152M", "qwen"],
+    )
+    reg.touch("x" * 32, latency_ms=45.0)
+
+    net_map = reg.get_network_map({"peer_id": "me" * 16, "name": "Me", "models": ["llama"]})
+    assert net_map["local_node"]["peer_id"] == "me" * 16
+    assert len(net_map["peers"]) == 1
+    peer_entry = net_map["peers"][0]
+    assert peer_entry["peer_id"] == "x" * 32
+    assert peer_entry["is_online"] is True
+    assert 0 <= peer_entry["radar_angle"] <= 360
+    assert 0.2 <= peer_entry["radar_distance"] <= 1.0
+    assert net_map["summary"]["online_count"] == 2
+
+
+def test_wallet_faucet_e_mining_rewards(tmp_path):
+    """mint_faucet e mint_mining_reward devono accreditare correttamente il saldo."""
+    wallet = Wallet(str(tmp_path / "wallet.json"))
+    pid = "miner" * 6 + "12"
+
+    bal0 = wallet.balance(pid)
+    assert bal0["balance"] == 0.0
+
+    wallet.mint_faucet(pid, amount=100.0)
+    bal1 = wallet.balance(pid)
+    assert bal1["faucet"] == 100.0
+    assert bal1["balance"] == 100.0
+
+    wallet.mint_mining_reward(pid, amount=5.5, task_type="ailo_gradient_batch", meta={"loss": 2.1, "step": 1})
+    bal2 = wallet.balance(pid)
+    assert bal2["mined"] == 5.5
+    assert bal2["balance"] == 105.5
+
+
+def test_mining_engine_step_now(tmp_path):
+    """MiningEngine deve eseguire passi di calcolo e convergere la loss."""
+    from core.modules.sigma_network.mining_engine import MiningEngine
+    miner = MiningEngine()
+    status0 = miner.get_status()
+    assert status0["step"] == 0
+
+    res = miner.compute_step_now()
+    assert res["step"] == 1
+    assert res["reward"] > 0
+    assert res["loss"] <= 4.25
+
+
+def test_wallet_transfer_e_chain_verification(tmp_path):
+    """Wallet.transfer deve trasferire fondi, aggiornare i saldi e preservare la validità della catena."""
+    w = Wallet(str(tmp_path / "wallet.json"))
+    alice = generate_identity(str(tmp_path / "alice.json"))
+    bob = generate_identity(str(tmp_path / "bob.json"))
+    alice_priv = base64.b64decode(alice["private_key"])
+
+    # Alice riceve 100 AiloCoin da Faucet
+    w.mint_faucet(alice["peer_id"], amount=100.0)
+    assert w.balance(alice["peer_id"])["balance"] == 100.0
+
+    # Alice trasferisce 25 AiloCoin a Bob
+    tx = w.transfer(
+        sender_id=alice["peer_id"],
+        recipient_id=bob["peer_id"],
+        amount=25.0,
+        private_key_bytes=alice_priv,
+        note="Regalo di benvenuto su Ailo Network",
+    )
+    assert tx["amount"] == 25.0
+    assert tx["consumer_signature"] is not None
+    assert tx["provider_id"] == bob["peer_id"]
+    assert tx["consumer_id"] == alice["peer_id"]
+
+    # Saldo Alice = 75, Saldo Bob = 25
+    assert w.balance(alice["peer_id"])["balance"] == 75.0
+    assert w.balance(bob["peer_id"])["balance"] == 25.0
+
+    # Verifica crittografica catena
+    verif = w.verify_chain()
+    assert verif["valid"] is True
+    assert verif["chain_length"] == 2
+    assert verif["corrupted_count"] == 0
+
+
+def test_federated_aggregator_push_and_aggregate():
+    """FederatedAggregator deve accumulare gradienti e avanzare versione globale del modello."""
+    from core.modules.sigma_network.federated_aggregator import FederatedAggregator
+    agg = FederatedAggregator(min_gradients=2, timeout_s=999.0)
+
+    state0 = agg.get_state()
+    assert state0["model_version"] == 1
+    assert state0["buffered_gradients"] == 0
+
+    # Invio gradiente peer 1
+    res1 = agg.push_gradients("peer1", {"data": "H4sIC...", "step": 1, "loss": 2.5})
+    assert res1["status"] == "accepted"
+    assert res1["buffered"] == 1
+    assert res1["current_version"] == 1
+
+    # Invio gradiente peer 2 -> raggiunge min_gradients=2 e scatta aggregate_now
+    res2 = agg.push_gradients("peer2", {"data": "H4sIC...", "step": 1, "loss": 2.3})
+    assert res2["status"] == "accepted"
+
+    state1 = agg.get_state()
+    assert state1["model_version"] == 2
+    assert state1["buffered_gradients"] == 0
+    assert state1["total_aggregations"] == 1
+
+
+def test_handlers_wallet_transfer_and_verify(tmp_path):
+    """I nuovi endpoint /wallet/transfer e /wallet/verify_chain devono funzionare regolarmente."""
+    client = _make_client(tmp_path)
+    # Faucet prima
+    client.post("/wallet/faucet", json={"amount": 50.0})
+
+    # Verifica chain
+    resp_v = client.post("/wallet/verify_chain")
+    assert resp_v.status_code == 200
+    assert resp_v.json()["valid"] is True
+
+    # Trasferimento a un peer fittizio
+    bob_id = "bob" * 10 + "01"
+    resp_tx = client.post("/wallet/transfer", json={"recipient_id": bob_id, "amount": 15.0, "note": "Test transfer"})
+    assert resp_tx.status_code == 200
+    data_tx = resp_tx.json()
+    assert data_tx["status"] == "success"
+    assert data_tx["new_balance"] == 35.0
+
+    # Ri-verifica chain
+    resp_v2 = client.post("/wallet/verify_chain")
+    assert resp_v2.status_code == 200
+    assert resp_v2.json()["valid"] is True
+    assert resp_v2.json()["chain_length"] == 2
+
+
+def test_handlers_federated_routes(tmp_path):
+    """Endpoint /federated/status, /federated/gradients, /federated/aggregate devono rispondere correttamente."""
+    client = _make_client(tmp_path)
+
+    # Status iniziale
+    resp_st = client.get("/federated/status")
+    assert resp_st.status_code == 200
+    assert resp_st.json()["model_version"] == 1
+
+    # Push gradient
+    resp_push = client.post("/federated/gradients", json={"data": "abc123compressed", "step": 10, "loss": 1.85})
+    assert resp_push.status_code == 200
+    assert resp_push.json()["status"] == "accepted"
+
+    # Force aggregate
+    resp_agg = client.post("/federated/aggregate")
+    assert resp_agg.status_code == 200
+    assert resp_agg.json()["aggregated"] is True
+    assert resp_agg.json()["model_version"] == 2
+
+    # Get weights metadata
+    resp_w = client.get("/federated/weights")
+    assert resp_w.status_code == 200
+    assert resp_w.json()["version"] == 2
+
+
+def test_sigma_network_mcp_server(tmp_path):
+    """SigmaNetworkMCPServer deve esporre i tool di rete, cluster e wallet agli agenti."""
+    from core.modules.sigma_network.network_server import SigmaNetworkMCPServer
+    import core.modules.sigma_network.handlers as h
+
+    _reset_singletons()
+    h._identity_file = str(tmp_path / "identity.json")
+    h._peers_file = str(tmp_path / "peers.json")
+    h._wallet_file = str(tmp_path / "wallet.json")
+
+    server = SigmaNetworkMCPServer()
+    assert "p2p_list_peers" in server._tools
+    assert "p2p_get_network_map" in server._tools
+    assert "p2p_cluster_infer" in server._tools
+    assert "p2p_wallet_balance" in server._tools
+    assert "p2p_mine_block" in server._tools
+    assert "p2p_federated_status" in server._tools
+
+    # Test chiamata tool sincrono wallet
+    wallet_info = server._tool_wallet_balance()
+    assert "balance" in wallet_info
+    assert wallet_info["chain_valid"] is True
+
+    # Test chiamata tool mining
+    mine_info = server._tool_mine_block(intensity=1)
+    assert mine_info["step_result"]["step"] == 1
+
+    # Test mappa di rete
+    net_map = server._tool_get_network_map()
+    assert "local_node" in net_map
+
+
+def test_auth_manager_register_and_login(tmp_path):
+    """AuthManager deve registrare un utente, creare seed mnemonic 12 parole e consentire il login."""
+    from core.modules.sigma_network.auth_manager import AuthManager
+    auth = AuthManager(str(tmp_path / "accounts.json"))
+
+    reg = auth.register_user("alice", "password123")
+    assert reg["username"] == "alice"
+    assert "peer_id" in reg
+    assert len(reg["mnemonic_seed"].split()) == 12
+    assert "session_token" in reg
+
+    # Login con password corretta
+    login_ok = auth.login("alice", "password123")
+    assert login_ok["peer_id"] == reg["peer_id"]
+    assert "session_token" in login_ok
+
+    # Login con password errata -> fallisce
+    import pytest
+    with pytest.raises(ValueError):
+        auth.login("alice", "wrong_password")
+
+
+def test_auth_manager_mnemonic_import(tmp_path):
+    """AuthManager deve ripristinare esattamente lo stesso wallet dato il seed mnemonico."""
+    from core.modules.sigma_network.auth_manager import AuthManager
+    auth = AuthManager(str(tmp_path / "accounts.json"))
+
+    reg = auth.register_user("bob", "secret123")
+    seed_phrase = reg["mnemonic_seed"]
+    bob_pid = reg["peer_id"]
+
+    # Importa lo stesso seed con un altro username o dopo reset
+    auth2 = AuthManager(str(tmp_path / "accounts2.json"))
+    imp = auth2.import_wallet("bob_restored", "newsecret456", seed_phrase)
+    assert imp["peer_id"] == bob_pid
+
+
+def test_faucet_anti_sybil_defense(tmp_path):
+    """Il faucet Genesis non deve consentire erogazioni duplicate allo stesso peer senza force."""
+    import pytest
+    w = Wallet(str(tmp_path / "wallet.json"))
+    pid = "victim_sybil" * 2
+
+    # Primo claim: OK
+    w.mint_faucet(pid, amount=100.0)
+    assert w.balance(pid)["faucet"] == 100.0
+
+    # Secondo claim sullo stesso wallet: deve fallire
+    with pytest.raises(ValueError, match="già riscattato"):
+        w.mint_faucet(pid, amount=100.0)
+
+
+def test_pouw_solution_and_chain_verification(tmp_path):
+    """La Proof-of-Useful-Work deve generare un hash valido verificato da verify_chain."""
+    w = Wallet(str(tmp_path / "wallet.json"))
+    miner_id = "miner_secure" * 2
+
+    # Mint reward con PoUW valido
+    r = w.mint_mining_reward(miner_id, amount=10.0, meta={"step": 1, "loss": 2.1, "difficulty": 2})
+    assert r["pouw_hash"].startswith("00")
+    assert "nonce" in r
+
+    verif = w.verify_chain()
+    assert verif["valid"] is True
+    assert verif["chain_length"] == 1
+
+
+def test_handlers_auth_routes(tmp_path):
+    """Endpoint HTTP di autenticazione devono gestire il ciclo di vita dell'utente."""
+    import core.modules.sigma_network.handlers as h
+    _reset_singletons()
+    h._identity_file = str(tmp_path / "identity.json")
+    h._peers_file = str(tmp_path / "peers.json")
+    h._wallet_file = str(tmp_path / "wallet.json")
+    h._auth_file = str(tmp_path / "accounts.json")
+
+    client = _make_client(tmp_path)
+
+    # Sessione iniziale
+    resp_s0 = client.get("/auth/session")
+    assert resp_s0.status_code == 200
+    assert resp_s0.json()["authenticated"] is False
+
+    # Registrazione
+    resp_r = client.post("/auth/register", json={"username": "charlie", "password": "mypassword123"})
+    assert resp_r.status_code == 200
+    r_data = resp_r.json()
+    assert r_data["username"] == "charlie"
+    assert "mnemonic_seed" in r_data
+
+    # Ora la sessione è autenticata per charlie
+    resp_s1 = client.get("/auth/session")
+    assert resp_s1.status_code == 200
+    assert resp_s1.json()["authenticated"] is True
+    assert resp_s1.json()["username"] == "charlie"
+
+    # Logout
+    resp_lo = client.post("/auth/logout")
+    assert resp_lo.status_code == 200
+
+    resp_s2 = client.get("/auth/session")
+    assert resp_s2.json()["authenticated"] is False
+
+    # Login
+    resp_li = client.post("/auth/login", json={"username": "charlie", "password": "mypassword123"})
+    assert resp_li.status_code == 200
+    assert resp_li.json()["username"] == "charlie"
+
+
+

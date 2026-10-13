@@ -20,7 +20,7 @@
 :: config.json.
 :: ============================================================================
 title Sigma Studio
-cd /d "%~dp0\.."
+cd /d "%~dp0"
 
 :: 1. Un Python utilizzabile. `py -3` e' l'avviatore ufficiale di Windows e
 ::    trova l'installazione giusta anche quando `python` punta all'alias del
