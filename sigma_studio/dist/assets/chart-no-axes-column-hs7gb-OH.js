@@ -1,0 +1,1 @@
+import{Xr as e}from"./index-CEurbjqV.js";var t={name:`chart-no-axes-column`,size:24,node:[[`path`,{d:`M5 21v-6`,key:`1hz6c0`}],[`path`,{d:`M12 21V3`,key:`1lcnhd`}],[`path`,{d:`M19 21V9`,key:`unv183`}]],aliases:[`bar-chart-2`]};t.node;var n=e(t);export{n as t};

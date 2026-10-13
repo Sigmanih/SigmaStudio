@@ -26,10 +26,15 @@ cd /d "%~dp0"
 ::    trova l'installazione giusta anche quando `python` punta all'alias del
 ::    Microsoft Store, che non e' un interprete e apre il negozio.
 set "SIGMA_PY="
-py -3 --version >nul 2>&1 && set "SIGMA_PY=py -3"
-if not defined SIGMA_PY (
-    python --version >nul 2>&1 && set "SIGMA_PY=python"
+if exist ".venv\Scripts\python.exe" (
+    set "SIGMA_PY=.venv\Scripts\python.exe"
+) else (
+    py -3 --version >nul 2>&1 && set "SIGMA_PY=py -3"
+    if not defined SIGMA_PY (
+        python --version >nul 2>&1 && set "SIGMA_PY=python"
+    )
 )
+
 
 if not defined SIGMA_PY (
     echo.

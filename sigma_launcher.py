@@ -178,6 +178,17 @@ def activate_venv_env():
     if "PYTHONHOME" in os.environ:
         del os.environ["PYTHONHOME"]
 
+    import site
+    if os.name == "nt":
+        sp = os.path.join(venv_dir, "Lib", "site-packages")
+        if os.path.isdir(sp):
+            site.addsitedir(sp)
+    else:
+        import glob
+        for sp in glob.glob(os.path.join(venv_dir, "lib", "python*", "site-packages")):
+            if os.path.isdir(sp):
+                site.addsitedir(sp)
+
 #: Versioni minime che non sono prudenza ma correttezza: sotto questa soglia il
 #: Model Hub scarica checkpoint che il motore non riesce ad aprire, e l'errore
 #: che ne esce ("architettura non riconosciuta") si legge come un download rotto
@@ -284,6 +295,7 @@ def install_dependencies(platform_info):
     else:
         run_pip(os.path.join(req_dir, "cpu.txt"))
 
+    activate_venv_env()
     install_gguf_runtime(platform_info)
 
     # Entrambi i percorsi devono funzionare: il GGUF appena installato e i
@@ -677,22 +689,32 @@ def ensure_frontend():
         
     node_ver = check_node_version()
     
-    # Vite 8 requires Node.js >= 20.19.0 or >= 22.12.0
+    has_dist = os.path.exists(os.path.join(dist_dir, "index.html"))
+    if has_dist and (not npm_bin or (node_ver > 0 and node_ver < 20)):
+        print_log(f"[SIGMA] Node.js >= 20 non rilevato (versione: v{node_ver if node_ver > 0 else 'non installato'}). Utilizzo il frontend di produzione pre-compilato in sigma_studio/dist.", Colors.OKGREEN)
+        return
+
     if not npm_bin or (node_ver > 0 and node_ver < 20):
         if node_ver > 0 and node_ver < 20:
-            print_log(f"[SIGMA] Detected Node.js v{node_ver}, but Vite requires Node.js >= 20. Upgrading...", Colors.WARNING)
+            print_log(f"[SIGMA] Rilevato Node.js v{node_ver}. Tentativo di aggiornamento a Node.js >= 20 LTS...", Colors.WARNING)
         auto_install_node_npm()
         npm_bin = shutil.which("npm") or (shutil.which("npm.cmd") if os.name == 'nt' else None)
         node_ver = check_node_version()
-        
+
     if not npm_bin or (node_ver > 0 and node_ver < 20):
         if os.path.exists(os.path.join(dist_dir, "index.html")):
-            print_log("[SIGMA] WARNING: Node.js >= 20 not found. Using pre-built frontend in sigma_studio/dist.", Colors.WARNING)
+            print_log(f"[SIGMA] Frontend pronto in sigma_studio/dist (Node.js v{node_ver or 'assente'}). Avvio interfaccia...", Colors.OKGREEN)
             return
+        elif node_ver >= 18 and npm_bin:
+            print_log(f"[SIGMA] Tentativo di build del frontend con Node.js v{node_ver} (supporto compatibilita)...", Colors.OKCYAN)
         else:
-            print_log("[SIGMA] ERROR: Node.js (>= 20 LTS) is required to build the frontend.", Colors.FAIL, True)
-            print_log("[SIGMA] Please install Node.js 20 LTS manually:\n  - Debian/Ubuntu/Raspberry Pi: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs\n  - macOS: brew install node\n  - Windows: winget install OpenJS.NodeJS.LTS", Colors.WARNING)
-            sys.exit(1)
+            print_log("[SIGMA] ATTENZIONE: Node.js (>= 20 LTS) non trovato per compilare il frontend dai sorgenti.", Colors.WARNING)
+            print_log("[SIGMA] Genero un'interfaccia di fallback per consentire l'avvio del server e delle API su port 8000.", Colors.OKCYAN)
+            os.makedirs(dist_dir, exist_ok=True)
+            fallback_html = os.path.join(dist_dir, "index.html")
+            with open(fallback_html, "w", encoding="utf-8") as fb:
+                fb.write("<!DOCTYPE html><html><head><title>Sigma Studio Hub</title><style>body{font-family:sans-serif;background:#0b0f19;color:#f1f5f9;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;}a{color:#00d4ff;}</style></head><body><h1>Sigma Studio Core Active</h1><p>Server e API attive su porta 8000. Per compilare la SPA completa installa Node.js 20 LTS.</p><p><a href='/docs'>Documentazione API Swagger</a></p></body></html>")
+            return
 
     # Reusing SHA-1 fingerprint logic pattern
     package_json_hash = _get_directory_hash(pkg_json)

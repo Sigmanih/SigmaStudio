@@ -4,9 +4,13 @@
 # ARM NEON (Raspberry Pi 4/5, Jetson, Rockchip), CPU AVX-512/AVX2, Multi-Drive Storage
 # ==============================================================================
 import os
+import shutil
 import time
 import platform
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 from typing import Dict, Any, List, Optional
 from core.logger import get_logger
 
@@ -68,19 +72,34 @@ class UniversalHardwareProbe:
         llama.cpp wheel to install.
         """
         freq = None
-        try:
-            freq = psutil.cpu_freq()
-        except Exception:
-            freq = None
+        if psutil is not None:
+            try:
+                freq = psutil.cpu_freq()
+            except Exception:
+                freq = None
+
+        cores_phys = 1
+        cores_log = 1
+        if psutil is not None:
+            try:
+                cores_phys = psutil.cpu_count(logical=False) or psutil.cpu_count(logical=True) or 1
+                cores_log = psutil.cpu_count(logical=True) or 1
+            except Exception:
+                cores_log = os.cpu_count() or 1
+                cores_phys = max(1, cores_log // 2)
+        else:
+            cores_log = os.cpu_count() or 1
+            cores_phys = max(1, cores_log // 2)
 
         return {
-            "cores_physical": psutil.cpu_count(logical=False) or psutil.cpu_count(logical=True) or 1,
-            "cores_logical": psutil.cpu_count(logical=True) or 1,
+            "cores_physical": cores_phys,
+            "cores_logical": cores_log,
             "frequency_mhz": round(freq.current) if freq else 0,
             "frequency_max_mhz": round(freq.max) if freq and freq.max else 0,
             "model": cls._cpu_model_name(),
             "simd_features": cls._probe_simd_features(),
         }
+
 
     @staticmethod
     def _cpu_model_name() -> str:
@@ -217,20 +236,84 @@ class UniversalHardwareProbe:
 
     @classmethod
     def probe_ram(cls) -> Dict[str, Any]:
-        mem = psutil.virtual_memory()
-        swap = psutil.swap_memory()
+        if psutil is not None:
+            try:
+                mem = psutil.virtual_memory()
+                swap = psutil.swap_memory()
+                return {
+                    "total_bytes": mem.total,
+                    "total_gb": round(mem.total / (1024**3), 2),
+                    "available_bytes": mem.available,
+                    "available_gb": round(mem.available / (1024**3), 2),
+                    "used_percent": mem.percent,
+                    "swap_total_gb": round(swap.total / (1024**3), 2),
+                    "swap_free_gb": round(swap.free / (1024**3), 2),
+                    "is_low_memory": (mem.total / (1024**3)) < cls._LOW_MEMORY_GB,
+                }
+            except Exception:
+                pass
+
+        # Fallback universale senza psutil: /proc/meminfo su Linux/RPi o ctypes su Windows
+        tot_bytes = 8 * (1024**3)
+        avail_bytes = 4 * (1024**3)
+        swap_tot = 1 * (1024**3)
+        swap_fr = 1 * (1024**3)
+
+        if platform.system() == "Linux" and os.path.exists("/proc/meminfo"):
+            try:
+                with open("/proc/meminfo", "r", encoding="utf-8") as f:
+                    data = {}
+                    for line in f:
+                        parts = line.split(":")
+                        if len(parts) == 2:
+                            data[parts[0].strip()] = parts[1].strip().split()[0]
+                if "MemTotal" in data:
+                    tot_bytes = int(data["MemTotal"]) * 1024
+                if "MemAvailable" in data:
+                    avail_bytes = int(data["MemAvailable"]) * 1024
+                elif "MemFree" in data:
+                    avail_bytes = int(data["MemFree"]) * 1024
+                if "SwapTotal" in data:
+                    swap_tot = int(data["SwapTotal"]) * 1024
+                if "SwapFree" in data:
+                    swap_fr = int(data["SwapFree"]) * 1024
+            except Exception:
+                pass
+        elif platform.system() == "Windows":
+            try:
+                import ctypes
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+                stat = MEMORYSTATUSEX()
+                stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+                if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                    tot_bytes = stat.ullTotalPhys
+                    avail_bytes = stat.ullAvailPhys
+            except Exception:
+                pass
+
+        used_pct = round(100.0 * (1.0 - (avail_bytes / max(tot_bytes, 1))), 1)
         return {
-            "total_bytes": mem.total,
-            "total_gb": round(mem.total / (1024**3), 2),
-            "available_bytes": mem.available,
-            "available_gb": round(mem.available / (1024**3), 2),
-            "used_percent": mem.percent,
-            "swap_total_gb": round(swap.total / (1024**3), 2),
-            "swap_free_gb": round(swap.free / (1024**3), 2),
-            # Read by the GGUF planner, which spends a fraction of what is free
-            # rather than a fixed number of gigabytes.
-            "is_low_memory": (mem.total / (1024**3)) < cls._LOW_MEMORY_GB,
+            "total_bytes": tot_bytes,
+            "total_gb": round(tot_bytes / (1024**3), 2),
+            "available_bytes": avail_bytes,
+            "available_gb": round(avail_bytes / (1024**3), 2),
+            "used_percent": used_pct,
+            "swap_total_gb": round(swap_tot / (1024**3), 2),
+            "swap_free_gb": round(swap_fr / (1024**3), 2),
+            "is_low_memory": (tot_bytes / (1024**3)) < cls._LOW_MEMORY_GB,
         }
+
 
     @classmethod
     def probe_accelerators(cls) -> List[Dict[str, Any]]:
@@ -319,12 +402,12 @@ class UniversalHardwareProbe:
         try:
             import torch
             if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-                mem = psutil.virtual_memory()
+                mem_tot = psutil.virtual_memory().total if psutil is not None else (16 * 1024**3)
                 accelerators.append({
                     "device_id": 0,
                     "type": "APPLE_MPS",
                     "name": "Apple Silicon Unified GPU",
-                    "unified_memory_gb": round(mem.total / (1024**3), 2),
+                    "unified_memory_gb": round(mem_tot / (1024**3), 2),
                     "supports_mps": True,
                     "supports_fp16": True
                 })
@@ -351,14 +434,24 @@ class UniversalHardwareProbe:
 
         # 5. Pure CPU fallback if no GPU
         if not accelerators:
+            num_threads = 1
+            if psutil is not None:
+                try:
+                    num_threads = psutil.cpu_count(logical=True) or 1
+                except Exception:
+                    num_threads = os.cpu_count() or 1
+            else:
+                num_threads = os.cpu_count() or 1
+
             accelerators.append({
                 "device_id": 0,
                 "type": "HOST_CPU",
                 "name": f"CPU Compute ({platform.machine()})",
-                "threads": psutil.cpu_count(logical=True) or 1
+                "threads": num_threads
             })
 
         return accelerators
+
 
     # Sequential-read bandwidth by storage class, in MB/s. These are class
     # estimates used for ranking offload targets, not measurements: reliably
@@ -382,39 +475,65 @@ class UniversalHardwareProbe:
         """
         drives = []
         media_map = cls._get_media_map()
-        try:
-            partitions = psutil.disk_partitions(all=False)
-            seen_mounts = set()
-            for p in partitions:
-                if p.mountpoint in seen_mounts:
-                    continue
-                seen_mounts.add(p.mountpoint)
-                try:
-                    usage = psutil.disk_usage(p.mountpoint)
-                except Exception:
-                    continue
+        if psutil is not None:
+            try:
+                partitions = psutil.disk_partitions(all=False)
+                seen_mounts = set()
+                for p in partitions:
+                    if p.mountpoint in seen_mounts:
+                        continue
+                    seen_mounts.add(p.mountpoint)
+                    try:
+                        usage = psutil.disk_usage(p.mountpoint)
+                    except Exception:
+                        continue
 
-                media = media_map.get(cls._mount_key(p.mountpoint), {})
-                speed_class = cls._classify_storage(media)
-                bandwidth = cls._SPEED_CLASS_MB_S[speed_class]
+                    media = media_map.get(cls._mount_key(p.mountpoint), {})
+                    speed_class = cls._classify_storage(media)
+                    bandwidth = cls._SPEED_CLASS_MB_S[speed_class]
 
+                    drives.append({
+                        "device": p.device,
+                        "mountpoint": p.mountpoint,
+                        "fstype": p.fstype,
+                        "total_gb": round(usage.total / (1024**3), 2),
+                        "free_gb": round(usage.free / (1024**3), 2),
+                        "used_percent": usage.percent,
+                        "speed_class": speed_class,
+                        "media_type": media.get("MediaType", "Unknown"),
+                        "bus_type": media.get("BusType", "Unknown"),
+                        "model": media.get("Model", ""),
+                        "estimated_read_speed_mb_s": bandwidth,
+                        "is_removable": speed_class == "usb",
+                        "is_fast_storage": speed_class in ("nvme", "ssd"),
+                    })
+            except Exception as e:
+                log.warning(f"[HardwareProbe] Error probing storage drives: {e}")
+
+        if not drives:
+            # Fallback robusto usando solo la libreria standard shutil
+            try:
+                cwd = os.getcwd()
+                usage = shutil.disk_usage(cwd)
+                mount = os.path.splitdrive(cwd)[0] if platform.system() == "Windows" else "/"
                 drives.append({
-                    "device": p.device,
-                    "mountpoint": p.mountpoint,
-                    "fstype": p.fstype,
+                    "device": mount or "root",
+                    "mountpoint": mount or cwd,
+                    "fstype": "unknown",
                     "total_gb": round(usage.total / (1024**3), 2),
                     "free_gb": round(usage.free / (1024**3), 2),
-                    "used_percent": usage.percent,
-                    "speed_class": speed_class,
-                    "media_type": media.get("MediaType", "Unknown"),
-                    "bus_type": media.get("BusType", "Unknown"),
-                    "model": media.get("Model", ""),
-                    "estimated_read_speed_mb_s": bandwidth,
-                    "is_removable": speed_class == "usb",
-                    "is_fast_storage": speed_class in ("nvme", "ssd"),
+                    "used_percent": round((usage.used / max(usage.total, 1)) * 100, 1),
+                    "speed_class": "ssd",
+                    "media_type": "Unknown",
+                    "bus_type": "Unknown",
+                    "model": "System Storage",
+                    "estimated_read_speed_mb_s": 500,
+                    "is_removable": False,
+                    "is_fast_storage": True,
                 })
-        except Exception as e:
-            log.warning(f"[HardwareProbe] Error probing storage drives: {e}")
+            except Exception:
+                pass
+
         return drives
 
     @staticmethod
@@ -496,8 +615,11 @@ class UniversalHardwareProbe:
     @staticmethod
     def _get_media_map_linux() -> Dict[str, Dict[str, str]]:
         """Reads rotational/bus hints from sysfs for each mounted block device."""
+        if psutil is None:
+            return {}
         media: Dict[str, Dict[str, str]] = {}
         for part in psutil.disk_partitions(all=False):
+
             dev = os.path.basename(part.device)
             base = dev.rstrip("0123456789")
             if base.startswith("nvme"):

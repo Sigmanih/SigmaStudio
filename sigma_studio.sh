@@ -7,10 +7,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # 1. Check Python 3
-if command -v python3 &>/dev/null; then
+if [ -f ".venv/bin/python" ]; then
+    PYTHON=.venv/bin/python
+elif command -v python3 &>/dev/null; then
     PYTHON=python3
 elif command -v python &>/dev/null; then
     PYTHON=python
+
 else
     echo -e "\033[93m[SIGMA] Python 3 non trovato. Installazione automatica...\033[0m"
     if command -v apt-get &>/dev/null; then
