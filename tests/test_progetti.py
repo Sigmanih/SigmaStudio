@@ -19,12 +19,14 @@ from core import paths, progetti
 
 @pytest.fixture
 def casa_finta(tmp_path, monkeypatch):
-    """Radici isolate: questi test non devono scrivere in `data/` ne' in `config/`."""
+    """Radici isolate: questi test non devono scrivere in `data/`, `works/` ne' `config/`."""
     dati = tmp_path / "data"
+    opere = tmp_path / "works"
     conf = tmp_path / "config"
     dati.mkdir()
     conf.mkdir()
     monkeypatch.setattr(paths, "workspace_dir", lambda: dati)
+    monkeypatch.setattr(paths, "works_dir", lambda: opere)
     monkeypatch.setattr(paths, "config_dir", lambda: conf)
     monkeypatch.setattr(progetti.paths, "workspace_dir", lambda: dati)
     monkeypatch.setattr(progetti.paths, "config_dir", lambda: conf)
@@ -32,10 +34,16 @@ def casa_finta(tmp_path, monkeypatch):
 
 
 class TestLIndirizzoDiSviluppo:
-    def test_di_default_sta_dentro_data(self, casa_finta):
+    def test_di_default_sta_dentro_works(self, casa_finta):
+        # I progetti sono creazioni, non studio: dal 2026-10-12 nascono in works/, non in data/.
         radice = progetti.radice_progetti()
         assert radice.name == "progetti"
-        assert radice.parent.name == "data"
+        assert radice.parent.name == "works"
+
+    def test_i_progetti_rimasti_in_data_restano_visibili(self, casa_finta):
+        # Chi li ha gia' in data/progetti (con i venv dentro) non deve vederli sparire.
+        (casa_finta / "data" / "progetti").mkdir()
+        assert progetti.radice_progetti().parent.name == "data"
 
     def test_viene_creato_se_non_c_e(self, casa_finta):
         assert progetti.radice_progetti().is_dir()

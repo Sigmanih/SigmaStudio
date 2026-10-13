@@ -12,8 +12,12 @@
 # non solo inutile ma sviante, perche' nessuna quantita' di contesto in meno
 # cambia le istruzioni che un processore supporta.
 # ==============================================================================
+import tempfile
 import unittest
+from pathlib import Path
+from unittest import mock
 
+from core.engine import load_overrides
 from core.engine.load_overrides import CAMPI, apply_to, clear, get_for, set_for
 from core.engine.runtime_probe import (
     cpu_features,
@@ -92,10 +96,23 @@ class TestImpostazioniManuali(unittest.TestCase):
     """Il pianificatore decide, ma deve potersi scavalcare a mano."""
 
     def setUp(self):
-        clear()
+        # Un file temporaneo, mai quello vero: clear() su config/engine_overrides.json cancellava gli
+        # override scelti per questa macchina (contesto della Q5 dello scrittore, use_mmap automatici).
+        self._tmp = tempfile.TemporaryDirectory()
+        self._patch = mock.patch.object(load_overrides, "overrides_file",
+                                        return_value=Path(self._tmp.name) / "engine_overrides.json")
+        self._patch.start()
+        load_overrides.invalidate()
 
     def tearDown(self):
-        clear()
+        self._patch.stop()
+        load_overrides.invalidate()
+        self._tmp.cleanup()
+
+    def test_avviso_del_piano_vecchio_tolto(self):
+        set_for("modello-a", {"n_gpu_layers": 65, "n_ctx": 16384})
+        piano = {"n_gpu_layers": 57, "n_ctx": 32768, "warning": "57 dei 65 layer stanno in VRAM"}
+        self.assertEqual(apply_to(dict(piano), "modello-a")["warning"], "")
 
     def test_un_valore_per_un_modello_solo(self):
         set_for("modello-a", {"n_gpu_layers": 0})

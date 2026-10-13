@@ -35,10 +35,13 @@ def test_storyboard_gerarchico_con_llm_finto():
         if len(calls) == 1:
             return json.dumps([{"title": "Alba", "summary": "il gatto si sveglia", "seconds": 10},
                                {"title": "Onda", "summary": "il gatto surfa", "seconds": 10}])
+        # Inquadrature diverse per scena: quelle identiche alla scena prima vengono tolte come ricopiate.
+        n = len(calls)
         return json.dumps([
-            {"prompt": "close-up of a kitten waking up", "audio": "birds", "seconds": 4,
+            {"prompt": f"close-up of a kitten waking up, take {n}", "audio": "birds", "seconds": 4,
              "transition": "continue", "characters": ["Micio"]},
-            {"prompt": "kitten stretches", "seconds": 4, "transition": "continue", "characters": ["Altro"]},
+            {"prompt": f"kitten stretches on wave number {n * 7}", "seconds": 4, "transition": "continue",
+             "characters": ["Altro"]},
         ])
 
     shots = plan_storyboard("Un gatto surfista", minutes=20 / 60, style="cinematic",

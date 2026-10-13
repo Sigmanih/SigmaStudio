@@ -48,8 +48,12 @@ def test_il_prompt_porta_correzioni_e_guardia_del_movimento():
 
 
 def test_migliore_tentativo():
-    shot = {"judge_history": [{"clip_path": "a", "score": 0.3}, {"clip_path": "b", "score": 0.55},
-                              {"clip_path": "c", "score": None}]}
+    from core.modules.sigma_creative_lab.video.production import take_key
+    shot = {"prompt": "x"}
+    take = take_key(shot)
+    shot["judge_history"] = [{"clip_path": "a", "score": 0.3, "take": take}, {"clip_path": "b", "score": 0.55, "take": take},
+                             {"clip_path": "c", "score": None, "take": take},
+                             {"clip_path": "vecchia", "score": 0.9}]       # di un'altra ripresa: non vale
     assert best_judged(shot)["clip_path"] == "b"
     assert best_judged({}) is None
 
@@ -168,7 +172,8 @@ def test_la_corsia_non_aspetta_il_giudice(monkeypatch, tmp_path):
     monkeypatch.setattr(clip_judge, "installed", lambda: True)
     monkeypatch.setattr(prod_mod, "extract_last_frame", lambda clip: None)
     store = ProductionStore(tmp_path / "prods")
-    prod = store.create("Prova", settings={"qa": False, "color_match": False, "judge": True, "max_attempts": 3},
+    prod = store.create("Prova", settings={"qa": False, "color_match": False, "judge": True, "max_attempts": 3,
+                                                     "judge_mode": "strict"},
                         shots=[new_shot("a", id="s0"), new_shot("b", id="s1")])
     engine = Engine()
     result = asyncio.run(ProductionRunner(store, prod["id"], engine=engine).run(False))

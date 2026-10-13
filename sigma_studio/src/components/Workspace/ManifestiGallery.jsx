@@ -46,7 +46,7 @@ const getRoleImage = (role) => {
   if (text.includes('medic') || text.includes('clin') || text.includes('salut') || text.includes('biol') || text.includes('genet')) {
     return '/images/medico_ai.jpg';
   }
-  if (text.includes('design') || text.includes('grafic') || text.includes('creativ') || text.includes('visual') || text.includes('art') || text.includes('ui/ux')) {
+  if (text.includes('design') || text.includes('grafic') || text.includes('creativ') || text.includes('visual') || text.includes('art') || text.includes('ui/ux') || text.includes('film') || text.includes('cinem') || text.includes('regis') || text.includes('scenegg') || text.includes('video') || text.includes('montagg') || text.includes('sound') || text.includes('audio')) {
     return '/images/designer_ai.jpg';
   }
   if (text.includes('avvocat') || text.includes('leg') || text.includes('giur') || text.includes('finanz') || text.includes('quant') || text.includes('econom') || text.includes('mercati')) {

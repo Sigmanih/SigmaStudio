@@ -614,7 +614,47 @@ def _resolve_agent_by_request(message: str, ai_cfg: dict, model_override: str) -
             log.info("Centralino Switchboard (Semantic match: Architecture) -> %s", target)
             return target
 
-    # 18. Fallback: vector-similarity intent router.
+    # 18. Film Direction & Cinematography -> regista_cinematografico
+    direct_patterns = [r'\b(regist[ae]|regia|inquadratur|shot\s*list|moviment[io]\s+(di\s+)?camera|piano\s+sequenza|cinepresa|storyboard|blocking|piano\s+americano|primo\s+piano|campo\s+lungo|dolly|girare\s+(la\s+)?scena)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in direct_patterns):
+        target = _trova_ruolo("regista_cinematografico")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Film Direction) -> %s", target)
+            return target
+
+    # 19. Screenplay & Cinematic Scriptwriting -> sceneggiatore
+    script_patterns = [r'\b(sceneggiatur|sceneggiator[ei]|copion[ei]|screenplay|dialog[hi]\s+cinematografic|arco\s+narrativo|sinossi|logline|trattamento\s+di\s+scena|tre\s+atti)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in script_patterns):
+        target = _trova_ruolo("sceneggiatore")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Screenplay) -> %s", target)
+            return target
+
+    # 20. Cinematography, Lighting & Visual Prompts -> direttore_fotografia
+    photo_patterns = [r'\b(direttore\s+(della\s+)?fotografia|dop\b|fotograf[ao]\s+cinematografic|lighting\s+design|schem[ai]\s+di\s+luce|anamorfic|color\s+grading|focale|35mm|50mm|85mm|chiaroscuro\s+cinematografic|prompt\s+cinematografic|prompt\s+video)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in photo_patterns):
+        target = _trova_ruolo("direttore_fotografia")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Cinematography) -> %s", target)
+            return target
+
+    # 21. Video Editing & Post-Production -> montatore_video
+    edit_patterns = [r'\b(montaggio|montator[ei]|post\s*produzione\s+video|tagli[io]\s+clip|j-cut|l-cut|match\s*cut|jump\s*cut|timeline\s+video|video\s+editor|sequenza\s+video|transizion[ei]\s+video|pacing\s+video)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in edit_patterns):
+        target = _trova_ruolo("montatore_video")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Video Editing) -> %s", target)
+            return target
+
+    # 22. Sound Design & Audio Scoring -> sound_designer
+    sound_patterns = [r'\b(sound\s*design|sound\s*designer|foley|colonn[ae]\s+sonor[ae]|effett[io]\s+sonor[io]|scoring\s+audio|room\s+tone|soundscape|mix\s+audio|sincronizzazione\s+audio|missaggio\s+audio)\w*']
+    if any(re.search(p, msg_lower, re.IGNORECASE) for p in sound_patterns):
+        target = _trova_ruolo("sound_designer")
+        if target:
+            log.info("Centralino Switchboard (Semantic match: Sound Design) -> %s", target)
+            return target
+
+    # 23. Fallback: vector-similarity intent router.
     routable_ids = {
         a["id"] for a in get_all_agents()
         if a.get("status") == "active" and _trova_ruolo(a["id"])

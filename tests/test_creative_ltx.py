@@ -63,3 +63,27 @@ def test_audio_dato_resta_fermo():
     assert g["audio_latent"]["class_type"] == "SetLatentNoiseMask"
     assert g["trim_audio"]["inputs"]["duration"] == 5.0              # (121 - 1) / 24
     assert "LTXVEmptyLatentAudio" not in _types(g)
+
+
+def test_camera_richiesta_resta_quella():
+    # Caso reale: l'8B trasformava "follows from behind" in "dolly in" nonostante la regola.
+    assert P.requested_camera("Mira walks. The camera follows from behind.") == "tracking shot following the subject from behind"
+    assert P.requested_camera("camera pulls back to reveal the city") == "dolly out"
+    assert P.requested_camera("Wide shot of the harbor") == ""
+    fixed = P._with_camera("Mira strides on; the camera dolly in slowly.", "tracking shot following the subject from behind")
+    assert fixed.endswith("The camera: tracking shot following the subject from behind.") and "dolly" not in fixed
+    same_family = "Mira walks. The camera tracks behind her, keeping pace."
+    assert P._with_camera(same_family, "tracking shot following the subject from behind") == same_family
+
+
+def test_riscrittura_per_ltx_e_numerazione_del_modello():
+    prod = {"settings": {"video_model": "ltx25"}, "bible": {},
+            "shots": [{"prompt": "Mira walks on the pier. The camera follows from behind.", "status": "pending"},
+                      {"prompt": "Close-up of Mira, static camera.", "status": "done"}]}
+    # Il modello numera da 1 invece che da 0: con lo stesso numero di risposte vale l'ordine.
+    answer = '[{"index": 1, "prompt": "Mira walks steadily along the wet pier, the lamp swinging. The camera tracks behind her."}]'
+    assert P.rewrite_for_ltx(prod, lambda m, n: answer) == 1
+    assert "tracks behind her" in P.ltx_action(prod["shots"][0])
+    assert "tracks behind her" in P.compose_prompt(prod, prod["shots"][0], False)
+    prod["shots"][0]["prompt"] = "Mira runs."                       # prompt cambiato: la riscrittura non vale piu'
+    assert P.ltx_action(prod["shots"][0]) == ""

@@ -438,5 +438,115 @@
     "role": "Structural & Mechanical Engineering Specialist",
     "target": "Ingegneri Meccanici, Progettisti e Studenti",
     "temperature": 0.15
+  },
+  {
+    "baseModel": "sigma",
+    "capabilities": [
+      "Regia Cinematografica",
+      "Storyboarding & Shot List",
+      "Scelte d'Inquadratura & Movimenti Camera",
+      "Direzione Attori & Personaggi Virtuali",
+      "Grammatica Audiovisiva & Pacing"
+    ],
+    "category": "Comunicazione & Creatività",
+    "description": "Visione artistica, regia di scene, inquadrature, movimenti di macchina, blocking attori e coerenza drammaturgica per video e cortometraggi.",
+    "domainColor": "#ff007a",
+    "filename": "regista_cinematografico.md",
+    "icon": "Clapperboard",
+    "id": "regista_cinematografico",
+    "is_default": false,
+    "name": "Regista Cinematografico & Direttore Creativo",
+    "numCtx": 32768,
+    "role": "Film Director & Creative Vision Lead",
+    "target": "Registi, Filmmaker, Creator Video e Storyteller",
+    "temperature": 0.35
+  },
+  {
+    "baseModel": "sigma",
+    "capabilities": [
+      "Sceneggiature Standard (Screenplay)",
+      "Archi Narrativi dei Personaggi",
+      "Dialoghi Cinematografici Naturali",
+      "Struttura in 3 Atti",
+      "Adattamento per Doppiaggio & TTS"
+    ],
+    "category": "Comunicazione & Creatività",
+    "description": "Scrittura di copioni standard, trattamenti di scena, archi trasformativi dei personaggi e dialoghi incisivi per produzioni video.",
+    "domainColor": "#f59e0b",
+    "filename": "sceneggiatore.md",
+    "icon": "Film",
+    "id": "sceneggiatore",
+    "is_default": false,
+    "name": "Sceneggiatore Cinematografico & Storyteller",
+    "numCtx": 32768,
+    "role": "Cinematic Screenwriter & Storyteller",
+    "target": "Sceneggiatori, Scrittori, Autori e Creator",
+    "temperature": 0.4
+  },
+  {
+    "baseModel": "sigma",
+    "capabilities": [
+      "Lighting Design & Schemi di Luce",
+      "Scelte Ottiche, Focali & Anamorfiche",
+      "Palette Cromatica & Color Grading",
+      "Prompt Engineering Cinematografico",
+      "Composizione Inquadratura"
+    ],
+    "category": "Comunicazione & Creatività",
+    "description": "Progettazione illuminotecnica, scelta lenti, color grading e creazione di prompt cinematografici per generatori AI di immagini e video.",
+    "domainColor": "#8b5cf6",
+    "filename": "direttore_fotografia.md",
+    "icon": "Camera",
+    "id": "direttore_fotografia",
+    "is_default": false,
+    "name": "Direttore della Fotografia & Prompt Artist",
+    "numCtx": 32768,
+    "role": "Director of Photography & Prompt Artist",
+    "target": "Direttori della Fotografia, Fotografi e Prompt Designer",
+    "temperature": 0.3
+  },
+  {
+    "baseModel": "sigma",
+    "capabilities": [
+      "Montaggio di Scena & Continuità",
+      "Raccordi Dinamici (J-Cut/L-Cut/Match Cut)",
+      "Ritmo & Pacing Temporale",
+      "Gestione Timeline & Clip Video",
+      "Sincronizzazione Audio e Immagini"
+    ],
+    "category": "Comunicazione & Creatività",
+    "description": "Montaggio video, raccordi di scena, ritmo dei tagli, timeline e sincronizzazione per le produzioni video di Sigma Studio.",
+    "domainColor": "#06b6d4",
+    "filename": "montatore_video.md",
+    "icon": "Scissors",
+    "id": "montatore_video",
+    "is_default": false,
+    "name": "Montatore Video & Editor di Post-Produzione",
+    "numCtx": 32768,
+    "role": "Film Editor & Post-Production Specialist",
+    "target": "Video Editor, Montatori e Content Creator",
+    "temperature": 0.25
+  },
+  {
+    "baseModel": "sigma",
+    "capabilities": [
+      "Sound Design Ambientale & Room Tone",
+      "Effetti Sonori Foley & Sincronia",
+      "Colonna Sonora & Scoring Emotivo",
+      "Mix Audio & Bilanciamento Tracce",
+      "Prompt per Generatori Musicali"
+    ],
+    "category": "Comunicazione & Creatività",
+    "description": "Stratificazione sonora, effetti sonori Foley, atmosfere ambientali, composizione musicale e mixaggio per video e produzioni.",
+    "domainColor": "#10b981",
+    "filename": "sound_designer.md",
+    "icon": "Music",
+    "id": "sound_designer",
+    "is_default": false,
+    "name": "Sound Designer & Compositore Audio",
+    "numCtx": 32768,
+    "role": "Sound Designer & Audio Composer",
+    "target": "Sound Designer, Musicisti, Fonici e Produttori Audio",
+    "temperature": 0.3
   }
 ]

@@ -97,7 +97,7 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "mlx_weights", "gpu_lease",
     ),
     "moduli": (
-        "capability_manager", "creative_characters", "creative_judge", "creative_ltx", "creative_media", "creative_production", "creative_scene", "creative_speech_qa", "creative_timeline", "docker_fs", "dynamic_swarm", "eda_harness_tools",
+        "capability_manager", "civitai_red", "creative_characters", "creative_cleanup", "creative_judge", "creative_ltx", "creative_media", "creative_production", "creative_scene", "creative_speech_qa", "creative_storyboard", "creative_preproduction", "voice_engines", "creative_timeline", "video_agents_and_tools", "docker_fs", "dynamic_swarm", "eda_harness_tools",
         "eda_lab", "email_client", "frontend_diagnostics",
         "fusione_a_tre_vie", "i18n_translator", "kicad_agent",
         "kicad_edit_tools", "kicad_editor_contract", "kicad_harness_tools",
@@ -122,7 +122,7 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "hooks_and_cli", "isolamento_opzionale", "lotti_della_suite",
         "no_dead_wiring", "rollback", "scritture_dalla_shell",
         "server_startup", "store", "system_cleanup", "system_flow",
-        "terminal_runner_async", "workqueue", "workspace_isolation",
+        "terminal_runner_async", "workqueue", "workspace_isolation", "works_migration",
     ),
 }
 

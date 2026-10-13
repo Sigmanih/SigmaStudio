@@ -16,6 +16,11 @@ This directory contains the official Modelfile manifests for Sigma Studio's AI a
 | `test_engineer.md` | 0.25 | 16384 | Python test engineering |
 | `viz_designer.md` | 0.5 | 16384 | D3.js visualizations |
 | `proof_reviewer.md` | 0.3 | 32768 | Critical review |
+| `regista_cinematografico.md` | 0.35 | 32768 | Film director, shot list, visual grammar & scene blocking |
+| `sceneggiatore.md` | 0.4 | 32768 | Screenplay, character arcs, cinematic dialogues & 3-act structure |
+| `direttore_fotografia.md` | 0.3 | 32768 | DoP, lighting design, lenses, color grading & cinematic prompts |
+| `montatore_video.md` | 0.25 | 32768 | Film editor, scene cuts (J/L-cuts), pacing & video timeline |
+| `sound_designer.md` | 0.3 | 32768 | Sound design, Foley, audio scoring, soundscape & track mixing |
 
 ## Private Manifests
 

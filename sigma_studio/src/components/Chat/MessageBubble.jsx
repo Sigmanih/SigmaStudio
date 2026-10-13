@@ -10,6 +10,11 @@ const AGENT_AVATARS = {
   sigma_architect: { image: '/images/agente0.png', name: 'Sigma AI Architect' },
   math1: { image: '/images/matematicoAi.png', name: 'Sigma Math Researcher' },
   code_architect: { image: '/images/programmatoreAi.png', name: 'Sigma Code Architect' },
+  regista_cinematografico: { image: '/images/designer_ai.jpg', name: 'Regista Cinematografico' },
+  sceneggiatore: { image: '/images/designer_ai.jpg', name: 'Sceneggiatore Cinematografico' },
+  direttore_fotografia: { image: '/images/designer_ai.jpg', name: 'Direttore della Fotografia' },
+  montatore_video: { image: '/images/designer_ai.jpg', name: 'Montatore Video' },
+  sound_designer: { image: '/images/designer_ai.jpg', name: 'Sound Designer' },
 };
 
 function getAgentAvatar(agentName) {

@@ -1276,7 +1276,9 @@ class GgufConverter:
         # "-GGUF" non si trova nulla da togliere e resta dentro il nome.
         # Ripartendo da "...-GGUF-Q8_0" per fare un Q4 si otteneva
         # "...-GGUF-GGUF-Q4_K_M", e il nome giusto restava occupato.
-        base_name = job.source_model
+        # "Qwen/Qwen3.8-27B" va scritto come le cartelle dei modelli ("Qwen--Qwen3.8-27B"): con la barra
+        # l'uscita finiva in una sottocartella "Qwen" mai creata e la conversione falliva.
+        base_name = job.source_model.replace("/", "--").replace("\\", "--")
         while True:
             prima = base_name
             for suffix in ("-" + q["id"] for q in QUANT_TYPES):
@@ -1313,7 +1315,7 @@ class GgufConverter:
             )
         else:
             intermediate = os.path.join(
-                target_dir, job.source_model + "-" + outtype + ".gguf"
+                target_dir, base_name + "-" + outtype + ".gguf"
             )
         final_name = base_name + "." + job.quantization + ".gguf"
         final_path = os.path.join(target_dir, final_name)
@@ -1946,7 +1948,8 @@ class GgufConverter:
             return None
 
         from core.paths import project_root
-        calib_root = project_root() / "data" / "calibration"
+        from core.paths import calibration_dir
+        calib_root = calibration_dir()
 
         testo = testo_calibrazione
         if not testo or not os.path.isfile(testo):
@@ -2249,7 +2252,7 @@ class GgufConverter:
                     raise RuntimeError(
                         f"La quantizzazione in {quant_type} richiede obbligatoriamente una matrice d'importanza "
                         f"(imatrix). Assicurati che il file di calibrazione 'imatrix_calibration.txt' sia presente "
-                        f"in data/calibration/ o inserisci un file *.imatrix.dat calcolato."
+                        f"in store/calibration/ o inserisci un file *.imatrix.dat calcolato."
                     )
 
                 # 2. Protezione vocabolario e proiezioni per evitare collasso del modello
@@ -2706,7 +2709,7 @@ class GgufConverter:
     _CAUSE_NOTE = (
         ("require an imatrix",
          "La quantizzazione richiesta esige una matrice d'importanza (imatrix) per preservare "
-         "i tensori critici a 2-bit. Assicurati che esista data/calibration/imatrix_calibration.txt."),
+         "i tensori critici a 2-bit. Assicurati che esista store/calibration/imatrix_calibration.txt."),
         ("requires an importance matrix",
          "La quantizzazione richiesta esige una matrice d'importanza (imatrix) specifica per i tensori di questo modello."),
         ("missing importance matrix",

@@ -82,6 +82,7 @@ htmlcov/
 # li avrebbe resi tracciabili — token di HuggingFace compreso.
 # ==============================================================================
 data/
+works/
 !data/.gitkeep
 config/
 !config/.gitkeep

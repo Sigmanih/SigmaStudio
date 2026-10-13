@@ -93,3 +93,31 @@ def test_passaggio_alla_produzione_e_ritorno(lib, monkeypatch):
     assert back["front"] == "front.png"
     outside = L.from_production(prod["id"], "X", {"name": "X", "ref_image": str(Path(__file__).resolve())})
     assert outside["front"] == ""                              # file fuori dallo spazio di lavoro: ignorato
+
+
+def test_grafo_klein_con_piu_riferimenti():
+    from core.modules.sigma_creative_lab.video import image_gen
+    g = image_gen.build_graph("klein", "two friends on a pier", width=1344, height=768, refs=["a.png", "b.png"])
+    # Ogni riferimento si aggancia in catena sia al positivo sia al negativo.
+    assert g["pos2"]["inputs"]["conditioning"] == ["pos1", 0] and g["neg2"]["inputs"]["conditioning"] == ["neg1", 0]
+    assert g["guider"]["inputs"]["positive"] == ["pos2", 0]
+    assert g["sigmas"]["inputs"] == {"steps": 4, "width": 1344, "height": 768}
+    many = image_gen.build_graph("klein", "crowd", refs=[f"{k}.png" for k in range(9)])
+    assert sum(1 for n in many.values() if n["class_type"] == "LoadImage") == image_gen.MAX_REFS
+
+
+def test_fotogramma_chiave_dai_riferimenti(monkeypatch, tmp_path):
+    from core.modules.sigma_creative_lab.video import genres, image_gen
+    ref = tmp_path / "mira.png"
+    Image.new("RGB", (8, 8)).save(ref)
+    prod = {"bible": {"genre": "anime", "characters": [{"name": "Mira", "description": "girl", "ref_image": str(ref)},
+                                                         {"name": "Ada", "description": "woman"}]}}
+    shot = {"prompt": "Mira walks on the pier", "refs": []}
+    monkeypatch.setattr(image_gen, "installed", lambda model: True)
+    model, prompt, refs = genres.keyframe_plan(prod, shot)
+    assert model == "klein" and refs == [str(ref)] and "Mira is the character in image 1" in prompt
+    # Senza klein, o senza immagini dei personaggi in scena, resta il modello del genere.
+    monkeypatch.setattr(image_gen, "installed", lambda model: model != "klein")
+    assert genres.keyframe_plan(prod, shot)[0] == "animagine"
+    monkeypatch.setattr(image_gen, "installed", lambda model: True)
+    assert genres.keyframe_plan(prod, {"prompt": "Ada reads", "refs": []}) [2] == []

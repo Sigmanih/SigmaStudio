@@ -638,7 +638,8 @@ def deploy_model_to_sigma_engine(
 
     # Automatically set this model as active for Chat
     try:
-        from core.ai_brain import load_ai_config, save_ai_config
+        # core.ai_brain non esiste piu': l'errore finiva nel log di debug e la chat tornava al modello vecchio.
+        from core.ai_providers import load_ai_config, save_ai_config
         cfg = load_ai_config()
         cfg["active_model"] = model_name
         cfg["active_provider"] = "sigma_engine"
@@ -656,7 +657,7 @@ def deploy_model_to_sigma_engine(
             cfg["providers"]["sigma_engine"]["models"].insert(0, model_name)
         save_ai_config(cfg)
     except Exception as ex:
-        log.debug(f"[ModelInventory] Note updating ai_config: {ex}")
+        log.warning(f"[ModelInventory] modello attivo della chat non salvato: {ex}")
 
     log.info(
         "[ModelInventory] Modello %s selezionato in SigmaEngine (piano: %s).",

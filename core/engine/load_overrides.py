@@ -287,6 +287,10 @@ def apply_to(settings: Dict[str, Any], model_name: str) -> Dict[str, Any]:
 
     if applicati:
         settings["overridden"] = applicati
+        if {"n_gpu_layers", "n_ctx"} & set(applicati) and settings.get("warning"):
+            # L'avviso del pianificatore descriveva il piano di prima ("57 dei 65 layer in VRAM") e
+            # restava nel log anche col modello ormai tutto sulla GPU: fuorviante, va tolto.
+            settings["warning"] = ""
         log.info("[LoadOverrides] Piano per '%s' scavalcato a mano: %s",
                  model_name, ", ".join(f"{k} {v['pianificato']}->{v['imposto']}"
                                        for k, v in applicati.items()))

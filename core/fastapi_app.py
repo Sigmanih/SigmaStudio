@@ -1925,6 +1925,13 @@ async def serve_static_or_spa(path: str):
         if target:
             return FileResponse(target)
 
+    # Le creazioni dei moduli (video, immagini, voci, progetti) stanno in works/, fuori dallo studio.
+    if path.startswith("works/"):
+        from core.paths import works_dir
+        target = _resolve_inside(works_dir(), path[len("works/"):])
+        if target:
+            return FileResponse(target)
+
     target_img = _ROOT / "images" / path
     if target_img.exists() and target_img.is_file():
         return FileResponse(target_img)

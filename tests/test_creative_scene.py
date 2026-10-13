@@ -1,6 +1,7 @@
 """Scene didattiche (blocchi e HTML libero) e libreria delle voci personali."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -135,11 +136,11 @@ def test_vecchie_lezioni_con_scena_oggetto(tmp_path):
     # "scene" e' il nome della scena: un oggetto li' mandava in errore l'interfaccia (React #31).
     from core.modules.sigma_creative_lab.video.production import ProductionStore
     store = ProductionStore(tmp_path)
-    (tmp_path / "p").mkdir()
-    (tmp_path / "p" / "production.json").write_text(json.dumps({"id": "p", "shots": [
+    (tmp_path / "prova_1").mkdir()
+    (tmp_path / "prova_1" / "production.json").write_text(json.dumps({"id": "prova_1", "shots": [
         {"id": "a", "scene": {"description": "triangolo", "narration": "ciao"}}, {"id": "b", "scene": "Faro"}]}),
         encoding="utf-8")
-    shots = store.get("p")["shots"]
+    shots = store.get("prova_1")["shots"]
     assert shots[0]["scene"] == "Lezione" and shots[0]["teaching"]["narration"] == "ciao"
     assert shots[1]["scene"] == "Faro" and "teaching" not in shots[1]
 
@@ -155,3 +156,54 @@ def test_quadrati_senza_triangolo_e_scritte_sole():
     assert [it["side"] for it in out["blocks"][0]["items"][1:]] == [-1, 1, -1]
     assert out["blocks"][1] == {"type": "bullets", "start": 0, "items": ["9 + 16 = 25"]}
     assert scene_kit.validate(out) == []
+
+
+def test_voce_da_descrizione_verificata(monkeypatch, tmp_path):
+    # Caso reale: la voce acuta di Pepe saltava meta' frase; il campione va rifatto con un'altra seed.
+    from core.modules.sigma_voice_studio import library
+    monkeypatch.setattr(library, "voices_dir", lambda: tmp_path)
+    heard = iter(["Ascoltate bene!", "Ciao! Oggi vi racconto una storia bellissima, ascoltate bene."])
+
+    class Qwen:
+        seeds = []
+        def installed(self): return True
+        def synthesize(self, text, out, **k):
+            self.seeds.append(k["seed"]); Path(out).write_bytes(b"RIFF")
+        def unload(self): pass
+
+    class Voice:
+        def transcribe(self, path, language="it"): return {"text": next(heard)}
+    qwen = Qwen()
+    monkeypatch.setattr(library, "_runtimes", lambda: (Voice(), qwen))
+    from core.modules.sigma_creative_lab.voice import runtime as voice_rt
+    monkeypatch.setattr(voice_rt, "runtime_for", lambda engine: qwen)    # il motore si sceglie per voce
+    v = library.create_from_description("Pepe", "cartoon hedgehog", seed=3,
+                                        text="Ciao! Oggi vi racconto una storia bellissima, ascoltate bene.")
+    assert qwen.seeds == [3, 104] and v["seed"] == 104
+    assert not list((tmp_path / v["id"]).glob("try*.wav"))           # tentativi scartati ripuliti
+
+
+def test_voce_italiana_con_tono(monkeypatch, tmp_path):
+    # Prova "Il seme di Lia": le voci da descrizione avevano l'accento straniero e Pepe parlava come Lia.
+    import math
+    import struct
+    import wave
+    from core.modules.sigma_voice_studio import library
+    monkeypatch.setattr(library, "voices_dir", lambda: tmp_path)
+    calls = []
+
+    class Voice:
+        def installed(self): return True
+        def synthesize(self, text, out, **k):
+            calls.append(k)
+            with wave.open(str(out), "wb") as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
+                w.writeframes(b"".join(struct.pack("<h", int(8000 * math.sin(i / 20))) for i in range(24000)))
+    monkeypatch.setattr(library, "_runtimes", lambda: (Voice(), None))
+    v = library.create_from_preset("Lia", "bambina")
+    assert v["kind"] == "preset" and v["preset"] == "if_sara" and v["semitones"] == 3.5
+    out = tmp_path / "battuta.wav"
+    library.speak(v["id"], "Uffa, nonno!", out)
+    assert out.is_file() and calls[-1]["engine"] == "kokoro"            # niente clonazione Chatterbox
+    tuned = library.update_tone(v["id"], 5.0, 1.1)
+    assert tuned["semitones"] == 5.0 and tuned["speed"] == 1.1

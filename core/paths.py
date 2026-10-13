@@ -91,8 +91,68 @@ def project_root() -> Path:
 # nuove, portandosi via da data/ tutto cio' che l'utente non ha creato.
 
 def workspace_dir() -> Path:
-    """Lavoro dell'utente: argomenti, note, file e immagini che ha prodotto."""
+    """Studio dell'utente: argomenti, note, ricerche e file che lui o gli agenti scrivono per studiare."""
     return project_root() / "data"
+
+
+def works_dir() -> Path:
+    """Creazioni prodotte con i moduli: progetti, immagini, modelli 3D, video, voci.
+
+    Prima finivano tutte in data/, che e' lo spazio di studio: un video di 2 GB e
+    una nota di appunti stavano nella stessa cartella, e chi cercava i propri
+    argomenti doveva scavalcare centinaia di clip. Ogni modulo ha qui la sua area.
+    """
+    return project_root() / "works"
+
+
+def works_area(name: str, legacy: str | None = None) -> Path:
+    """Area di un tipo di creazione dentro works/ (es. "creative", "voci", "progetti").
+
+    `legacy` e' il nome della cartella dentro data/ dove l'area stava prima: finche'
+    la migrazione non l'ha copiata (vedi core/works_migration.py) si continua a usare
+    quella, cosi' nulla sparisce dalla vista prima del trasloco.
+    """
+    nuovo = works_dir() / name
+    if nuovo.exists() or not legacy:
+        return nuovo
+    storico = workspace_dir() / legacy
+    return storico if storico.exists() else nuovo
+
+
+def user_roots() -> tuple:
+    """Le radici in cui stanno file dell'utente: studio e creazioni."""
+    return (workspace_dir(), works_dir())
+
+
+def is_user_path(path) -> bool:
+    """Il percorso sta dentro data/ o works/? Per i percorsi che arrivano dal browser."""
+    try:
+        target = Path(path).resolve()
+    except (OSError, ValueError):
+        return False
+    for root in user_roots():
+        try:
+            target.relative_to(Path(root).resolve())
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def public_url(path) -> str:
+    """URL con cui il frontend scarica un file dell'utente: /data/... o /works/...; vuoto se e' fuori."""
+    if not path:
+        return ""
+    try:
+        target = Path(path).resolve()
+    except (OSError, ValueError):
+        return ""
+    for prefix, root in (("/data/", workspace_dir()), ("/works/", works_dir())):
+        try:
+            return prefix + target.relative_to(Path(root).resolve()).as_posix()
+        except ValueError:
+            continue
+    return ""
 
 
 def config_dir() -> Path:
@@ -108,6 +168,13 @@ def var_dir() -> Path:
 def store_dir() -> Path:
     """Artefatti scaricati: modelli, shard, strumenti. Cancellabili, si riscaricano."""
     return project_root() / "store"
+
+
+def calibration_dir() -> Path:
+    """Testi e matrici di importanza per quantizzare i modelli: artefatti tecnici, non studio."""
+    nuovo = store_dir() / "calibration"
+    storico = workspace_dir() / "calibration"
+    return storico if storico.exists() and not nuovo.exists() else nuovo
 
 
 # ------------------------------------------------------------------ migrazione
@@ -258,9 +325,8 @@ def shards_dir() -> Path:
 
 
 def creative_dir() -> Path:
-    """Radice del Creative: sta nello spazio utente perche' cio' che contiene
-    l'ha prodotto l'utente, e da li' deve poter essere allegato a un argomento."""
-    return workspace_dir() / "creative"
+    """Radice del Creative: immagini, modelli 3D, materiali, produzioni video, personaggi."""
+    return works_area("creative", legacy="creative")
 
 
 #: Le quattro nature che il Creative produce. Ognuna ha la sua cartella dentro

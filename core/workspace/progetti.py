@@ -59,7 +59,7 @@ def radice_progetti() -> Path:
         except (OSError, ValueError) as exc:
             log.warning("[Progetti] configurazione illeggibile: %s", exc)
 
-    radice = Path(scelta) if scelta else Path(paths.workspace_dir()) / CARTELLA_PREDEFINITA
+    radice = Path(scelta) if scelta else Path(paths.works_area(CARTELLA_PREDEFINITA, legacy=CARTELLA_PREDEFINITA))
     try:
         radice.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
