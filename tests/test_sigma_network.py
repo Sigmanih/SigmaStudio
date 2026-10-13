@@ -1252,5 +1252,48 @@ def test_handlers_provider_routes(tmp_path):
     assert "qos_tier" in b_data
 
 
+def test_faucet_double_claim_resilience(tmp_path):
+    """Il faucet non deve mai sollevare HTTP 500 al secondo claim ma rispondere con status amichevole."""
+    import core.modules.sigma_network.handlers as h
+    _reset_singletons()
+    client = _make_client(tmp_path)
+
+    # Primo claim: success
+    r1 = client.post("/wallet/faucet", json={"amount": 100.0})
+    assert r1.status_code == 200
+    assert r1.json()["status"] == "success"
+    assert r1.json()["credited"] == 100.0
+
+    # Secondo claim con saldo alto: already_claimed (mai 500!)
+    r2 = client.post("/wallet/faucet", json={"amount": 100.0})
+    assert r2.status_code == 200
+    assert r2.json()["status"] == "already_claimed"
+    assert r2.json()["credited"] == 0.0
+
+
+def test_auth_login_node_and_session(tmp_path):
+    """auth/login_node deve creare una sessione valida col wallet del nodo locale."""
+    import core.modules.sigma_network.handlers as h
+    _reset_singletons()
+    client = _make_client(tmp_path)
+
+    # Sessione iniziale
+    s1 = client.get("/auth/session")
+    assert s1.status_code == 200
+    assert s1.json()["authenticated"] is False
+
+    # Login con nodo locale
+    r_node = client.post("/auth/login_node")
+    assert r_node.status_code == 200
+    assert r_node.json()["status"] == "success"
+    assert "Nodo Locale" in r_node.json()["username"]
+
+    # Sessione post-login
+    s2 = client.get("/auth/session")
+    assert s2.status_code == 200
+    assert s2.json()["authenticated"] is True
+
+
+
 
 

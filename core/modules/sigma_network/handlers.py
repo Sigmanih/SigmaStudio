@@ -687,6 +687,17 @@ def get_cluster_models() -> List[Dict[str, Any]]:
     return _get_broker().get_cluster_models()
 
 
+def _safe_stream(generator: Generator[str, None, None]) -> Generator[str, None, None]:
+    """Inoltra i chunk SSE proteggendo il client da errori HTTP 500 non gestiti."""
+    try:
+        for chunk in generator:
+            yield chunk
+    except Exception as exc:
+        logger.error("Errore nello streaming SSE: %s", exc, exc_info=True)
+        yield f"data: {json.dumps({'error': f'Errore di streaming: {exc}'})}\n\n"
+        yield "data: [DONE]\n\n"
+
+
 @router.post("/cluster/infer")
 def cluster_infer(body: ClusterInferRequest) -> StreamingResponse:
     """Esegue inferenza nel cluster P2P con streaming SSE e regolamento AiloCoin."""
@@ -702,7 +713,7 @@ def cluster_infer(body: ClusterInferRequest) -> StreamingResponse:
         max_tokens=max_tokens,
         preferred_peer_id=body.preferred_peer_id,
     )
-    return StreamingResponse(generator, media_type="text/event-stream; charset=utf-8")
+    return StreamingResponse(_safe_stream(generator), media_type="text/event-stream; charset=utf-8")
 
 
 @router.post("/inference/remote")
@@ -722,7 +733,7 @@ def inference_remote(body: dict):
         max_tokens=max_tokens,
         preferred_peer_id=remote_peer_id,
     )
-    return StreamingResponse(generator, media_type="text/event-stream; charset=utf-8")
+    return StreamingResponse(_safe_stream(generator), media_type="text/event-stream; charset=utf-8")
 
 
 @router.post("/wallet/faucet")
@@ -731,14 +742,40 @@ def wallet_faucet(body: Optional[FaucetRequest] = None) -> Dict[str, Any]:
     amount = 100.0 if body is None or body.amount is None else body.amount
     identity = _get_identity()
     wallet = _get_wallet()
-    receipt = wallet.mint_faucet(identity["peer_id"], amount=amount)
-    totals = wallet.balance(identity["peer_id"])
-    return {
-        "status": "success",
-        "credited": amount,
-        "new_balance": totals["balance"],
-        "receipt": receipt,
-    }
+    peer_id = identity["peer_id"]
+
+    try:
+        receipt = wallet.mint_faucet(peer_id, amount=amount)
+        totals = wallet.balance(peer_id)
+        return {
+            "status": "success",
+            "credited": amount,
+            "new_balance": totals["balance"],
+            "receipt": receipt,
+        }
+    except ValueError as e:
+        totals = wallet.balance(peer_id)
+        # Se il saldo residuo è inferiore a 10 AILO, consentiamo la ricarica per test
+        if totals["balance"] < 10.0:
+            try:
+                receipt = wallet.mint_faucet(peer_id, amount=amount, force=True)
+                totals = wallet.balance(peer_id)
+                return {
+                    "status": "success",
+                    "credited": amount,
+                    "new_balance": totals["balance"],
+                    "receipt": receipt,
+                    "note": "Ricarica faucet erogata poiché il saldo era esaurito.",
+                }
+            except Exception as inner_err:
+                logger.error("Errore ricarica faucet forzata: %s", inner_err)
+
+        return {
+            "status": "already_claimed",
+            "credited": 0.0,
+            "new_balance": totals["balance"],
+            "detail": f"Genesis Faucet già riscattato per questo wallet. Saldo attuale: {totals['balance']} AILO.",
+        }
 
 
 @router.get("/mining/status")
@@ -901,12 +938,17 @@ def auth_session() -> Dict[str, Any]:
     """Restituisce lo stato dell'utente e wallet correntemente autenticato."""
     auth = _get_auth()
     sess = auth.get_session(_current_session_token)
+    local_accs = auth.list_local_accounts()
+    has_accounts = len(local_accs) > 0
     if not sess:
         return {
             "authenticated": False,
             "username": None,
             "peer_id": _get_identity()["peer_id"],
             "wallet_assigned": True,
+            "has_accounts": has_accounts,
+            "accounts_count": len(local_accs),
+            "accounts": local_accs,
         }
     return {
         "authenticated": True,
@@ -915,6 +957,32 @@ def auth_session() -> Dict[str, Any]:
         "public_key": sess["public_key"],
         "created_at": sess["created_at"],
         "wallet_assigned": True,
+        "has_accounts": has_accounts,
+        "accounts_count": len(local_accs),
+        "accounts": local_accs,
+    }
+
+
+@router.post("/auth/login_node")
+def auth_login_node() -> Dict[str, Any]:
+    """Attiva una sessione usando l'identita predefinita del nodo locale."""
+    global _current_session_token
+    identity = load_identity(_identity_file or _default_path("identity.json"))
+    auth = _get_auth()
+    priv_raw = base64.b64decode(identity["private_key"])
+    account_data = {
+        "username": f"Nodo Locale ({identity['peer_id'][:6]})",
+        "peer_id": identity["peer_id"],
+        "public_key": identity["public_key"],
+    }
+    session_token = auth._create_session(account_data, priv_raw)
+    _current_session_token = session_token
+    return {
+        "status": "success",
+        "username": account_data["username"],
+        "peer_id": account_data["peer_id"],
+        "public_key": account_data["public_key"],
+        "session_token": session_token,
     }
 
 

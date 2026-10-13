@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   KeyRound,
   ShieldCheck,
@@ -25,6 +25,19 @@ const AuthWalletModal = ({ isOpen, onClose, onAuthSuccess }) => {
 
   if (!isOpen) return null;
 
+  useEffect(() => {
+    if (isOpen) {
+      fetch('/api/sigma_network/auth/session')
+        .then(r => r.json())
+        .then(data => {
+          if (data && data.has_accounts === false) {
+            setMode('register');
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
+
   const resetForm = () => {
     setUsername('');
     setPassword('');
@@ -39,6 +52,25 @@ const AuthWalletModal = ({ isOpen, onClose, onAuthSuccess }) => {
       navigator.clipboard.writeText(generatedSeed);
       setCopiedSeed(true);
       setTimeout(() => setCopiedSeed(false), 2000);
+    }
+  };
+
+  const handleLoginWithNode = async () => {
+    setErrorMsg(null);
+    setLoading(true);
+    try {
+      const resp = await fetch('/api/sigma_network/auth/login_node', { method: 'POST' });
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data.detail || 'Impossibile accedere con il wallet del nodo');
+      }
+      if (onAuthSuccess) onAuthSuccess(data);
+      resetForm();
+      onClose();
+    } catch (err) {
+      setErrorMsg(err.message || 'Errore accesso nodo locale');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -218,11 +250,31 @@ const AuthWalletModal = ({ isOpen, onClose, onAuthSuccess }) => {
               color: '#f87171',
               fontSize: '0.82rem',
               display: 'flex',
-              alignItems: 'center',
-              gap: 8
+              flexDirection: 'column',
+              gap: 6
             }}>
-              <AlertTriangle size={16} />
-              <span>{errorMsg}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <AlertTriangle size={16} />
+                <span>{errorMsg}</span>
+              </div>
+              {mode === 'login' && (
+                <button
+                  type="button"
+                  onClick={() => { setMode('register'); setErrorMsg(null); }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#38bdf8',
+                    fontSize: '0.78rem',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    padding: 0,
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Non hai ancora un account? Clicca qui per registrarti con Seed Phrase
+                </button>
+              )}
             </div>
           )}
 
@@ -388,6 +440,31 @@ const AuthWalletModal = ({ isOpen, onClose, onAuthSuccess }) => {
                   'Ripristina Wallet & Accedi'
                 )}
               </button>
+
+              {mode === 'login' && (
+                <button
+                  type="button"
+                  onClick={handleLoginWithNode}
+                  disabled={loading}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(0, 212, 255, 0.25)',
+                    borderRadius: 8,
+                    color: '#94a3b8',
+                    padding: '10px 14px',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <ShieldCheck size={16} color="#00d4ff" />
+                  <span>Accedi come Nodo Locale (Senza Password)</span>
+                </button>
+              )}
             </form>
           )}
         </div>

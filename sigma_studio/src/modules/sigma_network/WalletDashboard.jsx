@@ -37,6 +37,8 @@ const WalletDashboard = ({ walletData, identity, onRefresh }) => {
   const spent = walletData?.spent || 0;
   const receipts = walletData?.receipts || [];
 
+  const [faucetNotice, setFaucetNotice] = useState(null);
+
   const handleCopyPeerId = () => {
     if (identity?.peer_id) {
       navigator.clipboard.writeText(identity.peer_id);
@@ -47,19 +49,29 @@ const WalletDashboard = ({ walletData, identity, onRefresh }) => {
 
   const handleRequestFaucet = async () => {
     setIsFauceting(true);
+    setFaucetNotice(null);
     try {
       const resp = await fetch('/api/sigma_network/wallet/faucet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: 100.0 }),
       });
-      if (resp.ok && onRefresh) {
-        onRefresh();
+      const data = await resp.json();
+      if (resp.ok) {
+        if (data.status === 'already_claimed') {
+          setFaucetNotice({ type: 'info', text: data.detail || 'Faucet già riscattato per questo wallet' });
+        } else {
+          setFaucetNotice({ type: 'success', text: `Accreditati +${data.credited || 100} AILO!` });
+        }
+        if (onRefresh) onRefresh();
+      } else {
+        setFaucetNotice({ type: 'error', text: data.detail || 'Richiesta non riuscita' });
       }
     } catch (e) {
-      console.error('Errore richiesta faucet', e);
+      setFaucetNotice({ type: 'error', text: 'Errore di comunicazione con il nodo' });
     } finally {
       setIsFauceting(false);
+      setTimeout(() => setFaucetNotice(null), 5000);
     }
   };
 
@@ -213,6 +225,29 @@ const WalletDashboard = ({ walletData, identity, onRefresh }) => {
               <span>Invia Token</span>
             </button>
           </div>
+
+          {faucetNotice && (
+            <div style={{
+              marginTop: 10,
+              padding: '8px 12px',
+              borderRadius: 6,
+              fontSize: '0.78rem',
+              background: faucetNotice.type === 'error' ? 'rgba(239, 68, 68, 0.15)' :
+                          faucetNotice.type === 'info' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+              border: `1px solid ${
+                faucetNotice.type === 'error' ? 'rgba(239, 68, 68, 0.4)' :
+                faucetNotice.type === 'info' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(16, 185, 129, 0.4)'
+              }`,
+              color: faucetNotice.type === 'error' ? '#f87171' :
+                     faucetNotice.type === 'info' ? '#38bdf8' : '#34d399',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8
+            }}>
+              <Check size={14} />
+              <span>{faucetNotice.text}</span>
+            </div>
+          )}
         </div>
 
         {/* Metriche Dettagliate */}

@@ -124,7 +124,13 @@ class ClusterBroker:
         wallet = self._get_wallet()
         registry = self._get_registry()
         local_peer_id = identity.get("peer_id", "")
-        private_key_bytes = base64.b64decode(identity["private_key"])
+        priv_key_str = identity.get("private_key")
+        private_key_bytes: Optional[bytes] = None
+        if priv_key_str:
+            try:
+                private_key_bytes = base64.b64decode(priv_key_str)
+            except Exception as e:
+                logger.warning("Decodifica chiave privata non riuscita: %s", e)
 
         # Identifica il provider adatto
         cluster_models = self.get_cluster_models()
@@ -138,7 +144,11 @@ class ClusterBroker:
 
         if not candidates:
             # Fallback generico: cerca un peer trusted che abbia modelli
-            candidates = [m for m in cluster_models if m["is_trusted"] and m["status"] == "online"]
+            candidates = [m for m in cluster_models if m.get("is_trusted") and m.get("status") == "online"]
+
+        if not candidates and cluster_models:
+            # Se nessun modello corrisponde esattamente, usa il primo modello locale o disponibile
+            candidates = [cluster_models[0]]
 
         if not candidates:
             err = {"error": f"Nessun nodo del cluster disponibile per il modello '{model}'"}
@@ -166,16 +176,25 @@ class ClusterBroker:
         if is_local:
             try:
                 from core.engine.unified_runtime import sigma_engine
-                for tok in sigma_engine.generate_stream(
+                from core.engine.provider_server import is_notice
+                for chunk in sigma_engine.generate_stream(
                     prompt=prompt,
-                    model=selected["model_id"],
+                    model_name=selected["model_id"],
                     max_tokens=max_tokens,
                 ):
-                    token_count += 1
-                    yield f"data: {json.dumps({'token': tok})}\n\n"
+                    if is_notice(chunk):
+                        continue
+                    token_text = ""
+                    if isinstance(chunk, dict):
+                        token_text = chunk.get("token") or chunk.get("content") or ""
+                    elif isinstance(chunk, str):
+                        token_text = chunk
+                    if token_text:
+                        token_count += 1
+                        yield f"data: {json.dumps({'token': token_text})}\n\n"
             except Exception as exc:
                 logger.error("Errore generazione locale: %s", exc)
-                yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+                yield f"data: {json.dumps({'error': f'Motore locale: {exc}'})}\n\n"
 
             # Chiusura locale
             end_meta = {
@@ -189,6 +208,14 @@ class ClusterBroker:
             return
 
         # CASO 2: Peer Remoto P2P con regolamento AiloCoin
+        if not private_key_bytes:
+            err = {
+                "error": "Chiave privata del wallet assente o bloccata. Effettua l'accesso con password o importa il tuo wallet per firmare le richieste P2P."
+            }
+            yield f"data: {json.dumps(err)}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+
         # Verifica saldo disponibile
         current_balance = wallet.balance(local_peer_id).get("balance", 0.0)
         if current_balance <= 0.0:

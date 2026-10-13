@@ -78,8 +78,17 @@ const ClusterInference = ({ initialPeer, walletBalance, onReceiptCreated }) => {
       });
 
       if (!response.ok) {
-        const errJson = await response.json();
-        throw new Error(errJson.detail || errJson.error || `Errore HTTP ${response.status}`);
+        let errDetail = `Errore HTTP ${response.status}`;
+        try {
+          const errJson = await response.json();
+          errDetail = errJson.detail || errJson.error || errDetail;
+        } catch {
+          try {
+            const raw = await response.text();
+            if (raw) errDetail = raw;
+          } catch {}
+        }
+        throw new Error(errDetail);
       }
 
       const reader = response.body.getReader();
