@@ -1,1 +1,0 @@
-import"./rolldown-runtime-hePW80VL.js";import{n as e,t}from"./jsx-runtime-DE3RlOCf.js";e();var n=t(),r=()=>(0,n.jsx)(`div`,{className:`messaging-hub-container`,children:(0,n.jsx)(`h2`,{children:`Messaging Hub`})});export{r as MessagingHub,r as default};

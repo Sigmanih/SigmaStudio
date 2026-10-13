@@ -632,6 +632,12 @@ _get_directory_hash = _get_path_hash
 
 def check_node_version():
     """Return major version number of Node.js (e.g. 18, 20, 22) or 0 if not found."""
+    runtime_dir = os.path.abspath(".node_runtime")
+    if os.path.exists(runtime_dir):
+        bin_dir = runtime_dir if os.name == 'nt' else os.path.join(runtime_dir, "bin")
+        if bin_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+
     try:
         cmd = ["node.exe"] if os.name == 'nt' else ["node"]
         out = subprocess.check_output(cmd + ["-v"], stderr=subprocess.DEVNULL).decode().strip()
@@ -641,8 +647,84 @@ def check_node_version():
         pass
     return 0
 
+def install_portable_node():
+    """Scarica e configura Node.js 20 LTS standalone in .node_runtime/ (senza permessi admin/sudo)."""
+    import urllib.request
+    import zipfile
+    import tarfile
+
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    arch = "x64"
+    if machine in ("aarch64", "arm64"):
+        arch = "arm64"
+    elif "arm" in machine:
+        arch = "armv7l"
+
+    node_version = "v20.18.0"
+    base_url = f"https://nodejs.org/dist/{node_version}/"
+    runtime_dir = os.path.abspath(".node_runtime")
+
+    if system == "windows":
+        filename = f"node-{node_version}-win-{arch}.zip"
+    elif system == "darwin":
+        filename = f"node-{node_version}-darwin-{arch}.tar.gz"
+    else:  # Linux (Debian, Ubuntu, Raspberry Pi OS, etc.)
+        filename = f"node-{node_version}-linux-{arch}.tar.xz"
+
+    url = base_url + filename
+    print_log(f"[SIGMA] Download di Node.js {node_version} standalone ({filename})...", Colors.OKCYAN)
+
+    temp_archive = os.path.join(os.path.dirname(runtime_dir), f".temp_{filename}")
+    try:
+        urllib.request.urlretrieve(url, temp_archive)
+        print_log("[SIGMA] Estrazione runtime Node.js standalone in .node_runtime/...", Colors.OKCYAN)
+
+        os.makedirs(runtime_dir, exist_ok=True)
+
+        if filename.endswith(".zip"):
+            with zipfile.ZipFile(temp_archive, 'r') as zip_ref:
+                for member in zip_ref.namelist():
+                    parts = member.split('/', 1)
+                    if len(parts) > 1 and parts[1]:
+                        target_path = os.path.join(runtime_dir, parts[1])
+                        if member.endswith('/'):
+                            os.makedirs(target_path, exist_ok=True)
+                        else:
+                            os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                            with zip_ref.open(member) as src_f, open(target_path, "wb") as dst_f:
+                                dst_f.write(src_f.read())
+        else:
+            mode = "r:xz" if filename.endswith(".tar.xz") else "r:gz"
+            with tarfile.open(temp_archive, mode) as tar_ref:
+                for member in tar_ref.getmembers():
+                    parts = member.name.split('/', 1)
+                    if len(parts) > 1 and parts[1]:
+                        member.name = parts[1]
+                        tar_ref.extract(member, path=runtime_dir)
+
+        if os.path.exists(temp_archive):
+            try:
+                os.remove(temp_archive)
+            except Exception:
+                pass
+
+        bin_dir = runtime_dir if os.name == 'nt' else os.path.join(runtime_dir, "bin")
+        os.environ["PATH"] = bin_dir + os.pathsep + os.environ.get("PATH", "")
+        print_log(f"[SIGMA] Node.js {node_version} standalone configurato con successo in {runtime_dir}.", Colors.OKGREEN)
+        return True
+    except Exception as exc:
+        print_log(f"[SIGMA] Fallimento download/estrazione Node portable: {exc}", Colors.WARNING)
+        if os.path.exists(temp_archive):
+            try:
+                os.remove(temp_archive)
+            except Exception:
+                pass
+        return False
+
 def auto_install_node_npm():
-    """Attempt to automatically install or upgrade to Node.js (>= 20 LTS) using the system package manager."""
+    """Attempt to automatically install or upgrade to Node.js (>= 20 LTS) using the system package manager or portable standalone."""
     print_log("[SIGMA] Installing/Upgrading Node.js (>= 20 LTS) and npm...", Colors.OKCYAN)
     system = platform.system().lower()
     
@@ -671,6 +753,11 @@ def auto_install_node_npm():
                 subprocess.run(["winget", "install", "OpenJS.NodeJS.LTS", "-e", "--accept-package-agreements", "--accept-source-agreements", "--silent"], check=False)
     except Exception as e:
         print_log(f"[SIGMA] Auto-install attempt ended: {e}", Colors.WARNING)
+
+    # Se dopo il package manager Node e' ancora < 20, scarica la versione portable standalone
+    if check_node_version() < 20:
+        print_log("[SIGMA] Ricorso al runtime standalone portatile ufficiale di Node.js...", Colors.OKCYAN)
+        install_portable_node()
 
 def ensure_frontend():
     print_log("[SIGMA] Checking frontend...", Colors.OKCYAN)

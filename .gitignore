@@ -3,8 +3,10 @@ node_modules/
 sigma_studio/node_modules/
 
 # Build output
-# (sigma_studio/dist/ e' versionato per permettere l'avvio su qualsiasi PC/RPi senza richiedere Node.js >= 20)
+dist/
 dist-ssr/
+sigma_studio/dist/
+.node_runtime/
 
 
 # Python cache
