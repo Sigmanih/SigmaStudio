@@ -7,6 +7,7 @@
 torch>=2.0.0
 peft>=0.10.0
 bitsandbytes>=0.43.0
+nvidia-cuda-runtime-cu12; sys_platform == 'win32'
 
 # GGUF runtime (llama-cpp-python) is not listed here: its source differs per
 # accelerator. sigma_launcher.py installs it automatically at first launch;

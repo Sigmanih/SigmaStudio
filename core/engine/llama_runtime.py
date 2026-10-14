@@ -96,6 +96,13 @@ def runtime_env() -> Dict[str, str]:
     srv = installed_server()
     if srv:
         extra_paths.append(str(srv.parent))
+    
+    # 1b. Qualunque runtime GGUF scaricato in store/engine_runtime
+    radice = runtime_dir()
+    if radice.is_dir():
+        for cartella in radice.iterdir():
+            if cartella.is_dir() and not cartella.name.startswith("."):
+                extra_paths.append(str(cartella))
 
     # 2. PyTorch lib (porta cudart64_*.dll, cublas64_*.dll, c10_cuda, hip, etc.)
     try:
@@ -103,6 +110,21 @@ def runtime_env() -> Dict[str, str]:
         tlib = os.path.join(os.path.dirname(torch.__file__), "lib")
         if os.path.isdir(tlib):
             extra_paths.append(tlib)
+    except Exception:
+        pass
+
+    # 2b. Pacchetti ufficiali NVIDIA wheel da PyPI (nvidia-cuda-runtime-cu12, nvidia-cublas-cu12, ecc.)
+    try:
+        import sys
+        for sp in sys.path:
+            if not sp or not os.path.isdir(sp):
+                continue
+            nv_root = os.path.join(sp, "nvidia")
+            if os.path.isdir(nv_root):
+                for sub in os.listdir(nv_root):
+                    sub_bin = os.path.join(nv_root, sub, "bin")
+                    if os.path.isdir(sub_bin):
+                        extra_paths.append(sub_bin)
     except Exception:
         pass
 

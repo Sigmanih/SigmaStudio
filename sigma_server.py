@@ -257,22 +257,28 @@ def prepare_environment(solo_verifica: bool = False) -> dict:
 
 def _build_frontend_if_needed() -> bool:
     """Ricompila il frontend solo se i sorgenti sono cambiati."""
+    dist_html = paths.frontend_dist_dir() / "index.html"
+    has_dist = dist_html.is_file()
+
     npm_path = shutil.which("npm") or (shutil.which("npm.cmd") if os.name == "nt" else None)
     if not npm_path:
-        log.warning("npm non trovato: build del frontend saltata. Se in "
-                    "sigma_studio/dist c'e' gia' un'interfaccia compilata "
-                    "viene servita quella.")
+        if has_dist:
+            log.info("Frontend di produzione pronto in sigma_studio/dist.")
+            return True
+        log.warning("npm non trovato: build del frontend saltata.")
         return False
 
     if not _needs_frontend_rebuild():
         log.info("Frontend source unchanged — skipping build.")
         return True
 
-    # Le dipendenze del frontend prima del comando che le usa. Senza, `npm run
-    # build` fallisce con "vite non e' riconosciuto come comando interno o
-    # esterno": un messaggio che nomina lo strumento e non la causa, ed e' la
-    # riga che su una copia appena clonata mandava fuori strada.
+    # Se abbiamo gia' una build funzionante in dist, la usiamo senza bloccare il server
     frontend = str(paths.frontend_dir())
+    if has_dist and not os.path.isdir(os.path.join(frontend, "node_modules")):
+        log.info("Frontend compilato presente in sigma_studio/dist. Salto build automatica da sorgenti.")
+        _write_build_stamp()
+        return True
+
     if not os.path.isdir(os.path.join(frontend, "node_modules")):
         log.info("Dipendenze del frontend assenti: le installo (solo la prima volta)...")
         installa = subprocess.run(
@@ -280,6 +286,10 @@ def _build_frontend_if_needed() -> bool:
             capture_output=True, text=True, shell=(os.name == "nt"),
         )
         if installa.returncode != 0:
+            if has_dist:
+                log.warning("npm install non riuscito; uso la build di produzione esistente in dist.")
+                _write_build_stamp()
+                return True
             log.error("npm install non riuscito:\n%s", (installa.stderr or "")[-1500:])
             return False
 
@@ -292,6 +302,10 @@ def _build_frontend_if_needed() -> bool:
         shell=(os.name == "nt"),
     )
     if res.returncode != 0:
+        if has_dist:
+            log.warning("Vite build dai sorgenti non riuscita. Viene servito il frontend valido in sigma_studio/dist.")
+            _write_build_stamp()
+            return True
         log.error("Build del frontend non riuscita:\n%s", (res.stderr or "")[-1500:])
         return False
 

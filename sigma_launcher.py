@@ -259,6 +259,35 @@ def verify_critical_versions(python_exe):
     return ok
 
 
+def ensure_cuda_runtime_packages(python_exe, platform_info):
+    """Garantisce la presenza del runtime CUDA (cudart64) su Windows senza necessita' del CUDA Toolkit esterno."""
+    if platform_info.get("compute") != "cuda" or not platform_info.get("is_windows"):
+        return
+
+    # Verifica se un runtime e' gia' apribile
+    try:
+        from core.engine.llama_runtime import setup_dll_directories
+        setup_dll_directories()
+        from core.engine.gpu_vendors import _libreria_apribile, _CUDA_RUNTIME
+        if _libreria_apribile(_CUDA_RUNTIME):
+            print_log("[SIGMA] Runtime CUDA (cudart) verificato e operativo.", Colors.OKGREEN)
+            return
+    except Exception:
+        pass
+
+    print_log("[SIGMA] Driver NVIDIA rilevato. Installazione automatica del runtime ufficiale NVIDIA (cudart64)...", Colors.OKCYAN)
+    try:
+        subprocess.check_call([python_exe, "-m", "pip", "install", "--default-timeout=120", "nvidia-cuda-runtime-cu12"])
+        print_log("[SIGMA] Runtime NVIDIA CUDA configurato con successo.", Colors.OKGREEN)
+        activate_venv_env()
+        from core.engine.llama_runtime import setup_dll_directories
+        setup_dll_directories()
+        from core.engine import gpu_vendors
+        gpu_vendors.reset_cache()
+    except Exception as exc:
+        print_log(f"[SIGMA] Impossibile auto-installare nvidia-cuda-runtime-cu12: {exc}", Colors.WARNING)
+
+
 def install_dependencies(platform_info):
     python_exe, _ = ensure_venv()
     print_log("[SIGMA] Checking and ensuring Python dependencies are installed...", Colors.OKCYAN)
@@ -296,6 +325,7 @@ def install_dependencies(platform_info):
         run_pip(os.path.join(req_dir, "cpu.txt"))
 
     activate_venv_env()
+    ensure_cuda_runtime_packages(python_exe, platform_info)
     install_gguf_runtime(platform_info)
 
     # Entrambi i percorsi devono funzionare: il GGUF appena installato e i
