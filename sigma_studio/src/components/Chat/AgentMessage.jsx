@@ -889,12 +889,27 @@ export default function AgentMessage({
                               onRollback={handleRollback}
                               isRollbackable={isRollbackable}
                               hasBeenRolledBack={hasBeenRolledBack}
-                              riepilogoGoalVisibile={riepilogoGiaVisibile(displayContent, action)}
+                              // Questo ramo non disegna la bolla: dire alla scheda
+                              // che il riepilogo e' gia' visibile lo nascondeva
+                              // ovunque, tranne che nella riga del tool troncata.
+                              riepilogoGoalVisibile={false}
                             />
                           );
                         })
                       ) : (
                         (m.content || '').split('\n').map((l, j) => (<div key={j} className="action-line">{l}</div>))
+                      )}
+                      {m.actions_log && m.actions_log.length > 0 && displayContent
+                        && !m.actions_log.some((action) => riepilogoGiaVisibile(displayContent, action)) && (
+                        <MemoizedContent
+                          displayContent={displayContent}
+                          isPlaying={isPlayingAudio}
+                          speechId={speechId}
+                          speechProgress={speechProgress}
+                          messages={messages}
+                          idx={idx}
+                          onClick={handleMemoizedContentClick}
+                        />
                       )}
                     </div>
                   ) : (

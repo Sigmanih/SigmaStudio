@@ -428,6 +428,12 @@ export function useChatStreaming({
             if (p.type === 'thinking' && p.thought) {
               p.thinking = p.thought;
             }
+            // Il harness manda il ragionamento come `thought` nel campo `token`:
+            // letto come token finiva nella risposta, e il pannello restava vuoto.
+            if (p.type === 'thought') {
+              p.thinking = p.token || p.thought || '';
+              delete p.token;
+            }
             if (p.type === 'status' && p.text) {
               p.model_status = p.text;
             }

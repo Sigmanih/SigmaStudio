@@ -209,7 +209,11 @@ export default function ChatToolActionItem({
               overflow: 'hidden',
               whiteSpace: 'nowrap'
             }}>
-              {isSuccess ? (action.message || tool) : (error || action.message || tool)}
+              {/* Il riepilogo intero sta nella scheda qui sotto: su una riga sola
+                  usciva tagliato con i puntini, e sembrava la risposta troncata. */}
+              {isGoalCompletion && isSuccess
+                ? 'Risposta finale'
+                : isSuccess ? (action.message || tool) : (error || action.message || tool)}
             </span>
           )}
         </div>

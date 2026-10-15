@@ -578,6 +578,16 @@ class UniversalSigmaEngine:
         what memory exists. A refusal always names the format that would work
         and, where one is already on disk, the folder.
         """
+        # Un checkpoint MLX quantizzato e' safetensors solo di nome: i pesi sono
+        # uint32 impacchettati con scale e offset per gruppo, che transformers
+        # non sa leggere. Il planner lo misura in parametri logici (27B -> 54 GB
+        # in bf16), quindi lascerlo passare significa istanziare lo scheletro
+        # pieno, riversarlo in RAM al ritentativo e paginare la macchina per
+        # arrivare, nel migliore dei casi, a un errore di forma dei tensori.
+        mlx_reason = self._mlx_refusal(facts)
+        if mlx_reason:
+            return mlx_reason
+
         if not self._module_available("torch"):
             return (
                 f"'{facts.name}' e' in safetensors, che richiede PyTorch, non "
@@ -643,6 +653,37 @@ class UniversalSigmaEngine:
                 f"({total_vram:.1f}) e RAM libera ({ram_gb:.1f}).{suffix}"
             )
         return None
+
+    @classmethod
+    def _mlx_refusal(cls, facts: ModelFacts) -> Optional[str]:
+        """Perche' un checkpoint MLX non passa da transformers, o None."""
+        try:
+            from core.engine.mlx_weights import quantizzazione_mlx
+            info = quantizzazione_mlx(facts.path)
+        except Exception as exc:
+            log.debug("[SigmaEngine] Controllo MLX non riuscito: %s", exc)
+            return None
+        if not info:
+            return None
+
+        bits = info.get("bits")
+        alternative = cls._gguf_twin(facts)
+        if alternative:
+            suffix = f" Sullo stesso disco c'e' gia' '{alternative}', in GGUF: usa quello."
+        elif info.get("dequantizzabile"):
+            suffix = " Convertilo in GGUF dal Model Hub per usarlo con llama.cpp."
+        else:
+            suffix = (" Non e' convertibile in GGUF ("
+                      + str(info.get("motivo") or info.get("mode")) + ").")
+        # La qualita' e' quella dei pesi MLX: riquantizzarli non la recupera,
+        # e chi vede "Q4_K_M" nel nome si aspetta il contrario.
+        return (
+            f"'{facts.name}' e' un checkpoint MLX quantizzato a {bits} bit: e' un "
+            "formato per Apple MLX, che transformers non sa caricare."
+            + suffix
+            + f" Il GGUF non sara' migliore dell'originale a {bits} bit: per la "
+            "qualita' piena serve la variante bf16 dello stesso modello."
+        )
 
     @staticmethod
     def _gguf_twin(facts: ModelFacts) -> Optional[str]:

@@ -1,0 +1,255 @@
+/* ==============================================================================
+   SIGMA STUDIO — Developer Graph & Workspace Context Styles
+   Layer 2: 03-modules/dev-graph.css
+   ============================================================================== */
+
+/* --- Contenitore Principale del Grafo --- */
+.dev-graph-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.dev-graph-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  transition: all 0.2s ease;
+}
+
+.dev-graph-toolbar.dark {
+  background: rgba(13, 17, 23, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #e6edf3;
+}
+
+.dev-graph-toolbar.light {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #d0d7de;
+  color: #24292f;
+}
+
+.dev-graph-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+}
+
+.dev-graph-btn.dark {
+  background: rgba(255, 255, 255, 0.08);
+  color: #c9d1d9;
+}
+.dev-graph-btn.dark:hover {
+  background: rgba(0, 242, 254, 0.18);
+  color: #00f2fe;
+}
+.dev-graph-btn.active-git {
+  background: rgba(210, 153, 34, 0.25) !important;
+  color: #d29922 !important;
+  border: 1px solid rgba(210, 153, 34, 0.4) !important;
+}
+
+.dev-graph-btn.light {
+  background: #f6f8fa;
+  color: #24292f;
+  border: 1px solid #d0d7de;
+}
+.dev-graph-btn.light:hover {
+  background: #eef2f6;
+  color: #0969da;
+}
+
+/* --- Floating Context Menu --- */
+.dev-context-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 220px;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(16px);
+  animation: contextMenuPop 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+  font-size: 0.74rem;
+}
+
+@keyframes contextMenuPop {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.dev-context-menu.dark {
+  background: rgba(18, 22, 30, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #e6edf3;
+}
+
+.dev-context-menu.light {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d0d7de;
+  color: #24292f;
+}
+
+.dev-context-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  user-select: none;
+}
+
+.dev-context-menu.dark .dev-context-menu-item:hover {
+  background: rgba(0, 242, 254, 0.15);
+  color: #00f2fe;
+}
+
+.dev-context-menu.light .dev-context-menu-item:hover {
+  background: rgba(9, 105, 218, 0.1);
+  color: #0969da;
+}
+
+.dev-context-divider {
+  height: 1px;
+  margin: 4px 2px;
+}
+
+.dev-context-menu.dark .dev-context-divider {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dev-context-menu.light .dev-context-divider {
+  background: #e1e4e8;
+}
+
+/* --- Card Dettagli Nodo Selezionato --- */
+.dev-graph-node-card {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 310px;
+  border-radius: 10px;
+  padding: 14px;
+  z-index: 20;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  font-size: 0.74rem;
+  animation: cardSlideIn 0.18s ease-out;
+}
+
+@keyframes cardSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dev-graph-node-card.dark {
+  background: rgba(13, 17, 23, 0.92);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  color: #e6edf3;
+}
+
+.dev-graph-node-card.light {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #d0d7de;
+  color: #24292f;
+}
+
+/* --- Modale Creazione AI --- */
+.ai-create-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.ai-create-modal {
+  width: 100%;
+  max-width: 580px;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  animation: modalScale 0.18s ease-out;
+}
+
+@keyframes modalScale {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.ai-create-modal.dark {
+  background: #0d1117;
+  border: 1px solid rgba(0, 242, 254, 0.35);
+  color: #e6edf3;
+}
+
+.ai-create-modal.light {
+  background: #ffffff;
+  border: 1px solid #d0d7de;
+  color: #24292f;
+}
+
+/* --- Study Mode Reader per Markdown e Formule --- */
+.dev-study-mode-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.dev-study-reader {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 48px;
+  max-width: 900px;
+  margin: 0 auto;
+  line-height: 1.7;
+  font-size: 0.92rem;
+}
+
+.dev-study-reader h1, .dev-study-reader h2, .dev-study-reader h3 {
+  letter-spacing: -0.3px;
+  font-weight: 700;
+}
+
+.dev-study-reader blockquote {
+  border-left: 3px solid #00f2fe;
+  padding-left: 14px;
+  opacity: 0.88;
+  font-style: italic;
+}
+
+.dev-study-reader pre {
+  padding: 14px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow-x: auto;
+}

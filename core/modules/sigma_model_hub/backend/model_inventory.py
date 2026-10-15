@@ -341,6 +341,11 @@ def _scan_single_dir(base_dir: str, is_extra: bool = False) -> List[Dict[str, An
                         v_sz = text_cfg.get("vocab_size", 32000)
                         inter_sz = text_cfg.get("intermediate_size") or (h_dim * 4 if h_dim else 0)
                         arch_name = cfg_data.get("architectures", [""])[0] if cfg_data.get("architectures") else cfg_data.get("model_type", "")
+                        # MLX scrive i bit in `quantization`: senza questo un 2 bit
+                        # impacchettato compare come "FP16 / BF16".
+                        mlx_quant = cfg_data.get("quantization")
+                        if fmt_tag == "SAFETENSORS" and not quant_match and isinstance(mlx_quant, dict) and mlx_quant.get("bits"):
+                            quantization = f"MLX {mlx_quant['bits']} bit"
                         if h_dim and n_lay:
                             tot_p = n_lay * (4 * h_dim**2 + 3 * h_dim * inter_sz) + v_sz * h_dim
                             p_b = round(tot_p / 1e9, 2)

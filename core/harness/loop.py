@@ -41,7 +41,7 @@ from core.harness.ledger import (
 from core.harness.policy import ToolPolicy, canonical, filter_tool_docs
 from core.harness import delivery, review, worktree
 from core.harness.cicli import RilevatoreCicli, comando_bloccato_in_ciclo
-from core.think_channel import RouterPensiero
+from core.think_channel import RouterPensiero, separa as separa_pensiero
 from core.harness.compaction import compact_history_with_memory
 from core.harness.roles import GENERIC_MODEL_ALIASES
 from core.harness.tool_cache import ToolResultCache
@@ -198,9 +198,10 @@ ADMIN_DEVELOPER_SYSTEM_PROMPT = """Sei un ingegnere del software autonomo dentro
 Hai accesso completo al workspace: leggi, scrivi, modifichi file ed esegui comandi.
 
 ## REGOLA FONDAMENTALE SUI TOOL
-Ad ogni tuo turno in cui devi compiere un'azione operativa sul workspace emetti UN SOLO blocco tool e NIENT'ALTRO.
-Il sistema lo esegue e ti restituisce il risultato. Poi emetti il tool successivo.
-Non anticipare con premesse cosa farai prima del blocco tool: emetti il blocco tool. Non emettere due tool nello stesso messaggio.
+Ad ogni tuo turno in cui devi compiere un'azione operativa sul workspace emetti UN SOLO blocco tool.
+Prima del blocco scrivi UNA sola frase, al massimo 25 parole, che dice cosa fai e perche': l'utente la legge come il tuo ragionamento.
+Nient'altro fuori dal blocco: niente elenchi, niente piani, niente anticipazioni dei passi successivi.
+Il sistema esegue il blocco e ti restituisce il risultato. Poi emetti il tool successivo. Non emettere due tool nello stesso messaggio.
 
 Formato, sempre identico:
 ```tool:NOME_DEL_TOOL
@@ -434,23 +435,9 @@ rifiutata e il completamento con essa.
 """
 
 
-# Prefixes of a tool fence that must never reach the UI as prose. A token
-# stream delivers "`", "``", "```t" one piece at a time, so the only way to
-# avoid printing a fence that has not finished arriving is to withhold any
-# tail that could still become one.
-_FENCE_MARKER = "```tool:"
-
-
-def _split_emittable(buffer: str) -> tuple:
-    """Splits a buffer into (safe to emit now, must keep waiting).
-
-    The retained part is the longest suffix that is a proper prefix of the
-    tool fence marker; everything before it can never be part of one.
-    """
-    for keep in range(min(len(buffer), len(_FENCE_MARKER) - 1), 0, -1):
-        if _FENCE_MARKER.startswith(buffer[-keep:]):
-            return buffer[:-keep], buffer[-keep:]
-    return buffer, ""
+#: Un recinto tool rimasto nella prosa perche' il `raw_block` estratto non
+#: coincideva carattere per carattere: nel ragionamento non deve comparire.
+_RECINTO_TOOL_RE = re.compile(r"`{2,4}tool:\w+[\s\S]*?(?:`{2,4}|$)", re.IGNORECASE)
 
 
 # The literal tokens used as placeholders in the system prompt. A model that
@@ -1265,6 +1252,19 @@ def _recovery_directive(ledger: Optional["DevSessionLedger"] = None) -> str:
 
 _JSON_CONTROL_ESCAPES = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
 
+_HEX = frozenset("0123456789abcdefABCDEF")
+
+
+def _escape_json_valido(text: str, i: int) -> bool:
+    """Se la barra in `text[i]` apre un escape che il JSON accetta."""
+    seguente = text[i + 1] if i + 1 < len(text) else ""
+    if seguente in '"\\/bfnrt':
+        return True
+    if seguente == "u":
+        cifre = text[i + 2:i + 6]
+        return len(cifre) == 4 and all(c in _HEX for c in cifre)
+    return False
+
 
 def _repair_json_control_chars(text: str) -> str:
     """Escapes raw control characters that appear inside JSON string literals.
@@ -1274,15 +1274,24 @@ def _repair_json_control_chars(text: str) -> str:
     nothing about it is ambiguous. Since a bare newline inside a string literal
     is invalid JSON by definition, escaping it is lossless for any document
     that was already well-formed.
+
+    Stessa logica per le barre rovesciate che non aprono un escape valido:
+    `.\\sigma_studio.bat` o `C:\\Users` copiati da un README dentro un
+    `summary`. Un `\\s` nel JSON e' un errore, non un'ambiguita': raddoppiare
+    la barra e' l'unica lettura possibile, e senza questa il riepilogo
+    finiva nel recupero di emergenza con la coda `","criteria":[]` attaccata.
     """
     out = []
     in_string = False
     escaped = False
-    for ch in text:
+    for i, ch in enumerate(text):
         if in_string:
             if escaped:
                 escaped = False
             elif ch == "\\":
+                if not _escape_json_valido(text, i):
+                    out.append("\\\\")
+                    continue
                 escaped = True
             elif ch == '"':
                 in_string = False
@@ -1611,6 +1620,13 @@ def _salva_corpo_prosa(raw_body: str, tool_name: str) -> Optional[Dict[str, Any]
     if not resto:
         return None
     testo = resto.lstrip("\"{'\n\r\t ")
+    # Le chiavi che seguono la prosa (`"criteria": [...]`) non sono prosa:
+    # lasciarle attaccate mostrava all'utente `","criteria":[]` in coda.
+    # Si taglia alla prima: con `criteria` pieno di oggetti, l'ultima cadrebbe
+    # dentro i criteri e ne lascerebbe un pezzo nel testo.
+    coda = re.search(r'"\s*,\s*"[A-Za-z_]\w*"\s*:', testo)
+    if coda:
+        testo = testo[:coda.start()]
     # Rimuovi l'eventuale chiusura JSON/virgoletta finale senza troncare il testo a metà
     testo = testo.rstrip("\"}'\n\r\t ")
     for sequenza, carattere in (("\\n", "\n"), ("\\r", "\r"), ("\\t", "\t"),
@@ -1641,13 +1657,9 @@ def normalize_tool_params(raw_body: str, tool_name: str) -> Dict[str, Any]:
         if isinstance(data, list) and tool_name in ("pipeline", "tasks", "set_tasks", "update_pipeline"):
             return {"tasks": data}
 
-    # Prose that is not JSON but is still the content: see `_salva_corpo_prosa`.
-    salvato = _salva_corpo_prosa(raw_body, tool_name)
-    if salvato is not None:
-        return salvato
-
-    # Ultimo tentativo prima di dichiararla malformata: le due rotture vere
-    # sono meccaniche, e ripararle costa meno di un turno di ritentativo.
+    # Le due rotture vere sono meccaniche, e ripararle costa meno di un turno
+    # di ritentativo. Va prima del recupero della prosa: la riparazione tiene
+    # anche i `criteria`, il recupero tiene solo il testo.
     from core.harness.tool_schema import ripara_corpo_json
 
     riparato = ripara_corpo_json(raw_body)
@@ -1655,6 +1667,11 @@ def normalize_tool_params(raw_body: str, tool_name: str) -> Dict[str, Any]:
         data = _loads_forgiving(riparato)
         if isinstance(data, dict):
             return data
+
+    # Prose that is not JSON but is still the content: see `_salva_corpo_prosa`.
+    salvato = _salva_corpo_prosa(raw_body, tool_name)
+    if salvato is not None:
+        return salvato
 
     # A body that still looks like JSON (or like the prompt's own placeholder)
     # is a malformed call, not a bare path. Treating it as one produces
@@ -3280,6 +3297,7 @@ def _stream_agent_turn_impl(
         native_calls: List[Dict[str, Any]] = []
         in_think_block = False
         router_pensiero = RouterPensiero()
+        pensiero_nel_turno = False
         in_tool_block = False
         has_notified_tool = False
         loop_detected = False
@@ -3289,7 +3307,6 @@ def _stream_agent_turn_impl(
         # Il conteggio vero che il server dichiara per questo turno, quando lo
         # dichiara: `prompt_tokens` dal server batte la stima caratteri/4.
         prompt_vero = {"valore": None}
-        pending_out = ""
         turn_first_token_time = None
         t_call_start = time.perf_counter()
         calls_prima = int(run_metrics["tool_calls"])
@@ -3486,6 +3503,7 @@ def _stream_agent_turn_impl(
                                 warmup_symbol_index(workspace_root, in_background=True)
                             except Exception:
                                 pass
+                        pensiero_nel_turno = True
                         yield {"type": "thought", "token": testo}
                     else:
                         parte_risposta.append(testo)
@@ -3500,13 +3518,10 @@ def _stream_agent_turn_impl(
                 if not in_tool_block:
                     if "```tool:" in token or "```tool:" in current_text[-25:]:
                         in_tool_block = True
-                        pending_out = ""
                     elif "sigma-tool" in token or "sigma-tool" in current_text[-30:] or re.search(r"`{2,}(?:sigma-tool|tool:?|mcp)", current_text[-35:], re.IGNORECASE):
                         in_tool_block = True
-                        pending_out = ""
                     elif re.search(r"<(?:execute_command|shell|terminal|read_file|write_to_file|list_dir|search_code|tool)>", current_text[-35:]):
                         in_tool_block = True
-                        pending_out = ""
 
                 if in_tool_block:
                     if not has_notified_tool:
@@ -3520,30 +3535,23 @@ def _stream_agent_turn_impl(
                         in_tool_block = False
                     continue
 
-                # Hold back any tail that could still turn out to be the start
-                # of a tool fence. Emitting it optimistically is what leaves a
-                # stray ```tool in the rendered answer once the fence completes
-                # on the following token — and a retraction event cannot undo
-                # text the client has already laid out.
-                pending_out += token
-                safe, pending_out = _split_emittable(pending_out)
-                if safe:
-                    yield {"type": "token", "token": safe}
+                # La prosa fuori dal pensiero non si emette mentre arriva: se il
+                # turno finisce con un tool e' il "perche'" di quel passo e va
+                # nel ragionamento, se finisce senza e' la risposta. Lo si sa
+                # solo a turno chiuso, e un evento gia' mostrato non si ritira.
 
             # Il router trattiene la coda del buffer finche' non sa se e' un
             # tag o solo un minore: senza questo svuotamento gli ultimi
             # caratteri del turno andrebbero persi, e sono proprio quelli che
             # chiudono la frase.
             for canale_finale, testo_finale in router_pensiero.flush():
-                yield {
-                    "type": "thought" if canale_finale == "thinking" else "token",
-                    "token": testo_finale,
-                }
-
-            # Flush whatever survived the hold-back at end of stream.
-            if pending_out and not in_tool_block:
-                yield {"type": "token", "token": pending_out}
-            pending_out = ""
+                if canale_finale == "thinking":
+                    pensiero_nel_turno = True
+                    yield {"type": "thought", "token": testo_finale}
+            # Il pannello del ragionamento raccoglie tutti i turni: senza una
+            # riga vuota il pensiero di un passo si salda a quello del successivo.
+            if pensiero_nel_turno:
+                yield {"type": "thought", "token": "\n\n"}
 
         except Exception as e:
             import traceback
@@ -3596,11 +3604,21 @@ def _stream_agent_turn_impl(
         else:
             tools_found = extract_tool_invocations(full_text)
 
-        # Se nessun tool è stato estratto ma il modello ha generato del testo (che era stato
-        # parzialmente trattenuto dal parser dei fence), emetti il testo affinché l'utente
-        # possa vedere cosa l'agente ha risposto invece di una bolla vuota.
-        if not tools_found and full_text.strip():
-            yield {"type": "token", "token": full_text}
+        # La prosa del turno, senza ragionamento e senza blocchi tool. Accanto a
+        # un tool e' il "perche'" del passo: un modello senza canale di pensiero
+        # (Devstral) non ha altro modo di farsi seguire, e il prompt gliela
+        # chiede apposta. Senza tool e' la risposta, e va nella bolla.
+        prosa_turno, _ = separa_pensiero(full_text)
+        if tools_found:
+            for invocazione in tools_found:
+                blocco = invocazione.get("raw_block")
+                if blocco:
+                    prosa_turno = prosa_turno.replace(blocco, "")
+            prosa_turno = _RECINTO_TOOL_RE.sub("", prosa_turno).strip()
+            if prosa_turno:
+                yield {"type": "thought", "token": f"{prosa_turno}\n\n"}
+        elif prosa_turno.strip():
+            yield {"type": "token", "token": prosa_turno}
 
         # An output cut off by the token budget is indistinguishable, to the
         # extractor, from an output that contained no tool at all — and the two
