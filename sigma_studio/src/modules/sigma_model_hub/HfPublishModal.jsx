@@ -138,6 +138,18 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
     fetchCardPreview();
   }, [activeModalTab, fetchCardPreview]);
 
+  // Segnala visibilità del modale all'esterno (per mostrare/nascondere il banner HUD fluttuante)
+  useEffect(() => {
+    try {
+      window.dispatchEvent(new CustomEvent('hf_publish_modal_visibility', { detail: { open: true, model } }));
+    } catch (_) {}
+    return () => {
+      try {
+        window.dispatchEvent(new CustomEvent('hf_publish_modal_visibility', { detail: { open: false } }));
+      } catch (_) {}
+    };
+  }, [model]);
+
   // Poll active task status
   const startPollingTask = useCallback((taskId) => {
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
@@ -168,6 +180,44 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
       }
     }, 1200);
   }, [addToast]);
+
+  // Auto-riaggancio a un eventuale task di upload già in corso per questo modello
+  useEffect(() => {
+    let mounted = true;
+    const checkActiveUpload = async () => {
+      try {
+        const res = await fetch('/api/models/hf/upload/tasks');
+        if (res.ok && mounted) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.tasks)) {
+            const currentPath = model?.path || model?.filename;
+            const existing = json.tasks.find(t =>
+              (model?.upload_task_id && t.task_id === model.upload_task_id) ||
+              (t.status === 'uploading' && (
+                t.local_path === currentPath ||
+                t.filename === currentPath ||
+                (model?.filename && t.filename === model.filename)
+              ))
+            );
+            if (existing && mounted) {
+              setActiveTask(existing);
+              if (existing.status === 'uploading') {
+                setIsPublishing(true);
+                startPollingTask(existing.task_id);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.debug('Error checking active upload task on mount:', e);
+      }
+    };
+    checkActiveUpload();
+    return () => {
+      mounted = false;
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, [model, startPollingTask]);
 
   useEffect(() => {
     if (!whoami?.authenticated || !targetNamespace || !repoSlug) {
@@ -318,6 +368,9 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
         setActiveTask(json.task);
         startPollingTask(json.task.task_id);
         if (addToast) addToast(`🚀 Caricamento avviato verso ${fullRepoId}`, 'info');
+        try {
+          window.dispatchEvent(new CustomEvent('hf_upload_started', { detail: json.task }));
+        } catch (_) {}
       } else {
         setIsPublishing(false);
         setPublishError(json.error || 'Impossibile avviare il caricamento.');
@@ -957,6 +1010,24 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
                 {activeTask.speed_label && <span>⚡ {activeTask.speed_label}</span>}
               </div>
 
+              {activeTask.status === 'uploading' && (
+                <div style={{
+                  marginTop: '4px',
+                  padding: '7px 11px',
+                  borderRadius: '7px',
+                  background: isLight ? 'rgba(168, 85, 247, 0.08)' : 'rgba(168, 85, 247, 0.12)',
+                  border: '1px solid rgba(168, 85, 247, 0.3)',
+                  fontSize: '0.68rem',
+                  color: textPrimary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <span>💡</span>
+                  <span>Puoi chiudere questa finestra con <strong>Chiudi</strong> o cliccando fuori: l'upload continuerà in background con il banner in basso.</span>
+                </div>
+              )}
+
               {activeTask.status === 'completed' && (
                 <div style={{ marginTop: '4px', paddingTop: '8px', borderTop: subBorder }}>
                   <a
@@ -995,14 +1066,15 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
         }}>
           <button
             onClick={onClose}
-            disabled={isPublishing}
+            title={isPublishing ? "Chiudi la finestra: l'upload proseguirà regolarmente in background" : "Chiudi"}
             style={{
               padding: '8px 16px', borderRadius: '8px', border: subBorder,
               background: subBg, color: textPrimary, fontSize: '0.76rem',
-              fontWeight: 700, cursor: 'pointer'
+              fontWeight: 700, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: '6px'
             }}
           >
-            Chiudi
+            {isPublishing ? 'Chiudi (continua in background)' : 'Chiudi'}
           </button>
 
           {isPublishing ? (

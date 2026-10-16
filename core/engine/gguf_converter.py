@@ -110,13 +110,17 @@ QUANT_TYPES: List[Dict[str, Any]] = [
 ]
 
 
+class ConversionCancelledError(Exception):
+    """Sollevata quando una conversione o quantizzazione viene annullata dall'utente."""
+
+
 @dataclass
 class ConversionJob:
     """One safetensors -> GGUF conversion, tracked so the UI can follow it."""
     job_id: str
     source_model: str
     quantization: str
-    status: str = "queued"      # queued|converting|quantizing|completed|failed
+    status: str = "queued"      # queued|converting|quantizing|completed|failed|cancelled
     progress: int = 0
     stage: str = ""
     message: str = ""
@@ -128,9 +132,13 @@ class ConversionJob:
     tensor_overrides: List[Dict[str, Any]] = field(default_factory=list)
     started_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
+    _cancelled: bool = field(default=False, repr=False)
+    _current_proc: Any = field(default=None, repr=False)
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
+        data.pop("_current_proc", None)
+        data["is_cancelled"] = bool(self._cancelled)
         data["elapsed_seconds"] = round(
             (self.finished_at or time.time()) - self.started_at, 1
         )
@@ -1220,6 +1228,103 @@ class GgufConverter:
         return found.to_dict() if found else None
 
     @classmethod
+    def cancel(cls, job_id: Optional[str] = None) -> Dict[str, Any]:
+        """Annulla la quantizzazione o conversione attiva e interrompe i processi in corso."""
+        with cls._lock:
+            target: Optional[ConversionJob] = None
+            if job_id:
+                target = cls._jobs.get(job_id)
+            else:
+                for j in cls._jobs.values():
+                    if j.status in ("queued", "converting", "quantizing"):
+                        target = j
+                        break
+
+            if not target or target.status not in ("queued", "converting", "quantizing"):
+                return {"success": False, "error": "Nessuna quantizzazione o conversione attiva da annullare."}
+
+            target._cancelled = True
+            target.status = "cancelled"
+            target.stage = "cancelled"
+            target.message = "Quantizzazione annullata dall'utente."
+            target.finished_at = time.time()
+            proc = getattr(target, "_current_proc", None)
+            if proc is not None:
+                cls._termina_processo(proc)
+
+            return {"success": True, "job": target.to_dict()}
+
+    @classmethod
+    def _termina_processo(cls, proc: Any) -> None:
+        """Termina un processo e i suoi discendenti per interrompere subito la conversione."""
+        if proc is None:
+            return
+        pid = getattr(proc, "pid", None)
+        if pid:
+            try:
+                if os.name == "nt":
+                    # Su Windows /T termina l'intero albero di processi, /F forza la chiusura
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(pid)],
+                        capture_output=True,
+                        timeout=5,
+                    )
+            except Exception as e_kill:
+                log.debug("[GgufConverter] taskkill non riuscito per PID %s: %s", pid, e_kill)
+        try:
+            if hasattr(proc, "poll") and proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=3.0)
+        except Exception as e_term:
+            log.debug("[GgufConverter] Terminazione processo fallita: %s", e_term)
+
+    @classmethod
+    def _esegui_processo(cls, job: Optional[ConversionJob], comando: List[str],
+                         timeout: float = 6 * 3600, env: Optional[dict] = None,
+                         cwd: Optional[str] = None) -> subprocess.CompletedProcess:
+        """Esegue un comando subprocess tracciando il processo sul job per permettere l'annullamento immediato."""
+        if job and getattr(job, "_cancelled", False):
+            raise ConversionCancelledError("Quantizzazione annullata dall'utente.")
+
+        proc = subprocess.Popen(
+            comando,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            env=env,
+            cwd=cwd,
+        )
+        if job:
+            job._current_proc = proc
+
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            cls._termina_processo(proc)
+            raise RuntimeError(f"Comando scaduto dopo {timeout}s: {' '.join(comando[:3])}")
+        except Exception:
+            cls._termina_processo(proc)
+            raise
+        finally:
+            if job and getattr(job, "_current_proc", None) is proc:
+                job._current_proc = None
+
+        if job and getattr(job, "_cancelled", False):
+            raise ConversionCancelledError("Quantizzazione annullata dall'utente.")
+
+        return subprocess.CompletedProcess(
+            args=comando,
+            returncode=proc.returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    @classmethod
     @contextmanager
     def _avanzamento_da_file(cls, job, path: str, atteso_gb: float,
                              da_pct: int, a_pct: int, etichetta: str):
@@ -1235,6 +1340,8 @@ class GgufConverter:
 
         def osserva():
             while not basta.wait(2.0):
+                if job and getattr(job, "_cancelled", False):
+                    break
                 try:
                     scritti_gb = os.path.getsize(path) / 2**30
                 except OSError:
@@ -1369,6 +1476,8 @@ class GgufConverter:
                         "alla quantizzazione."
                     )
             else:
+                if getattr(job, "_cancelled", False):
+                    raise ConversionCancelledError("Quantizzazione annullata dall'utente.")
                 job.status = "converting"
                 # Un MLX quantizzato non si passa al convertitore: `*.weight` e'
                 # uint32 impacchettato e accanto ha scale e offset, tensori che
@@ -1392,7 +1501,10 @@ class GgufConverter:
                     "Conversione dei pesi in GGUF ("
                     + ("16 bit" if outtype == "auto" else outtype) + "):",
                 ):
-                    cls._convert_to_intermediate(sorgente_hf, intermediate, outtype)
+                    cls._convert_to_intermediate(sorgente_hf, intermediate, outtype, job=job)
+
+            if getattr(job, "_cancelled", False):
+                raise ConversionCancelledError("Quantizzazione annullata dall'utente.")
 
             avvisi_metadati: List[str] = []
             if intermediate and os.path.exists(intermediate):
@@ -1407,6 +1519,8 @@ class GgufConverter:
                     )
                 shutil.move(intermediate, final_path)
             else:
+                if getattr(job, "_cancelled", False):
+                    raise ConversionCancelledError("Quantizzazione annullata dall'utente.")
                 job.status = "quantizing"
                 job.stage = "quantize"
                 # Prima di quantizzare si guarda se qualche tensore, da solo,
@@ -1434,13 +1548,16 @@ class GgufConverter:
                     "Quantizzazione in " + job.quantization + ":",
                 ):
                     cls._quantize(intermediate, final_path, job.quantization,
-                                  override)
+                                  override, job=job)
                 # Remove the F16 intermediate we produced ourselves: it is
                 # several times the final file and would fill the disk on every
                 # conversion. A pre-existing source GGUF is the user's, and
                 # stays where it is.
                 if not existing_gguf and not conserva and os.path.exists(intermediate):
                     os.remove(intermediate)
+
+            if getattr(job, "_cancelled", False):
+                raise ConversionCancelledError("Quantizzazione annullata dall'utente.")
 
             avvisi_finali = cls._sanifica_metadati_gguf(final_path)
             if avvisi_finali:
@@ -1483,13 +1600,35 @@ class GgufConverter:
                 log.debug("[GgufConverter] Aggiornamento fatti per %s saltato: %s", target_dir, e_insp)
             log.info("[GgufConverter] %s -> %s", job.source_model, final_path)
 
+        except ConversionCancelledError:
+            job.status = "cancelled"
+            job.stage = "cancelled"
+            job.message = "Quantizzazione annullata dall'utente."
+            log.info("[GgufConverter] Job %s annullato dall'utente.", job.job_id)
+            if not existing_gguf and not conserva and intermediate and os.path.exists(intermediate):
+                try:
+                    os.remove(intermediate)
+                except Exception:
+                    pass
+            if os.path.isfile(final_path):
+                try:
+                    os.remove(final_path)
+                except Exception:
+                    pass
+            cls._rimuovi_se_senza_gguf(target_dir)
         except Exception as exc:
-            job.status = "failed"
-            job.error = str(type(exc).__name__) + ": " + str(exc)
-            job.message = "Conversione fallita."
-            log.error("[GgufConverter] Job %s failed: %s", job.job_id, exc,
-                      exc_info=True)
-            if not existing_gguf and not conserva and os.path.exists(intermediate):
+            if getattr(job, "_cancelled", False):
+                job.status = "cancelled"
+                job.stage = "cancelled"
+                job.message = "Quantizzazione annullata dall'utente."
+                log.info("[GgufConverter] Job %s interrotto e annullato dall'utente.", job.job_id)
+            else:
+                job.status = "failed"
+                job.error = str(type(exc).__name__) + ": " + str(exc)
+                job.message = "Conversione fallita."
+                log.error("[GgufConverter] Job %s failed: %s", job.job_id, exc,
+                          exc_info=True)
+            if not existing_gguf and not conserva and intermediate and os.path.exists(intermediate):
                 try:
                     os.remove(intermediate)
                 except Exception:
@@ -1618,9 +1757,10 @@ class GgufConverter:
         )
         return temporanea
 
-    @staticmethod
-    def _convert_to_intermediate(source: str, output: str,
-                                 outtype: str = "auto") -> None:
+    @classmethod
+    def _convert_to_intermediate(cls, source: str, output: str,
+                                 outtype: str = "auto",
+                                 job: Optional[ConversionJob] = None) -> None:
         """
         Runs llama.cpp's converter in a subprocess.
 
@@ -1679,6 +1819,38 @@ class GgufConverter:
             except Exception as e_mtp:
                 log.debug("[GgufConverter] Controllo MTP per convertitore: %s", e_mtp)
 
+        # Controllo preventivo dipendenze architettura Mistral (richiede mistral-common)
+        is_mistral = False
+        if os.path.isdir(source):
+            cfg_p = os.path.join(source, "config.json")
+            if os.path.exists(cfg_p):
+                try:
+                    with open(cfg_p, "r", encoding="utf-8") as f_c:
+                        c_dat = json.load(f_c)
+                    m_type = str(c_dat.get("model_type", "")).lower()
+                    m_arch = str(c_dat.get("architectures", [""])[0]).lower()
+                    if any(k in m_type or k in m_arch for k in ("mistral", "pixtral", "ministral", "voxtral", "codestral")):
+                        is_mistral = True
+                except Exception:
+                    pass
+            if any(f.startswith("tekken") or f.endswith(".v3") for f in os.listdir(source)):
+                is_mistral = True
+
+        if is_mistral:
+            try:
+                import mistral_common  # noqa: F401
+            except ImportError:
+                log.info("[GgufConverter] Rilevato modello Mistral: installazione preventiva di mistral-common...")
+                if job:
+                    job.message = "Installazione automatica dipendenza mistral-common in corso..."
+                try:
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "mistral-common[image,audio]"],
+                        capture_output=True, text=True, timeout=180,
+                    )
+                except Exception as e_mistral_install:
+                    log.warning("[GgufConverter] Installazione preventiva mistral-common fallita: %s", e_mistral_install)
+
         command = [
             sys.executable, CONVERTER_PATH, source,
             "--outfile", output, "--outtype", outtype,
@@ -1691,18 +1863,43 @@ class GgufConverter:
             env["PYTHONPATH"] = os.pathsep.join(
                 [BUNDLED_GGUF_PY] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])
             )
-        result = subprocess.run(
-            command, capture_output=True, text=True, timeout=3 * 60 * 60, env=env,
+        result = cls._esegui_processo(
+            job, command, timeout=3 * 60 * 60, env=env,
         )
         if result.returncode != 0:
+            if job and getattr(job, "_cancelled", False):
+                raise ConversionCancelledError("Quantizzazione annullata dall'utente.")
             output_text = (result.stderr or result.stdout or "").strip()
-            # Diagnostic for experimental / unmapped architectures or tensors
-            if "is not supported" in output_text or "Can not map tensor" in output_text:
-                lines = [l for l in output_text.splitlines() if "ERROR" in l or "ValueError" in l or "Can not map" in l or "not supported" in l]
-                tail = lines[-3:] if lines else output_text.splitlines()[-3:]
-                raise RuntimeError("L'architettura o i tensori del modello non sono ancora supportati da convert_hf_to_gguf di llama.cpp: " + " | ".join(tail))
-            tail = output_text.splitlines()[-4:] or ["nessun output"]
-            raise RuntimeError("convert_hf_to_gguf ha fallito: " + " | ".join(tail))
+
+            # Auto-recovery se il fallimento è dovuto all'assenza di mistral-common
+            if "mistral-common" in output_text or "mistral_common" in output_text:
+                log.info("[GgufConverter] Tentativo di ripristino: installazione di mistral-common...")
+                if job:
+                    job.message = "Installazione dipendenza mistral-common e secondo tentativo conversione..."
+                try:
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "mistral-common[image,audio]"],
+                        capture_output=True, text=True, timeout=180,
+                    )
+                    # Riprova il comando di conversione dopo aver installato il pacchetto
+                    result = cls._esegui_processo(job, command, timeout=3 * 60 * 60, env=env)
+                    if result.returncode == 0:
+                        output_text = ""
+                    else:
+                        output_text = (result.stderr or result.stdout or "").strip()
+                except Exception as e_recov:
+                    log.warning("[GgufConverter] Ripristino mistral-common fallito: %s", e_recov)
+
+            if result.returncode != 0:
+                # Diagnostic for experimental / unmapped architectures or tensors
+                if "is not supported" in output_text or "Can not map tensor" in output_text:
+                    lines = [l for l in output_text.splitlines() if "ERROR" in l or "ValueError" in l or "Can not map" in l or "not supported" in l]
+                    tail = lines[-3:] if lines else output_text.splitlines()[-3:]
+                    raise RuntimeError("L'architettura o i tensori del modello non sono ancora supportati da convert_hf_to_gguf di llama.cpp: " + " | ".join(tail))
+                if "mistral-common" in output_text:
+                    raise RuntimeError("La conversione di modelli Mistral richiede la libreria 'mistral-common'. Installala con 'pip install mistral-common[image,audio]' e riprova.")
+                tail = output_text.splitlines()[-4:] or ["nessun output"]
+                raise RuntimeError("convert_hf_to_gguf ha fallito: " + " | ".join(tail))
         if not os.path.exists(output):
             raise RuntimeError("la conversione non ha prodotto alcun file")
 
@@ -1939,7 +2136,8 @@ class GgufConverter:
 
     @classmethod
     def _calcola_imatrix(cls, source_gguf: str, imatrix_out: str,
-                         testo_calibrazione: Optional[str] = None) -> Optional[str]:
+                         testo_calibrazione: Optional[str] = None,
+                         job: Optional[ConversionJob] = None) -> Optional[str]:
         """Calcola la matrice di importanza (imatrix) per preservare i canali critici."""
         import shutil
         binario = cls._imatrix_binario()
@@ -2033,9 +2231,8 @@ class GgufConverter:
         ]
         log.info("[GgufConverter] Calcolo matrice d'importanza imatrix: %s", " ".join(comando))
         try:
-            res = subprocess.run(
-                comando, capture_output=True, text=True, errors="replace",
-                timeout=45 * 60, cwd=os.path.dirname(binario),
+            res = cls._esegui_processo(
+                job, comando, timeout=45 * 60, cwd=os.path.dirname(binario),
             )
             if res.returncode == 0 and os.path.isfile(dest_effettiva) and os.path.getsize(dest_effettiva) > 1024:
                 log.info("[GgufConverter] Matrice d'importanza calcolata con successo: %s", dest_effettiva)
@@ -2048,14 +2245,15 @@ class GgufConverter:
                     "-t", str(threads), "-c", str(ctx_size), "-b", str(batch_size),
                     "--chunks", "4",
                 ]
-                res_cpu = subprocess.run(
-                    comando_cpu, capture_output=True, text=True, errors="replace",
-                    timeout=45 * 60, cwd=os.path.dirname(binario),
+                res_cpu = cls._esegui_processo(
+                    job, comando_cpu, timeout=45 * 60, cwd=os.path.dirname(binario),
                 )
                 if res_cpu.returncode == 0 and os.path.isfile(dest_effettiva) and os.path.getsize(dest_effettiva) > 1024:
                     log.info("[GgufConverter] Matrice d'importanza calcolata con successo su CPU: %s", dest_effettiva)
                     return dest_effettiva
             log.warning("[GgufConverter] llama-imatrix fallito (codice %s): %s", res.returncode, (res.stderr or "")[-400:])
+        except ConversionCancelledError:
+            raise
         except Exception as exc:
             log.warning("[GgufConverter] Errore esecuzione llama-imatrix: %s", exc)
         return None
@@ -2158,7 +2356,8 @@ class GgufConverter:
     @classmethod
     def _quantize_con_motore(cls, binario: str, source: str, output: str,
                              quant_type: str,
-                             override: Optional[List[Dict[str, Any]]] = None) -> None:
+                             override: Optional[List[Dict[str, Any]]] = None,
+                             job: Optional[ConversionJob] = None) -> None:
         """Quantizza con l'eseguibile del motore, in un processo separato.
 
         Per i tipi K-quant, rileva automaticamente i tensori con righe non
@@ -2212,7 +2411,7 @@ class GgufConverter:
                 imatrix_dir = os.path.dirname(output) or "."
                 nome_base = os.path.splitext(os.path.basename(source))[0]
                 imatrix_cand = os.path.join(imatrix_dir, f"{nome_base}.imatrix.dat")
-                imatrix_effettiva = cls._calcola_imatrix(source, imatrix_cand)
+                imatrix_effettiva = cls._calcola_imatrix(source, imatrix_cand, job=job)
                 if imatrix_effettiva:
                     comando.extend(["--imatrix", imatrix_effettiva])
                     # Per i formati IQ a bit rate molto basso, llama.cpp va in bail-out se un tensore
@@ -2280,9 +2479,8 @@ class GgufConverter:
 
             comando += [source, output, quant_type,
                         str(max((os.cpu_count() or 4) - 1, 1))]
-            esito = subprocess.run(
-                comando, capture_output=True, text=True, errors="replace",
-                timeout=6 * 60 * 60, cwd=os.path.dirname(binario),
+            esito = cls._esegui_processo(
+                job, comando, timeout=6 * 60 * 60, cwd=os.path.dirname(binario),
             )
         finally:
             if file_tmp_tipi and os.path.exists(file_tmp_tipi):
@@ -2292,6 +2490,8 @@ class GgufConverter:
                     pass
 
         if esito.returncode != 0:
+            if job and getattr(job, "_cancelled", False):
+                raise ConversionCancelledError("Quantizzazione annullata dall'utente.")
             uscita = (esito.stdout or "") + os.linesep + (esito.stderr or "")
             righe = [r.strip() for r in uscita.splitlines() if r.strip()]
             raise RuntimeError(
@@ -2592,7 +2792,8 @@ class GgufConverter:
 
     @classmethod
     def _quantize(cls, source: str, output: str, quant_type: str,
-                  override: Optional[List[Dict[str, Any]]] = None) -> None:
+                  override: Optional[List[Dict[str, Any]]] = None,
+                  job: Optional[ConversionJob] = None) -> None:
         """Quantizza, preferendo la build del motore a quella del pacchetto pip.
 
         Le due non conoscono le stesse architetture. Il controllo di
@@ -2604,6 +2805,9 @@ class GgufConverter:
         """
         import ctypes
 
+        if job and getattr(job, "_cancelled", False):
+            raise ConversionCancelledError("Quantizzazione annullata dall'utente.")
+
         tipo_norm = str(quant_type).upper().replace(" ", "").replace("-", "_")
 
         binario = cls._quantize_binario()
@@ -2613,7 +2817,7 @@ class GgufConverter:
                 quant_effettivo = "TQ2_0"
             elif tipo_norm in ("TQ1_0", "TQ1"):
                 quant_effettivo = "TQ1_0"
-            cls._quantize_con_motore(binario, source, output, quant_effettivo, override)
+            cls._quantize_con_motore(binario, source, output, quant_effettivo, override, job=job)
             return
 
         if tipo_norm in ("I2_S", "I2S", "BITNET"):
@@ -2655,6 +2859,8 @@ class GgufConverter:
         cls._assicura_log_llama(C)
         cls._log_righe = []
         try:
+            if job and getattr(job, "_cancelled", False):
+                raise ConversionCancelledError("Quantizzazione annullata dall'utente.")
             code = C.llama_model_quantize(
                 source.encode("utf-8"), output.encode("utf-8"), ctypes.byref(params)
             )

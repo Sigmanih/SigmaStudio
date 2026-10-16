@@ -3,7 +3,8 @@ import {
   DownloadCloud, Search, HardDrive, Zap, Shield, Key,
   CheckCircle2, RefreshCw, Folder, FolderOpen, Layers, Activity, Sparkles, ExternalLink,
   ArrowRight, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, AlertTriangle, Check,
-  Plus, X, Tag, FolderPlus, Link2, Copy, FileText, Package, Settings, Star
+  Plus, X, Tag, FolderPlus, Link2, Copy, FileText, Package, Settings, Star, Square,
+  UploadCloud, Upload
 } from 'lucide-react';
 
 import { useApp } from '../../contexts/AppContext';
@@ -12,6 +13,7 @@ import LocalInventory from './LocalInventory';
 import GgufConverter from './GgufConverter';
 import DirectoryPicker from './DirectoryPicker';
 import SigmaDeployModal from './SigmaDeployModal';
+import HfPublishModal from './HfPublishModal';
 import TabHeader from '../../components/common/TabHeader';
 import './styles/model-hub.css';
 
@@ -32,6 +34,7 @@ const CONVERSION_STAGE_LABELS = {
   queued: 'In coda',
   converting: 'Conversione in GGUF',
   quantizing: 'Quantizzazione',
+  cancelled: 'Annullata',
 };
 
 const DEFAULT_OFFICIAL_PUBLISHERS = [
@@ -214,6 +217,61 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
     }, conversionRunning ? 2500 : 15000);
     return () => clearInterval(interval);
   }, [fetchConversionJobs, conversionRunning]);
+
+  // Hugging Face Upload background state & modal control
+  const [uploadTasks, setUploadTasks] = useState([]);
+  const [isHfModalVisible, setIsHfModalVisible] = useState(false);
+  const [activeUploadModalModel, setActiveUploadModalModel] = useState(null);
+  const [dismissedUploadId, setDismissedUploadId] = useState(null);
+
+  const fetchUploadTasks = useCallback(async () => {
+    try {
+      const res = await fetch('/api/models/hf/upload/tasks');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.tasks)) {
+          setUploadTasks(json.tasks);
+        }
+      }
+    } catch (e) {
+      // silent background poll
+    }
+  }, []);
+
+  const activeUploadTask = uploadTasks.find(t => t.status === 'uploading');
+  const uploadRunning = !!activeUploadTask;
+
+  const lastCompletedUploadTask = !activeUploadTask && uploadTasks.length > 0
+    ? uploadTasks.find(t => t.status === 'completed' && t.task_id !== dismissedUploadId && (Date.now() / 1000 - (t.completed_at || 0) < 45))
+    : null;
+
+  // Polling dinamico dei caricamenti Hugging Face: cadenza rapida durante l'upload
+  useEffect(() => {
+    fetchUploadTasks();
+    const interval = setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        fetchUploadTasks();
+      }
+    }, uploadRunning ? 1600 : 12000);
+    return () => clearInterval(interval);
+  }, [fetchUploadTasks, uploadRunning]);
+
+  // Ascolta eventi globali da HfPublishModal (avvio upload, visibilità modale/chiusura)
+  useEffect(() => {
+    const handleUploadStarted = () => fetchUploadTasks();
+    const handleModalVis = (e) => {
+      setIsHfModalVisible(Boolean(e.detail?.open));
+      if (!e.detail?.open) {
+        fetchUploadTasks();
+      }
+    };
+    window.addEventListener('hf_upload_started', handleUploadStarted);
+    window.addEventListener('hf_publish_modal_visibility', handleModalVis);
+    return () => {
+      window.removeEventListener('hf_upload_started', handleUploadStarted);
+      window.removeEventListener('hf_publish_modal_visibility', handleModalVis);
+    };
+  }, [fetchUploadTasks]);
 
   const fetchConfig = useCallback(async () => {
     try {
@@ -1533,6 +1591,39 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
             <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  const res = await fetch('/api/models/convert/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ job_id: activeConversion.job_id })
+                  });
+                  const json = await res.json();
+                  if (json.success) {
+                    fetchConversionJobs();
+                    if (addToast) addToast('⏹️ Quantizzazione annullata.', 'info');
+                  } else if (addToast) {
+                    addToast(`❌ ${json.error}`, 'error');
+                  }
+                } catch (err) {
+                  if (addToast) addToast(`Errore annullamento: ${err.message}`, 'error');
+                }
+              }}
+              style={{
+                padding: '6px 12px', borderRadius: '8px',
+                border: '1px solid rgba(239, 68, 68, 0.45)',
+                background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444',
+                fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '4px',
+                transition: 'all 0.15s ease'
+              }}
+              title="Interrompi e annulla immediatamente la quantizzazione in corso"
+            >
+              <Square size={11} fill="#ef4444" /> Annulla
+            </button>
+
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 setActiveTab('converter');
@@ -1682,6 +1773,191 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
           </div>
         </div>
       )}
+
+      {/* 6. LIVE FLOATING HUGGING FACE UPLOAD HUD BANNER (sovrimpressione visibile da ogni scheda quando il modale è chiuso) */}
+      {activeUploadTask && !isHfModalVisible && (
+        <div
+          onClick={() => {
+            const modelToOpen = localModels.find(m => m.path === activeUploadTask.local_path || m.filename === activeUploadTask.filename) || {
+              filename: activeUploadTask.filename,
+              path: activeUploadTask.local_path,
+              publication: { repo_id: activeUploadTask.repo_id },
+              upload_task_id: activeUploadTask.task_id
+            };
+            setActiveUploadModalModel(modelToOpen);
+          }}
+          style={{
+            position: 'sticky', bottom: '16px', zIndex: 105,
+            padding: '12px 18px', borderRadius: '14px',
+            background: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(13, 16, 25, 0.95)',
+            backdropFilter: 'blur(12px)',
+            border: '1.5px solid #a855f7',
+            boxShadow: '0 10px 30px rgba(168, 85, 247, 0.28)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px',
+            cursor: 'pointer', transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
+            <UploadCloud className="mh-spin" size={20} color="#a855f7" style={{ flexShrink: 0 }} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: textPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Upload Hugging Face Hub: {activeUploadTask.repo_id || activeUploadTask.filename}
+                </span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#a855f7', fontFamily: 'monospace' }}>
+                  {activeUploadTask.progress_pct || 0}%
+                </span>
+              </div>
+              <div style={{
+                height: '4px', borderRadius: '3px', marginTop: '6px',
+                background: isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)', overflow: 'hidden'
+              }}>
+                <div style={{
+                  width: `${activeUploadTask.progress_pct || 0}%`, height: '100%', borderRadius: '3px',
+                  background: 'linear-gradient(90deg, #a855f7, #ec4899)',
+                  transition: 'width 0.4s ease'
+                }} />
+              </div>
+              <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <span style={{ color: textPrimary, fontWeight: 700 }}>
+                  {activeUploadTask.filename || activeUploadTask.local_path}
+                </span>
+                {activeUploadTask.uploaded_label && (
+                  <>
+                    {' • '}
+                    <span>{activeUploadTask.uploaded_label}</span>
+                  </>
+                )}
+                {activeUploadTask.speed_label && (
+                  <>
+                    {' • '}
+                    <span style={{ color: '#ffb86c', fontWeight: 700 }}>⚡ {activeUploadTask.speed_label}</span>
+                  </>
+                )}
+                {activeUploadTask.eta_seconds > 0 && (
+                  <>
+                    {' • '}
+                    <span>ETA: {activeUploadTask.eta_seconds}s</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  const res = await fetch('/api/models/hf/upload/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ task_id: activeUploadTask.task_id })
+                  });
+                  const json = await res.json();
+                  if (json.success) {
+                    fetchUploadTasks();
+                    if (addToast) addToast('⏹️ Upload su Hugging Face annullato.', 'info');
+                  } else if (addToast) {
+                    addToast(`❌ ${json.error || json.message}`, 'error');
+                  }
+                } catch (err) {
+                  if (addToast) addToast(`Errore annullamento: ${err.message}`, 'error');
+                }
+              }}
+              style={{
+                padding: '6px 12px', borderRadius: '8px',
+                border: '1px solid rgba(239, 68, 68, 0.45)',
+                background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444',
+                fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '4px',
+                transition: 'all 0.15s ease'
+              }}
+              title="Interrompi e annulla immediatamente il caricamento su Hugging Face"
+            >
+              <Square size={11} fill="#ef4444" /> Annulla
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const modelToOpen = localModels.find(m => m.path === activeUploadTask.local_path || m.filename === activeUploadTask.filename) || {
+                  filename: activeUploadTask.filename,
+                  path: activeUploadTask.local_path,
+                  publication: { repo_id: activeUploadTask.repo_id },
+                  upload_task_id: activeUploadTask.task_id
+                };
+                setActiveUploadModalModel(modelToOpen);
+              }}
+              style={{
+                padding: '6px 12px', borderRadius: '8px', border: 'none',
+                background: 'linear-gradient(135deg, #a855f7, #7c3aed)', color: '#ffffff',
+                fontSize: '0.74rem', fontWeight: 800, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '4px',
+                boxShadow: '0 2px 10px rgba(168, 85, 247, 0.35)'
+              }}
+            >
+              Apri Dettagli <ArrowRight size={12} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 7. LIVE FLOATING HUGGING FACE UPLOAD SUCCESS BANNER */}
+      {lastCompletedUploadTask && !isHfModalVisible && (
+        <div
+          style={{
+            position: 'sticky', bottom: '16px', zIndex: 105,
+            padding: '12px 18px', borderRadius: '14px',
+            background: isLight ? 'rgba(255, 255, 255, 0.96)' : 'rgba(13, 16, 25, 0.95)',
+            backdropFilter: 'blur(12px)',
+            border: '1.5px solid #10b981',
+            boxShadow: '0 10px 30px rgba(16, 185, 129, 0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+            <CheckCircle2 size={20} color="#10b981" style={{ flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: textPrimary }}>
+                🎉 Upload completato su Hugging Face: {lastCompletedUploadTask.repo_id}
+              </div>
+              <div style={{ fontSize: '0.68rem', color: textMuted, marginTop: '2px' }}>
+                Il modello è ora pubblico/disponibile sul tuo profilo Hugging Face Hub.
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            {lastCompletedUploadTask.hf_url && (
+              <a
+                href={lastCompletedUploadTask.hf_url}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  padding: '6px 12px', borderRadius: '8px', border: 'none',
+                  background: 'linear-gradient(135deg, #10b981, #059669)', color: '#ffffff',
+                  fontSize: '0.74rem', fontWeight: 800, textDecoration: 'none',
+                  display: 'flex', alignItems: 'center', gap: '4px'
+                }}
+              >
+                <ExternalLink size={12} /> Apri Repository
+              </a>
+            )}
+            <button
+              onClick={() => setDismissedUploadId(lastCompletedUploadTask.task_id)}
+              style={{
+                background: 'none', border: 'none', color: textMuted,
+                cursor: 'pointer', padding: '6px', borderRadius: '6px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}
+              title="Chiudi avviso"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
       </div>
 
 
@@ -1745,6 +2021,20 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
                 window.dispatchEvent(new CustomEvent('open_tab', { detail: { type: 'chat' } }));
               } catch (e) {}
             }
+          }}
+        />
+      )}
+
+      {/* 6. HUGGING FACE PUBLISH MODAL (riaperto dal Floating HUD Banner) */}
+      {activeUploadModalModel && (
+        <HfPublishModal
+          model={activeUploadModalModel}
+          isLight={isLight}
+          addToast={addToast}
+          onClose={() => {
+            setActiveUploadModalModel(null);
+            fetchLocalModels();
+            fetchUploadTasks();
           }}
         />
       )}

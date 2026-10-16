@@ -224,9 +224,13 @@ class ModelDownloadManager:
         if exact_bytes > 0:
             estimated_total_bytes = exact_bytes
         else:
-            from .hf_client import parse_model_specs
-            specs = parse_model_specs(model_id, model_id)
-            estimated_total_bytes = int(specs.get("size_gb", 0) * (1024**3))
+            from .hf_client import parse_model_specs, _fetch_model_summary
+            summary = _fetch_model_summary(model_id, hf_token=hf_token)
+            if summary and summary.get("usedStorage"):
+                estimated_total_bytes = int(summary["usedStorage"])
+            else:
+                specs = parse_model_specs(model_id, model_id, raw_item=summary)
+                estimated_total_bytes = int(specs.get("size_gb", 0) * (1024**3))
 
         task_id = str(uuid.uuid4())[:8]
         task = ModelDownloadTask(

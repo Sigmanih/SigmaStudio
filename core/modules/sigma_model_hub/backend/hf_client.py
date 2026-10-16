@@ -310,8 +310,8 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
     total_label = "7B"
     is_moe = False
 
-    # Check for DeepSeek-V3 / DeepSeek-R1 full 671B MoE
-    if ("deepseek-v3" in text or "deepseek-r1" in text or "deepseek_v3" in text or "deepseek_r1" in text) and "distill" not in text and "tiny" not in text and "zero" not in text:
+    # Check for DeepSeek-V3 / DeepSeek-R1 / DeepSeek-V4 full large MoE
+    if any(k in text for k in ("deepseek-v3", "deepseek-r1", "deepseek_v3", "deepseek_r1", "deepseek-v4", "deepseek_v4", "deepseek-v4.1", "deepseek_v41")) and "distill" not in text and "tiny" not in text and "zero" not in text:
         is_moe = True
         total_b = 671.0
         active_b = 37.0
@@ -370,7 +370,18 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
         active_label = "~0.5B (Draft)"
         total_label = "~0.5B (Draft Assistant)"
 
+    # Check siblings structure to prevent misclassifying pure Safetensors as GGUF
+    siblings_list = raw_item.get("siblings") or [] if raw_item else []
+    has_safetensors = any(s.get("rfilename", "").lower().endswith(".safetensors") for s in siblings_list)
+    has_gguf = any(s.get("rfilename", "").lower().endswith(".gguf") for s in siblings_list)
+    
+    # Check config quantization
+    raw_cfg = raw_item.get("config") if raw_item else {}
+    q_cfg = raw_cfg.get("quantization_config") if isinstance(raw_cfg, dict) else {}
+    q_method = str((q_cfg or {}).get("quant_method", "")).lower()
+
     # Refine with exact parameter count from Hugging Face metadata if available
+    is_fp8 = "fp8" in text or "int8" in text or "w8a8" in text or "8bit" in text or "8-bit" in text or "fp8" in q_method
     if raw_item:
         if isinstance(raw_item.get("gguf"), dict) and raw_item["gguf"].get("total"):
             exact_params = round(raw_item["gguf"]["total"] / 1e9, 2)
@@ -384,21 +395,25 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
             if exact_params > 0:
                 total_b = exact_params
                 total_label = f"{exact_params:g}B" if exact_params < 100 else f"{int(exact_params)}B"
-                if not is_moe:
+                if exact_params >= 200 and ("deepseek" in text or "moe" in text):
+                    is_moe = True
+                    active_b = 37.0 if "deepseek" in text else round(exact_params * 0.1, 1)
+                    active_label = f"~{active_b:g}B"
+                    total_label = f"{int(exact_params)}B (MoE)"
+                elif not is_moe:
                     active_b = exact_params
                     active_label = total_label
             # Rileva se safetensors contiene pesi FP8
             st_params = raw_item["safetensors"].get("parameters", {})
             if isinstance(st_params, dict) and any("F8" in str(k).upper() or "FP8" in str(k).upper() for k in st_params.keys()):
-                precision = "FP8 (8-bit)"
-                fmt_label = "Safetensors (FP8)"
-                bytes_per_param = 1.0
+                is_fp8 = True
 
     # 2. Precision & Size estimation (FP8, FP16, GGUF, NVFP4)
-    is_gguf = "gguf" in text
-    if "fp8" in text or "int8" in text or "w8a8" in text or "8bit" in text or "8-bit" in text:
+    # Se ha file safetensors e nessun file gguf, NON è un modello GGUF
+    is_gguf = ("gguf" in text or has_gguf) and not (has_safetensors and not has_gguf)
+    if is_fp8:
         precision = "FP8 (8-bit)"
-        fmt_label = "Safetensors (FP8)"
+        fmt_label = "Safetensors (FP8)" if not is_gguf else "GGUF FP8"
         bytes_per_param = 1.0
     elif "nvfp4" in text or "mxfp4" in text or "int4" in text or "fp4" in text or "awq" in text or "gptq" in text or "4bit" in text:
         precision = "4-bit (NVFP4/AWQ)"
@@ -451,7 +466,7 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
         bytes_per_param = 2.0
 
     # Total repository storage / download size
-    # Strategy: 1) usedStorage from HF  2) sum of siblings file sizes  3) formula estimate
+    # Strategy: 1) usedStorage from HF  2) sum of siblings file sizes  3) sharded siblings estimate  4) formula estimate
     used_storage_bytes = raw_item.get("usedStorage") if raw_item else None
     siblings_size_sum = 0
     if raw_item:
@@ -469,32 +484,46 @@ def parse_model_specs(model_id: str, name: str, tags: List[str] = None, raw_item
         if not is_gguf:
             size_gb = computed_gb
         else:
-            siblings_list = raw_item.get("siblings") or []
             gguf_files = [s for s in siblings_list if s.get("rfilename", "").lower().endswith(".gguf")]
-            if len(gguf_files) <= 1:
+            is_sharded_gguf = any("-of-" in s.get("rfilename", "").lower() for s in gguf_files)
+            if len(gguf_files) <= 1 or is_sharded_gguf:
                 size_gb = computed_gb
             else:
                 size_gb = formula_gb
     elif used_storage_bytes and isinstance(used_storage_bytes, (int, float)) and used_storage_bytes > 0:
         if not is_gguf:
-            # Safetensors / FP16 / BF16 repos: usedStorage = real download size
+            # Safetensors / FP16 / BF16 / FP8 repos: usedStorage = real download size
             size_gb = round(used_storage_bytes / (1024**3), 1)
         else:
-            # GGUF repo: check if it has multiple GGUF variants
-            siblings = raw_item.get("siblings") or []
-            gguf_files = [s for s in siblings if s.get("rfilename", "").lower().endswith(".gguf")]
-            if len(gguf_files) <= 1:
+            # GGUF repo: check if it is a single sharded model or multiple variant quantizations
+            gguf_files = [s for s in siblings_list if s.get("rfilename", "").lower().endswith(".gguf")]
+            is_sharded_gguf = any("-of-" in s.get("rfilename", "").lower() for s in gguf_files)
+            if len(gguf_files) <= 1 or is_sharded_gguf:
                 size_gb = round(used_storage_bytes / (1024**3), 1)
             else:
                 # Multiple GGUF variants: usedStorage is sum of all; use formula for one variant
                 size_gb = round(total_b * bytes_per_param, 1)
     else:
-        size_gb = round(total_b * bytes_per_param, 1)
+        # Calcolo analitico basato sul numero di file shard di pesi se presenti
+        safetensors_files = [s for s in siblings_list if s.get("rfilename", "").lower().endswith(".safetensors")]
+        max_shard_count = len(safetensors_files)
+        for sf in safetensors_files:
+            m_sh = re.search(r'-of-(\d+)', sf.get("rfilename", ""))
+            if m_sh:
+                max_shard_count = max(max_shard_count, int(m_sh.group(1)))
+        
+        formula_gb = round(total_b * bytes_per_param, 1)
+        if max_shard_count > 1 and not is_gguf:
+            # Gli shard standard Safetensors su HF sono da ~5 a ~10 GB ciascuno (standard 4.95GB o 9.9GB)
+            shard_est = round(max_shard_count * (9.9 if max_shard_count >= 20 else 4.95), 1)
+            size_gb = max(formula_gb, shard_est)
+        else:
+            size_gb = formula_gb
 
-    # Sanity check: if formula says X GB but real repo is > 3× bigger, trust the real data
-    formula_est = round(total_b * bytes_per_param, 1)
-    if size_gb < formula_est * 0.5 and formula_est > 1.0:
-        size_gb = formula_est  # Real data seems too small (e.g. only config files counted)
+    # Sanity check: se la formula dà un valore troppo piccolo per un modello con dozzine di shard
+    safetensors_count = len([s for s in siblings_list if s.get("rfilename", "").lower().endswith(".safetensors")])
+    if safetensors_count > 2 and size_gb < safetensors_count * 4.0:
+        size_gb = round(safetensors_count * 9.9, 1)
 
     # Active inference VRAM footprint is based on active_b
     active_vram_gb = round(active_b * bytes_per_param, 1)
@@ -935,10 +964,72 @@ POPULAR_MODELS = [
 ]
 
 
+_HF_METADATA_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+
+
+def _fetch_model_summary(model_id: str, hf_token: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Recupera metadati essenziali (usedStorage, safetensors, config) con cache TTL di 15 minuti."""
+    now = time.time()
+    if model_id in _HF_METADATA_CACHE:
+        cached_time, cached_data = _HF_METADATA_CACHE[model_id]
+        if now - cached_time < 900:
+            return cached_data
+
+    url = f"{HF_API_BASE}/models/{model_id}"
+    req = urllib.request.Request(url)
+    req.add_header("User-Agent", "SigmaStudio-ModelHub/2.0")
+    if hf_token and str(hf_token).strip():
+        req.add_header("Authorization", f"Bearer {str(hf_token).strip()}")
+
+    try:
+        with safe_urlopen(req, timeout=3.0) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                if isinstance(data, dict):
+                    _HF_METADATA_CACHE[model_id] = (now, data)
+                    return data
+    except Exception as ex:
+        log.debug(f"[HF_Client] _fetch_model_summary errore per {model_id}: {ex}")
+    return None
+
+
+def _enrich_raw_items(raw_items: List[Dict[str, Any]], hf_token: Optional[str] = None):
+    """Arricchisce i modelli con usedStorage, safetensors parameters e config in parallelo."""
+    items_to_fetch = [
+        item for item in raw_items
+        if item.get("id") and (not item.get("usedStorage") or not item.get("safetensors"))
+    ]
+    if not items_to_fetch:
+        return
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _worker(item):
+        mid = item.get("id")
+        summary = _fetch_model_summary(mid, hf_token)
+        if summary:
+            if summary.get("usedStorage") and not item.get("usedStorage"):
+                item["usedStorage"] = summary["usedStorage"]
+            if summary.get("safetensors") and not item.get("safetensors"):
+                item["safetensors"] = summary["safetensors"]
+            if summary.get("config") and not item.get("config"):
+                item["config"] = summary["config"]
+            if summary.get("tags") and (not item.get("tags") or len(item.get("tags", [])) == 0):
+                item["tags"] = summary["tags"]
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(_worker, it) for it in items_to_fetch[:35]]
+        for f in as_completed(futures):
+            try:
+                f.result()
+            except Exception:
+                pass
+
+
 def _fetch_from_hf_api(params: Dict[str, Any], hf_token: Optional[str] = None) -> tuple[List[Dict[str, Any]], Optional[str]]:
     """Helper to query Hugging Face API and extract items and next_cursor, with anonymous fallback if token is invalid or absent."""
     base_qs = urllib.parse.urlencode(params)
-    url = f"{HF_API_BASE}/models?{base_qs}&expand%5B%5D=siblings&full=true"
+    url = f"{HF_API_BASE}/models?{base_qs}&expand%5B%5D=siblings&expand%5B%5D=tags&expand%5B%5D=config&expand%5B%5D=cardData&full=true"
 
     def _do_fetch(tok: Optional[str]):
         req = urllib.request.Request(url)
@@ -1165,7 +1256,9 @@ def search_hf_models(
                 if not any(x.get("id") == item.get("id") for x in raw_items):
                     raw_items.append(item)
 
-        # D. Transform and filter raw items with precision & active/total specs
+        # D. Arricchisce i modelli con i metadati reali e calcola le specifiche di storage e vram
+        _enrich_raw_items(raw_items, hf_token=hf_token)
+
         for item in raw_items:
             mid = item.get("id") or item.get("modelId", "")
             if any(r["id"] == mid for r in results):

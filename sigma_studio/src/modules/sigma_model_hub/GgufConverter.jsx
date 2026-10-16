@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Package, Download, Play, AlertTriangle, CheckCircle2, Loader, Upload,
-  Layers, Cpu, Zap, HardDrive, ShieldCheck, ChevronDown, Check, Info, Dna, Sparkles, Activity
+  Layers, Cpu, Zap, HardDrive, ShieldCheck, ChevronDown, Check, Info, Dna, Sparkles, Activity,
+  Square, XCircle
 } from 'lucide-react';
 import HfPublishModal from './HfPublishModal.jsx';
 
@@ -132,6 +133,29 @@ export default function GgufConverter({ isLight, addToast, initialModel, jobs = 
     }
   };
 
+  const cancelConversion = async (jobId) => {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/models/convert/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (onJobsChanged) onJobsChanged();
+        if (addToast) addToast('⏹️ Quantizzazione annullata.', 'info');
+      } else {
+        if (addToast) addToast(`❌ ${json.error}`, 'error');
+      }
+    } catch (e) {
+      if (addToast) addToast(`Errore annullamento: ${e.message}`, 'error');
+    } finally {
+      setBusy(false);
+      fetchInfo();
+    }
+  };
+
   const model = models.find(m => m.name === selected);
   const estimate = model?.estimated_outputs?.[quant];
   const quantMeta = quantTypes.find(q => q.id === quant);
@@ -194,14 +218,37 @@ export default function GgufConverter({ isLight, addToast, initialModel, jobs = 
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               {job.status === 'completed' && <CheckCircle2 size={14} color="#10b981" />}
               {job.status === 'failed' && <AlertTriangle size={14} color="#ef4444" />}
+              {job.status === 'cancelled' && <XCircle size={14} color="#f59e0b" />}
               {['queued', 'converting', 'quantizing'].includes(job.status) && <Loader size={14} className="mh-spin" color="#00d2ff" />}
               <span>{job.source_model}</span>
               <span style={{ color: '#00d2ff' }}>➔</span>
               <span style={{ color: '#10b981' }}>{job.quantization}</span>
+              {job.status === 'cancelled' && (
+                <span style={{ color: '#f59e0b', fontSize: '0.68rem', fontWeight: 600 }}>
+                  (Annullata)
+                </span>
+              )}
             </span>
-            <span style={{ color: textMuted, fontSize: '0.68rem', fontWeight: 600 }}>
-              {job.elapsed_seconds}s
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {['queued', 'converting', 'quantizing'].includes(job.status) && (
+                <button
+                  onClick={() => cancelConversion(job.job_id)}
+                  disabled={busy}
+                  style={{
+                    padding: '3px 8px', borderRadius: '6px',
+                    background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.40)',
+                    color: '#ef4444', fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '4px'
+                  }}
+                  title="Interrompi e annulla questa quantizzazione"
+                >
+                  <Square size={10} fill="#ef4444" /> Annulla
+                </button>
+              )}
+              <span style={{ color: textMuted, fontSize: '0.68rem', fontWeight: 600 }}>
+                {job.elapsed_seconds}s
+              </span>
+            </div>
           </div>
 
           {['converting', 'quantizing'].includes(job.status) && (
@@ -234,7 +281,7 @@ export default function GgufConverter({ isLight, addToast, initialModel, jobs = 
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-            <div style={{ fontSize: '0.70rem', color: job.status === 'failed' ? '#ef4444' : textMuted }}>
+            <div style={{ fontSize: '0.70rem', color: job.status === 'failed' ? '#ef4444' : (job.status === 'cancelled' ? '#f59e0b' : textMuted) }}>
               {job.error || job.message}
             </div>
 
@@ -660,27 +707,50 @@ export default function GgufConverter({ isLight, addToast, initialModel, jobs = 
           </label>
         )}
 
-        {/* PRIMARY CONVERT BUTTON */}
-        <button
-          onClick={startConversion}
-          disabled={busy || !selected || !!activeJob || !!model?.compatibility?.blocked_by?.length}
-          style={{
-            alignSelf: 'flex-start', padding: '9px 20px', borderRadius: '10px',
-            border: 'none',
-            background: (busy || !!activeJob)
-              ? 'rgba(107,114,128,0.2)'
-              : 'linear-gradient(135deg, #10b981, #059669)',
-            color: (busy || !!activeJob) ? textMuted : '#ffffff',
-            fontSize: '0.78rem', fontWeight: 900,
-            cursor: (busy || !!activeJob) ? 'not-allowed' : 'pointer',
-            display: 'inline-flex', alignItems: 'center', gap: '6px',
-            boxShadow: (busy || !!activeJob) ? 'none' : '0 2px 14px rgba(16, 185, 129, 0.35)',
-            transition: 'all 0.15s ease'
-          }}
-        >
-          {activeJob ? <Activity className="mh-spin" size={13} /> : <Play size={13} />}
-          <span>{activeJob ? 'Conversione in corso…' : '⚡ Avvia Conversione in GGUF'}</span>
-        </button>
+        {/* PRIMARY CONVERT & CANCEL BUTTONS */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            onClick={startConversion}
+            disabled={busy || !selected || !!activeJob || !!model?.compatibility?.blocked_by?.length}
+            style={{
+              alignSelf: 'flex-start', padding: '9px 20px', borderRadius: '10px',
+              border: 'none',
+              background: (busy || !!activeJob)
+                ? 'rgba(107,114,128,0.2)'
+                : 'linear-gradient(135deg, #10b981, #059669)',
+              color: (busy || !!activeJob) ? textMuted : '#ffffff',
+              fontSize: '0.78rem', fontWeight: 900,
+              cursor: (busy || !!activeJob) ? 'not-allowed' : 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              boxShadow: (busy || !!activeJob) ? 'none' : '0 2px 14px rgba(16, 185, 129, 0.35)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {activeJob ? <Activity className="mh-spin" size={13} /> : <Play size={13} />}
+            <span>{activeJob ? 'Conversione in corso…' : '⚡ Avvia Conversione in GGUF'}</span>
+          </button>
+
+          {activeJob && (
+            <button
+              onClick={() => cancelConversion(activeJob.job_id)}
+              disabled={busy}
+              style={{
+                padding: '9px 16px', borderRadius: '10px',
+                border: '1px solid rgba(239, 68, 68, 0.45)',
+                background: 'rgba(239, 68, 68, 0.15)',
+                color: '#ef4444',
+                fontSize: '0.78rem', fontWeight: 800,
+                cursor: busy ? 'not-allowed' : 'pointer',
+                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                transition: 'all 0.15s ease'
+              }}
+              title="Interrompi e annulla immediatamente la quantizzazione attiva"
+            >
+              <Square size={12} fill="#ef4444" />
+              <span>Annulla Quantizzazione</span>
+            </button>
+          )}
+        </div>
 
         {/* Un pulsante spento senza spiegazione sembra un guasto, ed e' il modo
             in cui "il convertitore non funziona" viene percepito quando invece

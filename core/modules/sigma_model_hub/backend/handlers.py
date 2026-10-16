@@ -1303,6 +1303,19 @@ def handle_models_convert_jobs(self):
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 
+def handle_models_convert_cancel(self):
+    """POST /api/models/convert/cancel — Annulla una conversione o quantizzazione attiva."""
+    try:
+        from core.engine.gguf_converter import GgufConverter
+        body = self.read_json_body() if hasattr(self, "read_json_body") else {}
+        job_id = (body or {}).get("job_id")
+        res = GgufConverter.cancel(job_id=job_id)
+        self.send_json_response(res, 200)
+    except Exception as e:
+        log.error("Error in handle_models_convert_cancel: %s", e)
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
 def handle_models_browse_dirs(self):
     """
     GET /api/models/browse — Lists subdirectories, for picking a models folder.
@@ -1457,6 +1470,7 @@ def register_routes(app=None) -> None:
         '/api/models/engine/unload': handle_models_engine_unload,
         '/api/models/config': handle_models_config_save,
         '/api/models/convert/start': handle_models_convert_start,
+        '/api/models/convert/cancel': handle_models_convert_cancel,
         '/api/models/convert/tooling': handle_models_convert_tooling,
     }
 

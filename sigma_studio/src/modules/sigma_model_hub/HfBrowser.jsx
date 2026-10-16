@@ -836,7 +836,12 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
             const details = modelDetailsMap[m.id];
             const isLoadingDetails = loadingDetailsId === m.id;
             const targetQuant = getModelTargetQuantLabel(m, 'Q4_K_M', quantFilter);
-            const isGguf = (m.format?.toLowerCase().includes('gguf') || m.precision?.toLowerCase().includes('gguf') || m.id.toLowerCase().includes('gguf') || targetQuant.startsWith('Q') || targetQuant.startsWith('IQ'));
+            const isGguf = Boolean(
+              (m.format && m.format.toLowerCase().includes('gguf')) ||
+              (m.precision && m.precision.toLowerCase().includes('gguf')) ||
+              (m.id && m.id.toLowerCase().includes('gguf')) ||
+              (targetQuant && targetQuant !== 'Modello' && (targetQuant.startsWith('Q') || targetQuant.startsWith('IQ')))
+            );
             const pBadge = getProviderBadge(m, officialPublishers);
             const isSigmanih = (m.author || '').toLowerCase() === 'sigmanih' || m.id.toLowerCase().startsWith('sigmanih/');
 
@@ -939,14 +944,19 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                       color: isGguf ? '#10b981' : '#00d2ff',
                       border: isGguf ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(0, 210, 255, 0.3)'
                     }}>
-                      {targetQuant !== 'Modello' ? `GGUF ${targetQuant}` : (m.precision || (isGguf ? 'GGUF' : 'SAFETENSORS'))}
+                      {isGguf
+                        ? (targetQuant && targetQuant !== 'Modello' && (targetQuant.startsWith('Q') || targetQuant.startsWith('IQ')) ? `GGUF ${targetQuant}` : (m.precision?.includes('GGUF') ? m.precision : 'GGUF'))
+                        : (m.format || (m.precision?.includes('FP8') ? 'SAFETENSORS FP8' : (m.precision?.includes('BF16') ? 'SAFETENSORS BF16' : 'SAFETENSORS')))}
                     </span>
 
                     {/* Storage & VRAM metrics */}
                     <span style={{ fontSize: '0.68rem', color: textMuted, display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <span>💾 <b>{(details?.size_label || m.size_label) || (m.size_gb >= 1000 ? `~${(m.size_gb / 1000).toFixed(1)} TB` : `~${m.size_gb} GB`)}</b></span>
+                      <span>💾 <b>{(details?.size_label || m.size_label) || (m.size_gb >= 1000 ? `~${(m.size_gb / 1000).toFixed(1)} TB` : `~${m.size_gb || 0} GB`)}</b></span>
                       <span>•</span>
                       <span style={{ color: isLight ? '#0284c7' : '#00d2ff' }}>⚡ VRAM: <b>{details?.active_vram_label || m.active_vram_label || `~${m.active_vram_gb || 8} GB`}</b></span>
+                      {details?.files && details.files.length > 1 && (
+                        <span style={{ fontSize: '0.60rem', color: textMuted }}>({details.files.length} file)</span>
+                      )}
                     </span>
 
                     {/* Release Date */}
@@ -1023,11 +1033,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                     ) : (
                       <button
                         onClick={() => {
-                          if (isGguf) {
-                            toggleCardDetails(m);
-                          } else {
-                            handleStartWholeRepoDownload(m.id);
-                          }
+                          toggleCardDetails(m);
                         }}
                         style={{
                           padding: '5px 12px', borderRadius: '7px',
@@ -1041,7 +1047,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                         }}
                       >
                         <Download size={11} />
-                        <span>{targetQuant !== 'Modello' ? `Scarica (${targetQuant})` : 'Scarica'}</span>
+                        <span>{isGguf ? (targetQuant && targetQuant !== 'Modello' && (targetQuant.startsWith('Q') || targetQuant.startsWith('IQ')) ? `Scarica (${targetQuant})` : 'Scarica GGUF') : 'Scarica Modello'}</span>
                       </button>
                     )}
 
@@ -1101,7 +1107,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                           }}
                         >
                           <FolderDown size={11} />
-                          {downloadingRepo ? 'Avvio...' : `Scarica Intero Modello (${details?.files?.length || 1} file${details?.files ? ` • ${formatBytes(details.files.reduce((s, f) => s + (Number(f.size) || 0), 0))}` : ''})`}
+                          {downloadingRepo ? 'Avvio...' : `Scarica Intero Modello (${details?.files?.length || 1} file${details?.files ? ` • ${formatBytes(details.files.reduce((s, f) => s + (Number(f.size) || 0), 0))}` : (m.size_label ? ` • ${m.size_label}` : '')})`}
                         </button>
                       </div>
                     </div>
@@ -1158,7 +1164,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                                   }}
                                 >
                                   {downloadingFile === activeFile?.filename ? <Activity className="mh-spin" size={11} /> : <Download size={11} />}
-                                  <span>Scarica Selezionata ({activeFile?.filename ? activeFile.filename.split('/').pop() : 'GGUF'})</span>
+                                  <span>Scarica Selezionata ({activeFile?.filename ? activeFile.filename.split('/').pop() : 'GGUF'}{activeFile?.size > 0 ? ` • ${formatBytes(activeFile.size)}` : ''})</span>
                                 </button>
                               )}
                             </div>
@@ -1188,6 +1194,7 @@ export default function HfBrowser({ isLight, addToast, onDownloadStarted, active
                                   >
                                     {isGfDownloaded ? '✅ ' : (isRecommended ? '⭐ ' : '')}
                                     {gf.filename.split('/').pop()}
+                                    {gf.size > 0 ? ` (${formatBytes(gf.size)})` : ''}
                                   </button>
                                 );
                               })}

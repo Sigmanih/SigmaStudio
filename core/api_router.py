@@ -308,6 +308,7 @@ def register_post_handlers(handler_class):
         '/api/models/engine/unload': 'handle_models_engine_unload',
         '/api/models/config': 'handle_models_config_save',
         '/api/models/convert/start': 'handle_models_convert_start',
+        '/api/models/convert/cancel': 'handle_models_convert_cancel',
         '/api/models/convert/tooling': 'handle_models_convert_tooling',
         # System & Memory Cleanup
         '/api/system/clear-memory': 'handle_system_clear_memory',
