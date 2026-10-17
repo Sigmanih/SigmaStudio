@@ -54,7 +54,7 @@ class PeerDiscovery:
         registry: PeerRegistry,
         peer_id: str,
         name: str = "sigma-peer",
-        port: int = 8080,
+        port: int = 8000,
         models: Optional[List[str]] = None,
         version: str = "1.0.0",
     ) -> None:
@@ -130,6 +130,22 @@ class PeerDiscovery:
         """Indica se la scoperta e' attiva."""
         return self._running
 
+    def announce_now(self) -> None:
+        """Forza l'emissione immediata di un annuncio UDP broadcast."""
+        try:
+            if self._broadcast_socket is None:
+                self._broadcast_socket = self._make_broadcast_socket()
+            payload = self._build_announcement()
+            data = json.dumps(payload).encode("utf-8")
+            self._broadcast_socket.sendto(data, ("<broadcast>", DISCOVERY_PORT))
+            try:
+                self._broadcast_socket.sendto(data, ("255.255.255.255", DISCOVERY_PORT))
+            except OSError:
+                pass
+            logger.debug("Annuncio discovery immediato inviato (peer_id=%s)", self._peer_id)
+        except Exception as exc:
+            logger.debug("Errore emissione broadcast immediato: %s", exc)
+
     # ------------------------------------------------------------------
     # Costruzione socket
     # ------------------------------------------------------------------
@@ -159,6 +175,10 @@ class PeerDiscovery:
                     payload = self._build_announcement()
                     data = json.dumps(payload).encode("utf-8")
                     self._broadcast_socket.sendto(data, ("<broadcast>", DISCOVERY_PORT))
+                    try:
+                        self._broadcast_socket.sendto(data, ("255.255.255.255", DISCOVERY_PORT))
+                    except OSError:
+                        pass
             except OSError as exc:
                 logger.debug("Errore broadcast: %s", exc)
             except Exception as exc:  # pragma: no cover - defensive

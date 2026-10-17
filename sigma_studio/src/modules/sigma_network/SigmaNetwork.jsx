@@ -59,6 +59,8 @@ const SigmaNetwork = () => {
 
   useEffect(() => {
     fetchAllData();
+    // Avvia la scoperta peer locale UDP in background
+    fetch('/api/sigma_network/discovery/start', { method: 'POST' }).catch(() => {});
     const timer = setInterval(fetchAllData, 6000);
     return () => clearInterval(timer);
   }, [fetchAllData]);

@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import json
 import threading
+import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -167,19 +168,36 @@ def _get_settings() -> Dict[str, Any]:
         return _settings
 
 
+def _detect_server_port() -> int:
+    try:
+        from sigma_server import _get_configured_host_port_ssl
+        _, port, _, _, _ = _get_configured_host_port_ssl()
+        return port or 8000
+    except Exception:
+        return 8000
+
+
 def _get_discovery() -> PeerDiscovery:
     global _discovery_instance
     with _lock:
         if _discovery_instance is None:
             identity = _get_identity()
             settings = _get_settings()
+            port = _detect_server_port()
             _discovery_instance = PeerDiscovery(
                 registry=_get_registry(),
                 peer_id=identity["peer_id"],
                 name=str(settings.get("display_name") or "Sigma Peer"),
+                port=port,
                 models=list(settings.get("shared_models") or []),
                 version=MODULE_VERSION,
             )
+            # Avvio automatico discovery daemon
+            try:
+                _discovery_instance.start()
+                log.info("[SigmaNetwork] PeerDiscovery avviato automaticamente sulla porta %d (UDP 47777)", port)
+            except Exception as e:
+                log.warning("[SigmaNetwork] Impossibile avviare PeerDiscovery in automatico: %s", e)
         return _discovery_instance
 
 
@@ -340,25 +358,53 @@ def list_peers() -> List[Dict[str, Any]]:
 def add_peer(body: PeerAddRequest) -> Dict[str, Any]:
     """Aggiunge manualmente un peer per host e porta.
 
-    Il peer entra in stato ``discovered``: l'aggiunta manuale dice dove
-    trovarlo, non che ci si fidi di lui. L'identita reale verra' sostituita al
-    primo /p2p/hello riuscito; fino ad allora si usa un identificativo
-    derivato dall'indirizzo, cosi' che due aggiunte dello stesso host non
-    creino due voci.
+    Tenta subito una verifica diretta con /p2p/hello per registrare identità reale,
+    modelli e latenza istantanea. Se il nodo non risponde, ripiega su un identificativo
+    provvisorio finché non viene contattato.
     """
-    if not body.host.strip():
+    host = body.host.strip()
+    if not host:
         raise HTTPException(status_code=400, detail="host mancante")
     if not (0 < body.port < 65536):
         raise HTTPException(status_code=400, detail="porta non valida")
 
-    placeholder = f"{body.host}:{body.port}".encode("utf-8")
+    import requests as _requests
+    url = f"http://{host}:{body.port}/api/sigma_network/p2p/hello"
+    try:
+        t0 = time.time()
+        resp = _requests.get(url, timeout=2.5)
+        if resp.status_code == 200:
+            data = resp.json()
+            real_pid = data.get("peer_id")
+            pub_key = data.get("public_key", "")
+            name = data.get("name") or f"{host}:{body.port}"
+            models = data.get("models", [])
+            version = data.get("version", "1.0.0")
+            if real_pid:
+                peer = _get_registry().add_peer(
+                    host=host,
+                    port=body.port,
+                    peer_id=real_pid,
+                    public_key=pub_key,
+                    name=name,
+                    models=models,
+                    version=version,
+                )
+                latency = round((time.time() - t0) * 1000, 1)
+                _get_registry().touch(real_pid, latency_ms=latency)
+                log.info("[SigmaNetwork] Peer aggiunto e verificato con successo: %s (%s:%d)", name, host, body.port)
+                return peer
+    except Exception as exc:
+        log.debug("[SigmaNetwork] Handshake immediato fallito con %s: %s (registro provvisorio)", url, exc)
+
+    placeholder = f"{host}:{body.port}".encode("utf-8")
     provisional_id = peer_id_from_public_key(placeholder)
     return _get_registry().add_peer(
-        host=body.host.strip(),
+        host=host,
         port=body.port,
         peer_id=provisional_id,
         public_key=base64.b64encode(placeholder).decode("ascii"),
-        name=f"{body.host}:{body.port}",
+        name=f"{host}:{body.port}",
         models=[],
     )
 
