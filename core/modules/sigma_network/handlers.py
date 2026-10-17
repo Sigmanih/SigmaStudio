@@ -443,6 +443,28 @@ def get_wallet() -> Dict[str, Any]:
     }
 
 
+@router.get("/nat/status")
+def get_nat_status() -> Dict[str, Any]:
+    """Rileva e restituisce l'IP LAN, l'IP pubblico WAN riflesso via STUN e lo stato NAT."""
+    from core.modules.sigma_network.nat_traversal import detect_nat_info
+    port = _detect_server_port()
+    return detect_nat_info(local_service_port=port)
+
+
+@router.post("/wallet/settle")
+def get_settlement_bundle(consumer_peer_id: Optional[str] = None) -> Dict[str, Any]:
+    """Genera un bundle Merkle Tree con prove crittografiche per il settlement on-chain delle ricevute."""
+    from core.modules.sigma_network.settlement import create_settlement_bundle
+    wallet = _get_wallet()
+    my_id = _get_identity()["peer_id"]
+    receipts = wallet.receipts()
+    return create_settlement_bundle(
+        receipts=receipts,
+        provider_peer_id=my_id,
+        consumer_peer_id=consumer_peer_id or "global_settlement",
+    )
+
+
 @router.get("/settings")
 def get_settings() -> Dict[str, Any]:
     """Impostazioni di condivisione correnti."""
