@@ -155,10 +155,19 @@ def _scheda_grezza(impronta: str) -> str:
             "",
         ]
     if tool:
-        righe += [
-            f"**I tool dell'agente** sono {len(tool)}: " + ", ".join(tool) + ".",
-            "",
-        ]
+        # I tool dei moduli si contano soltanto: nomi, parametri e scopo li ha gia'
+        # la sezione «TOOL DEI MODULI» del prompt, e ripeterli qui faceva superare
+        # alla scheda la sua misura appena registrati il Video Studio e KiCad.
+        try:
+            from core.harness import tool_providers
+            dei_moduli = [t for t in tool if tool_providers.owner(t)]
+        except Exception:
+            dei_moduli = []
+        del_kernel = [t for t in tool if t not in set(dei_moduli)]
+        riga = f"**I tool dell'agente** sono {len(tool)}: " + ", ".join(del_kernel)
+        if dei_moduli:
+            riga += f", piu' {len(dei_moduli)} tool dei moduli elencati in «TOOL DEI MODULI»"
+        righe += [riga + ".", ""]
     if agenti:
         righe += [
             "**Gli agenti della chat** (un'altra cosa dai ruoli dell'harness) "

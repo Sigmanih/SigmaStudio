@@ -43,6 +43,7 @@ LENTI: Tuple[str, ...] = (
 LENTI_PER_CLASSE: Tuple[str, ...] = (
     "TestBatchedGenerationAgainstRealModel",
     "TestCheckpointReale",
+    "TestModelloVero",
 )
 
 #: lotto -> file di prova che gli appartengono.
@@ -72,7 +73,8 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "run_teardown", "selezione_dichiarata", "session_ledger",
         "session_rollback", "stall_recovery", "stato_diviso",
         "structured_verification",
-        "symbol_index", "tool_policy", "voce_senza_prova", "worktree",
+        "chiusure_e_specialisti", "symbol_index", "tool_policy", "vista_harness", "voce_senza_prova",
+        "worktree",
     ),
     "mcp": (
         "assenso_client_esterno", "git_server", "ipc_client_transport",
@@ -101,7 +103,7 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "eda_lab", "email_client", "frontend_diagnostics",
         "fusione_a_tre_vie", "i18n_translator", "kicad_agent",
         "kicad_edit_tools", "kicad_editor_contract", "kicad_harness_tools",
-        "kicad_lab", "kicad_pcbnew_tools", "kicad_pure_functions",
+        "kicad_lab", "kicad_pcbnew_tools", "kicad_pure_functions", "manga_adapter",
         "module_registry_coerenza",
         "module_sync", "pcbnew_bridge", "pipeline_node_runner", "progetti",
         "progetto_in_container", "project_check", "project_rules",

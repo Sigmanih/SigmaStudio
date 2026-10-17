@@ -100,6 +100,7 @@ export default function useChatCore(extraProps = {}) {
     activeManifesto: configHook.activeManifesto,
     selectedHardware: configHook.selectedHardware,
     devModeEnabled: devModeHook.devModeEnabled,
+    devRole: devModeHook.devRole,
     workspaceRoot: devModeHook.workspaceRoot
   });
 
@@ -470,6 +471,9 @@ export default function useChatCore(extraProps = {}) {
     devModeAvailable: devModeHook.devModeAvailable,
     devModeEnabled: devModeHook.devModeEnabled,
     setDevModeEnabled: devModeHook.setDevModeEnabled,
+    devRoles: devModeHook.devRoles,
+    devRole: devModeHook.devRole,
+    setDevRole: devModeHook.setDevRole,
     devModeWorkspaceRoot: devModeHook.workspaceRoot,
 
     // --- Actions ---

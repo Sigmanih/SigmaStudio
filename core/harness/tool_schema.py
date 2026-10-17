@@ -100,6 +100,15 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     _f("restore_file", "Ripristina un file dal backup automatico.", {"path": _STRINGA}, ["path"]),
     _f("screenshot", "Apre una pagina in un browser e ne salva l'immagine.",
        {"url": _STRINGA, "path": _STRINGA}, ["url"]),
+    _f("view_image", "Guarda un'immagine dal disco con un modello di visione e ne riporta "
+       "il contenuto, testo trascritto compreso. read_file su un'immagine da' solo le dimensioni.",
+       {"path": _STRINGA, "question": _STRINGA,
+        "region": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4,
+                   "description": "[x0, y0, x1, y1] in pixel o in frazioni 0-1"}},
+       ["path"]),
+    _f("consult_role", "Legge la procedura di uno specialista (video, fumetti, circuiti): l'ordine dei "
+       "tool e cosa verificare. Da chiamare prima di un lavoro di quel dominio.",
+       {"role": _STRINGA}, ["role"]),
     _f("spec", "Registra cosa significa 'finito': la richiesta riformulata e i criteri verificabili.",
        {"understanding": _STRINGA,
         "criteria": {"type": "array", "items": _STRINGA}}, ["understanding", "criteria"]),

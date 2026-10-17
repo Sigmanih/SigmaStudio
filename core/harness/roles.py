@@ -109,7 +109,7 @@ ROLE_ARCHITECT = DevRole(
     max_tokens=6000,
     max_turns=12,
     tools=(
-        "list_dir", "glob", "read_file", "search_code", "pipeline",
+        "list_dir", "glob", "read_file", "search_code", "pipeline", "view_image", "consult_role",
         "queue_add", "git_status", "git_log", "web_search", "web_browse",
     ),
     focus_areas=(
@@ -149,7 +149,7 @@ ROLE_CODER = DevRole(
     max_turns=30,
     tools=(
         "read_file", "edit_file", "write_file", "search_code", "terminal",
-        "list_dir", "glob", "delete", "screenshot", "find_symbol",
+        "list_dir", "glob", "delete", "screenshot", "view_image", "consult_role", "find_symbol",
         "web_search", "web_browse",
     ),
     focus_areas=(
@@ -200,6 +200,7 @@ ROLE_REVIEWER = DevRole(
     max_turns=12,
     tools=(
         "read_file", "search_code", "write_file", "edit_file", "list_dir",
+        "view_image",
     ),
     focus_areas=(
         "code quality", "allineamento API backend-frontend", "sincronizzazione classi CSS",
@@ -298,7 +299,7 @@ ROLE_TESTER = DevRole(
     max_turns=20,
     tools=(
         "read_file", "write_file", "terminal", "search_code",
-        "list_dir", "run_tests", "screenshot",
+        "list_dir", "run_tests", "screenshot", "view_image",
     ),
     focus_areas=(
         "build verification", "test di integrazione API", "ispezione visiva screenshot",
@@ -378,6 +379,7 @@ ROLE_DESIGNER = DevRole(
     max_turns=24,
     tools=(
         "read_file", "edit_file", "write_file", "search_code", "list_dir", "glob", "screenshot",
+        "view_image",
     ),
     focus_areas=(
         "design system & token CSS", "micro-interazioni ed animazioni", "ergonomia e layout responsive",

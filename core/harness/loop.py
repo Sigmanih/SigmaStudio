@@ -86,6 +86,8 @@ OBSERVATION_BUDGETS = {
     "edit_file": 12_000,       # the diff, so the model can verify its own patch
     "append_file": 2_000,
     "screenshot": 1_500,
+    "view_image": 12_000,      # una pagina densa trascritta per intero
+    "consult_role": 12_000,    # la procedura intera di uno specialista
     "write_file": 4_000,
     "_default": 8_000,
 }
@@ -363,6 +365,15 @@ aver modificato l'interfaccia: il build verde dice che il codice compila, non
 che la pagina si veda.
 {"url": "http://127.0.0.1:8000", "path": "PERCORSO_PNG"}
 
+`view_image` — guarda un'immagine dal disco (pagina, foto, screenshot) e ti
+restituisce cosa contiene, testo trascritto compreso. `read_file` su un'immagine
+ti da' solo le dimensioni: per sapere cosa c'e' disegnato usa questo, e non
+descrivere mai un'immagine che non hai guardato. `question` e' facoltativa;
+`region` ritaglia [x0, y0, x1, y1] in pixel o in frazioni 0-1 per i dettagli.
+Per un fumetto: prima la pagina intera per contare le vignette, poi una
+`region` per vignetta per trascriverne i testi; il ritaglio legge molto meglio.
+{"path": "PERCORSO", "question": "DOMANDA_SULL_IMMAGINE"}
+
 `glob` — trova file per pattern.
 {"pattern": "PATTERN"}
 
@@ -383,8 +394,10 @@ che la pagina si veda.
             "description": "COSA VA FATTO, PER ESTESO",
             "depends_on": [], "files": ["PERCORSO"], "status": "in_progress"}]}
 I titoli devono descrivere QUESTO obiettivo, non un esempio generico.
-`role` e' uno fra architect, coder, reviewer, tester, devops: decide CHI
-esegue il task. `depends_on` elenca gli id dei task che devono essere finiti
+`role` decide CHI esegue il task: architect, coder, reviewer, tester, devops
+per il software, oppure uno dei ruoli specialistici elencati in «I ruoli
+dell'harness» (es. video_producer per un video, eda_engineer per un circuito).
+Un task che non e' codice va al suo specialista: ha i tool giusti, il Coder no. `depends_on` elenca gli id dei task che devono essere finiti
 prima, e chi non dipende da nessuno parte subito: mettere una dipendenza dove
 non serve trasforma un lavoro parallelo in una fila indiana.
 `description` e' l'istruzione vera: il titolo e' una riga, e chi esegue il
@@ -447,6 +460,7 @@ PROMPT_PLACEHOLDERS = frozenset({
     "PERCORSO", "PRIMA_RIGA", "QUANTE_RIGHE", "TESTO_ESATTO_DA_SOSTITUIRE",
     "TESTO_NUOVO", "CONTENUTO_COMPLETO", "COMANDO", "PATTERN",
     "TESTO_DA_CERCARE", "TITOLO", "COSA_HAI_FATTO", "NOME_DEL_TOOL",
+    "DOMANDA_SULL_IMMAGINE",
     "path", "content", "command", "query",
 })
 
@@ -2072,6 +2086,15 @@ def execute_admin_tool(
         }
 
 
+def _scrittura_di_modulo(nome: str) -> bool:
+    """Se il tool e' una scrittura dichiarata da un modulo (video_char_pick, eda_connect...)."""
+    try:
+        from core.harness import tool_providers
+        return str(nome or "").strip().lower() in tool_providers.write_tools()
+    except Exception:
+        return False
+
+
 def _execute_admin_tool_impl(
     tool_name: str,
     params: Dict[str, Any],
@@ -2772,6 +2795,17 @@ def _execute_admin_tool_impl(
     if esito_eda is not None:
         return esito_eda
 
+    # La vista ha un modello e un server suoi: anche lei solo delegata.
+    from core.harness import vista
+    esito_vista = vista.esegui(tool_name, params, radice=active_cwd or workspace_root)
+    if esito_vista is not None:
+        return esito_vista
+
+    from core.harness import specialisti
+    esito_specialista = specialisti.esegui(tool_name, params)
+    if esito_specialista is not None:
+        return esito_specialista
+
     # I tool dei moduli registrati. Il kernel non ne conosce i nomi: un modulo
     # si aggancia da solo con `tool_providers.register()` e li' deposita schemi,
     # permessi e ruolo. Senza provider, un nome di tool che non esiste cade nel
@@ -2803,6 +2837,7 @@ def _stream_agent_turn_impl(
     policy_label: str = "",
     profile: Optional[str] = None,
     provider: Optional[str] = None,
+    role_id: Optional[str] = None,
     review_writes: bool = False,
     isolate_worktree: bool = False,
     review_run: bool = False,
@@ -2911,6 +2946,39 @@ def _stream_agent_turn_impl(
     except Exception as exc:
         log.debug("[AdminAgent] Scheda progetto non caricata: %s", exc)
 
+    # Le firme dei tool dei moduli, solo per il percorso recintato: un provider
+    # col tool-calling nativo riceve gia' gli schemi interi.
+    if not supports_native_tools(provider):
+        try:
+            from core.harness import tool_providers
+            firme = tool_providers.firme_per_prompt()
+            if firme:
+                base_system_prompt = f"{base_system_prompt}\n\n{firme}"
+            from core.harness import specialisti
+            elenco = specialisti.sezione_prompt()
+            if elenco:
+                base_system_prompt = f"{base_system_prompt}\n\n{elenco}"
+        except Exception as exc:
+            log.debug("[AdminAgent] firme dei tool dei moduli non caricate: %s", exc)
+
+    # Il ruolo scelto dall'utente: la sua procedura sta nel prompt di sistema fin
+    # dal primo turno. Consultata a lavoro iniziato (`consult_role`) arrivava
+    # quando l'agente aveva gia' preso la sua strada, e restava un consiglio.
+    if role_id:
+        try:
+            from core.harness import specialisti
+            ruolo_attivo = specialisti.consult_role(role_id)
+            if ruolo_attivo.get("success"):
+                base_system_prompt = (
+                    f"{base_system_prompt}\n\n## RUOLO ATTIVO: {ruolo_attivo['name']}\n"
+                    "L'utente ti ha assegnato questo ruolo: la sua procedura vale per tutto il run e "
+                    "prevale sulle regole generali da sviluppatore.\n\n" + ruolo_attivo["procedure"])
+                policy_label = policy_label or str(role_id)
+            else:
+                log.warning("[AdminAgent] ruolo richiesto sconosciuto: %s", role_id)
+        except Exception as exc:
+            log.debug("[AdminAgent] ruolo attivo non caricato: %s", exc)
+
     # Le convenzioni del workspace, se le dichiara. Vanno in fondo al system
     # prompt perche' devono poter contraddire le regole generali che le
     # precedono, e restano immutabili per tutto il run: il system prompt e' la
@@ -2931,6 +2999,14 @@ def _stream_agent_turn_impl(
         if m.get("role") == "user":
             goal_text = str(m.get("content", ""))[:1500]
             break
+    # Con piu' messaggi l'ultimo e' spesso una correzione o un «riprendi»: da solo
+    # non e' l'obiettivo. Nel collaudo Mx0, dopo «riprendi da dove eri rimasto»,
+    # la trasposizione del capitolo era sparita dallo stato del lavoro e l'agente
+    # ha finito per cercare il progetto in /workspace.
+    richieste = [str(m.get("content", "")) for m in messages if m.get("role") == "user" and m.get("content")]
+    if len(richieste) > 1 and richieste[0].strip() != goal_text.strip():
+        goal_text = (f"{goal_text}\n\n[Obiettivo originale della conversazione: "
+                     f"{richieste[0][:1200]}]")[:2800]
 
     # La finestra su cui budgetare non e' quella richiesta: e' quella che una
     # singola generazione ha davvero. Con `-np 4` il server dichiara 32768 e ne
@@ -4012,8 +4088,13 @@ def _stream_agent_turn_impl(
             # il solo modo che l'agente ha di sapere se ha finito.
             call_signature = (t_name, json.dumps(t_params, sort_keys=True, default=str)[:600])
             ripetibile = t_name in ("terminal", "shell", "exec", "command")
-            if not ripetibile and (rilevatore.gia_fallita(t_name, t_params)
-                                   or call_signature in failed_call_signatures):
+            # Chi chiede lo stato di un lavoro lungo (un job, un render) riceve
+            # risposte diverse col passare del tempo, senza che cambi un file:
+            # le guardie anti-ciclo lo bloccavano mentre aspettava una lettura
+            # di un'ora (collaudo Mx0), consigliandogli di riscrivere un file.
+            interroga_stato = t_name.endswith("_status") or t_name.endswith("_next")
+            if not ripetibile and not interroga_stato and (rilevatore.gia_fallita(t_name, t_params)
+                                                          or call_signature in failed_call_signatures):
                 repeat_note = (
                     f"Tool '{t_name}' NON eseguito: hai gia effettuato questa "
                     "chiamata e ha gia fallito. Ripeterla dara lo stesso "
@@ -4033,7 +4114,7 @@ def _stream_agent_turn_impl(
             # fallisce, read_file riesce, edit_file fallisce uguale, e ogni
             # giro sembra un tentativo nuovo. Il discriminante e' che in mezzo
             # non e' cambiato nessun file.
-            if not ripetibile:
+            if not ripetibile and not interroga_stato:
                 ciclo = rilevatore.ciclo_in_corso(t_name, t_params)
                 if ciclo:
                     nota_ciclo = (
@@ -4276,6 +4357,13 @@ def _stream_agent_turn_impl(
                 # al terzo.
                 failed_call_signatures.clear()
                 rilevatore.workspace_cambiato()
+            elif result.get("success") and _scrittura_di_modulo(t_name):
+                # Un tool di scrittura di un modulo cambia lo stato senza toccare
+                # file: nel collaudo Mx0 `video_char_pick` aveva appena dato il
+                # ritratto che mancava, e la guardia rifiutava di ritentare
+                # `video_char_to_production`, fallito proprio per quel motivo.
+                failed_call_signatures.clear()
+                rilevatore.workspace_cambiato()
             if t_name == "read_file" and result.get("success") and result.get("path"):
                 p_letto = str(result["path"])
                 reads_this_turn.append(p_letto)
@@ -4391,6 +4479,11 @@ def _stream_agent_turn_impl(
                 if not gate["allowed"] and rifiutate:
                     gate = dict(gate)
                     gate["reason"] = gate["reason"] + " " + " ".join(rifiutate[:2])
+                if gate["allowed"]:
+                    from core.harness.ledger import chiusura_vuota
+                    vuota = chiusura_vuota(result.get("summary") or result.get("message") or "")
+                    if vuota:
+                        gate = {"allowed": False, "reason": f"Chiusura senza risultato: {vuota}"}
                 if not gate["allowed"]:
                     # La firma va registrata qui e non piu' su: il cancello
                     # riscrive l'esito *dopo* il punto in cui le chiamate
@@ -4468,6 +4561,12 @@ def _stream_agent_turn_impl(
                         f"'{result.get('path')}' non e un file di testo "
                         f"({result.get('size_label', '')}). {result.get('message', '')}"
                     )
+                    # Senza questo l'agente si fermava qui e descriveva
+                    # l'immagine a memoria: e' cosi' che nasceva una trama inventata.
+                    if result.get("is_image"):
+                        obs_str += (
+                            " Per sapere cosa contiene usa `view_image` con lo stesso path."
+                        )
                 else:
                     header = f"Contenuto di '{result.get('path')}'"
                     if total is not None:
@@ -4517,6 +4616,12 @@ def _stream_agent_turn_impl(
                     if not result.get("success")
                     else f"{obs_str}{describe_screenshot(result)}"
                 )
+            elif t_name == "view_image":
+                from core.harness.vista import descrivi as descrivi_vista
+                obs_str = descrivi_vista(result)
+            elif t_name == "consult_role":
+                from core.harness.specialisti import descrivi as descrivi_specialista
+                obs_str = descrivi_specialista(result)
             elif t_name == "web_search":
                 obs_str += f"Tool 'web_search': {result.get('summary', '')}\n{result.get('formatted', '')}\n"
             elif t_name == "web_browse":

@@ -32,6 +32,10 @@ const MODULE_META = {
   messaging_hub:   { id: 'sigma_messaging_hub',  icon: '💬', name: 'Messaging & Notification Hub',   color: '#bc8cff', desc: 'Invio notifiche push broadcast su Telegram, Discord e Slack via MCP.' },
   domotica:        { id: 'sigma_domotica',       icon: '🏠', name: 'Domotica & Home Assistant IoT',  color: '#10b981', desc: 'Controllo completo della smart home: luci, clima, sensori e scene via MCP.' },
   home_assistant:  { id: 'sigma_domotica',       icon: '🏠', name: 'Domotica & Home Assistant IoT',  color: '#10b981', desc: 'Controllo completo della smart home: luci, clima, sensori e scene via MCP.' },
+  sigma_network:   { id: 'sigma_network',        icon: '🌐', name: 'Sigma Network P2P Mesh',         color: '#5865f2', desc: 'Rete peer-to-peer per inferenza distribuita, scoperta nodi UDP e ledger AiloCoin.' },
+  kicad_lab:       { id: 'sigma_kicad_lab',      icon: '📐', name: 'PCB Lab — KiCad 10 Native',       color: '#0d6efd', desc: 'Laboratorio PCB con KiCad nativo, piazzamento simulato, routing IPC-2221 e DRC/ERC.' },
+  pcb_lab:         { id: 'sigma_kicad_lab',      icon: '📐', name: 'PCB Lab — KiCad 10 Native',       color: '#0d6efd', desc: 'Laboratorio PCB con KiCad nativo, piazzamento simulato, routing IPC-2221 e DRC/ERC.' },
+  eda_lab:         { id: 'sigma_eda_lab',        icon: '⚡', name: 'EDA Lab & EasyEDA Bridge',        color: '#00d2ff', desc: 'Piazzamento guidato, dimensionamento piste IPC-2221 e ponte verso EasyEDA Pro.' },
 };
 
 export default function ModuleNotInstalled({ tabType, openTab }) {

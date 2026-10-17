@@ -4,7 +4,8 @@ import {
   PieChart, Calendar, Globe, Mail, Send, Radio, DownloadCloud, 
   Wrench, ChevronLeft, ChevronRight, Play, Pause, Search, 
   ExternalLink, Sparkles, CheckCircle2, ArrowRight, BookOpen, 
-  Layers, Cpu, ShieldCheck, Download, Code, Info, X
+  Layers, Cpu, ShieldCheck, Download, Code, Info, X,
+  Share2, CircuitBoard, Award
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -672,6 +673,138 @@ export const SKILLS_CATALOG = [
     ],
     tags: ['MCP Standard', 'JSON-RPC', 'Security Governance', 'Safety Whitelist', 'Tool Execution'],
     samplePrompt: 'Esegui il test diagnostico del server MCP Filesystem verificando i permessi di lettura sulla cartella data/.'
+  },
+  {
+    id: 'sigma_network',
+    name: 'Sigma Network P2P Mesh',
+    category: 'Infrastruttura & Rete',
+    categoryKey: 'infra_net',
+    icon: Share2,
+    color: '#5865f2',
+    tabType: 'sigma_network',
+    version: 'v0.1.0',
+    size: '1 MB',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_network',
+    image: '/images/skills_engines_banner.jpg',
+    badge: 'P2P MESH & INFERENZA DISTRIBUITA',
+    objective: 'Rete peer-to-peer per inferenza distribuita: scoperta nodi UDP, fiducia esplicita dei peer, contabilità AiloCoin e streaming SSE delle risposte.',
+    components: [
+      {
+        icon: '🌐',
+        title: 'Rete Mesh Peer-to-Peer',
+        desc: 'Discovery automatico su broadcast UDP e handshake sicuro fra istanze Sigma Studio.'
+      },
+      {
+        icon: '⚡',
+        title: 'Inferenza Distribuita Swarm',
+        desc: 'Offload di elaborazioni su nodi fidati con streaming SSE dei token in tempo reale.'
+      },
+      {
+        icon: '🪙',
+        title: 'Wallet & Crediti AiloCoin',
+        desc: 'Contabilità trasparente di token generati, consumati e saldo crediti di calcolo.'
+      },
+      {
+        icon: '🔒',
+        title: 'Fiducia e Autenticazione',
+        desc: 'Controllo esplicito della whitelist dei nodi autorizzati a inoltrare richieste.'
+      }
+    ],
+    usageGuide: [
+      { step: '1', title: 'Avvia il Nodo P2P', text: 'Accedi a Sigma Network per avviare il demone di discovery e visualizzare la topologia di rete.' },
+      { step: '2', title: 'Verifica i Peer Connessi', text: 'Autorizza i nodi fidati sulla LAN o rete mesh per abilitare la condivisione di inferenza.' },
+      { step: '3', title: 'Condividi il Calcolo', text: 'Inoltra prompt di inferenza o metti a disposizione la tua GPU per accumulare crediti AiloCoin.' }
+    ],
+    tags: ['P2P Mesh', 'Inferenza Distribuita', 'Discovery UDP', 'AiloCoin', 'Swarm Compute'],
+    samplePrompt: 'Ispeziona i peer attivi nella rete Sigma Network e calcola la latenza media del cluster.'
+  },
+  {
+    id: 'sigma_kicad_lab',
+    name: 'PCB Lab — KiCad 10 Native',
+    category: 'Infrastruttura & Rete',
+    categoryKey: 'infra_net',
+    icon: CircuitBoard,
+    color: '#0d6efd',
+    tabType: 'kicad_lab',
+    version: 'v1.0.0',
+    size: '1 MB',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_kicad_lab',
+    image: '/images/hardware_cluster_lab.jpg',
+    badge: 'KICAD 10 & AGENTI HARDWARE',
+    objective: 'Progettazione circuitale e PCB con KiCad 10 nativo: canvas 2D/3D interattivo, piazzamento a ricottura simulata, routing IPC-2221 e DRC con agenti.',
+    components: [
+      {
+        icon: '📐',
+        title: 'Canvas 2D/3D Interattivo',
+        desc: 'Visualizzazione completa di tracce, layer di rame, serigrafia e rendering 3D della scheda.'
+      },
+      {
+        icon: '🧩',
+        title: 'Piazzamento a Ricottura Simulata',
+        desc: 'Disposizione geometrica ottimale dei componenti per minimizzare lunghezze e incroci.'
+      },
+      {
+        icon: '⚡',
+        title: 'Routing Piste IPC-2221',
+        desc: 'Dimensionamento termico della larghezza delle piste secondo standard industriali IPC.'
+      },
+      {
+        icon: '🛡️',
+        title: 'DRC/ERC & Pacchetti Gerber',
+        desc: 'Controllo formale regole elettriche ed esportazione file di fabbricazione in un click.'
+      }
+    ],
+    usageGuide: [
+      { step: '1', title: 'Apri il Progetto KiCad', text: 'Carica la cartella di progetto con file .kicad_pro e .kicad_pcb nel canvas.' },
+      { step: '2', title: 'Affida il Task al Team', text: 'Avvia il team di agenti hardware per posizionare componenti o tracciare netlist.' },
+      { step: '3', title: 'Verifica DRC ed Esporta', text: 'Esegui il controllo regole e genera i Gerber fotoplotter per la produzione.' }
+    ],
+    tags: ['KiCad 10', 'PCB Design', 'Hardware Agents', 'IPC-2221', 'Gerber', 'DRC/ERC'],
+    samplePrompt: 'Esegui il controllo DRC sul PCB attivo e genera il report delle violazioni di clearance.'
+  },
+  {
+    id: 'sigma_benchmark_lab',
+    name: 'Benchmark Lab & Model Evaluation',
+    category: 'Studio & AI',
+    categoryKey: 'studio_ai',
+    icon: Award,
+    color: '#00d2ff',
+    tabType: 'benchmark_lab',
+    version: 'v1.0.0',
+    size: '2 MB',
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_benchmark_lab',
+    image: '/images/training_lab_hero.jpg',
+    badge: '11 BENCHMARK UFFICIALI & MCNEMAR',
+    objective: 'Suite scientifica di 11 benchmark standard (MMLU, GSM8K, HumanEval, ARC, MATH...) con inferenza a temperatura zero e test statistico McNemar.',
+    components: [
+      {
+        icon: '🏆',
+        title: '11 Benchmark Accademici',
+        desc: 'Valutazione rigorosa su ragionamento, logica, matematica, coding e cultura generale.'
+      },
+      {
+        icon: '🔬',
+        title: 'Audit Scientifico Riproducibile',
+        desc: 'Inferenza standardizzata a temperatura 0 per risultati deterministici e certificati.'
+      },
+      {
+        icon: '📊',
+        title: 'Test Statistico McNemar',
+        desc: 'Confronto matriciale p-value tra checkpoint prima e dopo il fine-tuning.'
+      },
+      {
+        icon: '📈',
+        title: 'Grafici e Report Esportabili',
+        desc: 'Visualizzazione radar e istogrammi comparativi esportabili in PDF/JSON.'
+      }
+    ],
+    usageGuide: [
+      { step: '1', title: 'Seleziona Modello & Suite', text: 'Scegli il modello caricato in SigmaEngine e i benchmark da somministrare.' },
+      { step: '2', title: 'Avvia la Valutazione', text: 'Segui l\'avanzamento delle domande in tempo reale con calcolo live dell\'accuratezza.' },
+      { step: '3', title: 'Confronta i Risultati', text: 'Analizza la matrice statistica per verificare miglioramenti oggettivi dei pesi.' }
+    ],
+    tags: ['Benchmarks', 'MMLU', 'GSM8K', 'HumanEval', 'McNemar', 'Model Evaluation'],
+    samplePrompt: 'Avvia il benchmark GSM8K sul modello attivo e genera il report di accuratezza nel ragionamento matematico.'
   }
 ];
 
@@ -679,11 +812,11 @@ export const SKILLS_CATALOG = [
 // CATEGORIE DI FILTRO
 // ==============================================================================
 const CATEGORIES = [
-  { id: 'all', label: '✨ Tutte le Skills', count: 15 },
+  { id: 'all', label: '✨ Tutte le Skills', count: 18 },
   { id: 'multimodal', label: '🎨 Multimodale & Grafica', count: 2 },
-  { id: 'studio_ai', label: '🤖 Studio & AI', count: 4 },
+  { id: 'studio_ai', label: '🤖 Studio & AI', count: 5 },
   { id: 'audio_voice', label: '🎙️ Audio & Voce', count: 2 },
-  { id: 'infra_net', label: '⚡ Infrastruttura & Rete', count: 3 },
+  { id: 'infra_net', label: '⚡ Infrastruttura & Rete', count: 5 },
   { id: 'comm_social', label: '💬 Comunicazione & Social', count: 2 },
   { id: 'protocol_kernel', label: '⚙️ Protocollo & Kernel', count: 2 },
 ];

@@ -55,10 +55,55 @@ export function useChatDevMode() {
     } catch (e) {}
   }, []);
 
+  // I ruoli dell'harness (sviluppo e specialisti dei moduli). Prima la Dev Mode
+  // ignorava il selettore del ruolo: l'agente era sempre quello generico da
+  // sviluppatore, e la procedura di uno specialista non gli arrivava mai.
+  const [devRoles, setDevRoles] = useState([]);
+  const [devRole, setDevRoleState] = useState(() => {
+    try {
+      return localStorage.getItem('sigma_chat_dev_role') || 'auto';
+    } catch (e) {
+      return 'auto';
+    }
+  });
+
+  useEffect(() => {
+    if (!devModeAvailable) return;
+    let annullato = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/developer/roles');
+        if (!res.ok) return;
+        const data = await res.json();
+        const elenco = Array.isArray(data.roles) ? data.roles : Object.values(data.roles || {});
+        if (!annullato) {
+          setDevRoles(elenco
+            .filter(r => r && r.id)
+            .map(r => ({ id: r.id, name: r.name || r.id, icon: r.icon || '🤖',
+                         focus: (r.focus_areas || [])[0] || '' })));
+        }
+      } catch (e) {
+        // Elenco ruoli non disponibile: resta "auto".
+      }
+    })();
+    return () => { annullato = true; };
+  }, [devModeAvailable]);
+
+  const setDevRole = useCallback((id) => {
+    const valore = id || 'auto';
+    setDevRoleState(valore);
+    try {
+      localStorage.setItem('sigma_chat_dev_role', valore);
+    } catch (e) {}
+  }, []);
+
   return {
     devModeAvailable,
     devModeEnabled: devModeAvailable && devModeEnabled,
     setDevModeEnabled,
+    devRoles,
+    devRole,
+    setDevRole,
     workspaceRoot,
     refreshAvailability: checkAvailability
   };

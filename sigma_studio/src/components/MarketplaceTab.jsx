@@ -4,7 +4,8 @@ import {
   ExternalLink, Terminal, GitBranch, Cpu, Sparkles, Layers, 
   Palette, FlaskConical, Brain, Zap, Home, Wrench, ArrowRight,
   PlusCircle, AlertCircle, Play, Check, X, Search, Radio, Trash2, Calendar, PieChart, Mic,
-  Globe, Mail, Send, Award, Info, Boxes, Server, Code
+  Globe, Mail, Send, Award, Info, Boxes, Server, Code,
+  Share2, CircuitBoard
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
@@ -469,8 +470,136 @@ const OPTIONAL_MODULES = [
     tags: ['Telegram', 'Slack', 'Discord', 'Webhooks', 'Messaging MCP'],
     size: '1 MB',
     author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_network',
+    name: 'Sigma Network P2P Mesh',
+    category: 'Infrastruttura & Rete',
+    domain: 'P2P Mesh & Inferenza Distribuita',
+    icon: Share2,
+    color: '#5865f2',
+    tabType: 'sigma_network',
+    version: 'v0.1.0',
+    description: 'Rete peer-to-peer per inferenza distribuita: scoperta nodi UDP, fiducia esplicita dei peer, contabilità AiloCoin e streaming SSE delle risposte.',
+    highlights: [
+      'Rete mesh peer-to-peer decentralizzata con discovery UDP e handshake crittografico',
+      'Inferenza distribuita ed offloading computazionale per swarm multi-nodo',
+      'Wallet integrato con registro e contabilità crediti AiloCoin'
+    ],
+    detailedDescription: 'Infrastruttura decentralizzata per l\'aggregazione e condivisione di potenza di calcolo neurale fra istanze Sigma Studio. Consente la scoperta automatica di peer su rete locale via broadcast UDP, la negoziazione sicura di task di inferenza distribuita e la rendicontazione dei crediti AiloCoin.',
+    mcpTools: [
+      { name: 'network_mesh_status', desc: 'Rileva lo stato del nodo locale, peer connessi e latenze di rete' },
+      { name: 'network_distribute_prompt', desc: 'Inoltra prompt di inferenza ai peer autorizzati dello swarm' },
+      { name: 'network_wallet_balance', desc: 'Interroga il saldo crediti AiloCoin e il registro transazioni' }
+    ],
+    techStack: ['Python AsyncIO', 'UDP Socket Discovery', 'SSE Streaming', 'AiloCoin Ledger', 'P2P Protocol'],
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_network',
+    branch: 'main',
+    tags: ['P2P Mesh', 'Inferenza Distribuita', 'Discovery UDP', 'AiloCoin', 'Swarm Compute'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_kicad_lab',
+    name: 'PCB Lab — KiCad 10 Native',
+    category: 'Infrastruttura & Rete',
+    domain: 'EDA & Progettazione Circuitale',
+    icon: CircuitBoard,
+    color: '#0d6efd',
+    tabType: 'kicad_lab',
+    version: 'v1.0.0',
+    description: 'Laboratorio PCB con KiCad 10 nativo: canvas 2D/3D interattivo, piazzamento componenti a ricottura simulata, routing IPC-2221 e verifica DRC/ERC con agenti.',
+    highlights: [
+      'Integrazione bidirezionale con KiCad 10 e visualizzatore interattivo 2D/3D',
+      'Piazzamento automatico a ricottura simulata e dimensionamento piste IPC-2221',
+      'Verifica automatizzata DRC/ERC ed esportazione pacchetti Gerber di produzione'
+    ],
+    detailedDescription: 'Laboratorio avanzato di progettazione hardware e circuiti stampati. Consente l\'ispezione di schemi e layout KiCad, posizionamento automatizzato dei footprint secondo vincoli termici e spaziali, calcolo larghezza piste conforme agli standard industriali IPC-2221 ed esportazione gerber pronta per la produzione.',
+    mcpTools: [
+      { name: 'kicad_inspect_board', desc: 'Ispezione e telemetria dei pad, footprint e netlist del PCB attivo' },
+      { name: 'kicad_run_drc', desc: 'Esecuzione controllo regole di progettazione elettrica e spaziale DRC/ERC' },
+      { name: 'kicad_export_gerber', desc: 'Generazione file Gerber fotoplotter e forature NC drill per fabbricazione' }
+    ],
+    techStack: ['KiCad 10 Native', 'Python PCB API', 'IPC-2221 Standards', 'Canvas 2D/3D', 'DRC Engine'],
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_kicad_lab',
+    branch: 'main',
+    tags: ['KiCad', 'PCB Design', 'Hardware Agents', 'IPC-2221', 'Gerber', 'DRC/ERC'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_model_hub',
+    name: 'Model Hub & HF Downloader',
+    category: 'Studio, Ricerca & AI',
+    domain: 'Hugging Face & Forgia GGUF',
+    icon: Boxes,
+    color: '#ffb86c',
+    tabType: 'model_hub',
+    version: 'v0.8.2',
+    description: 'Esplora, scarica e converti modelli open-source da Hugging Face con supporto streaming resume, quantizzazione GGUF e deploy istantaneo in SigmaEngine.',
+    highlights: [
+      'Catalogo Hugging Face integrato con filtri su modelli GGUF, MoE e Coder',
+      'Download resiliente in background con resume automatico dei frammenti',
+      'Quantizzazione dinamica e deploy istantaneo in memoria VRAM/RAM'
+    ],
+    detailedDescription: 'Gestore centralizzato dei modelli di fondazione per Sigma Studio. Interfaccia diretta con l\'hub di Hugging Face per reperire pesi e checkpoint, gestire la cache locale, quantizzare modelli nei formati ottimali per la VRAM disponibile ed effettuare il bootstrap immediato in SigmaEngine.',
+    mcpTools: [
+      { name: 'model_search_hf', desc: 'Ricerca modelli linguistici e vision su Hugging Face con filtri architettura' },
+      { name: 'model_download_stream', desc: 'Avvia e monitora download di checkpoint con ripresa automatica' },
+      { name: 'model_deploy_engine', desc: 'Carica il modello quantizzato nell\'engine locale pronto per la chat' }
+    ],
+    techStack: ['Hugging Face Hub API', 'GGUF Parser', 'Streaming Downloader', 'SigmaEngine Bridge'],
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_model_hub',
+    branch: 'main',
+    tags: ['Hugging Face', 'GGUF', 'Model Hub', 'Downloader', 'Quantization', 'SigmaEngine'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_eda_lab',
+    name: 'EDA Lab & EasyEDA Bridge',
+    category: 'Infrastruttura & Rete',
+    domain: 'EasyEDA Pro & IPC-2221 Placement',
+    icon: Cpu,
+    color: '#00d2ff',
+    tabType: 'kicad_lab',
+    version: 'v1.0.0',
+    description: 'Piazzamento ottimizzato dei componenti, dimensionamento piste secondo IPC-2221 e valutazione scheda sopra il bridge MCP di EasyEDA Pro.',
+    highlights: [
+      'Bridge MCP unificato per l\'ecosistema di progettazione EasyEDA Pro',
+      'Algoritmi di piazzamento a ricottura simulata con rispetto clearance',
+      'Dimensionamento termico delle correnti piste secondo IPC-2221'
+    ],
+    detailedDescription: 'Piattaforma di integrazione con EasyEDA Pro per la progettazione assistita da agenti hardware AI. Automatizza la verifica della netlist, la disposizione geometrica ottimizzata dei componenti passivi e attivi e il calcolo delle sezioni di rame.',
+    mcpTools: [
+      { name: 'eda_evaluate_board', desc: 'Valuta la scheda circuitale rispetto ai vincoli IPC e clearance' },
+      { name: 'eda_optimize_placement', desc: 'Esegue ottimizzazione simulated annealing della disposizione' }
+    ],
+    techStack: ['EasyEDA Pro Bridge', 'IPC-2221 Engine', 'Simulated Annealing', 'FastMCP'],
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_eda_lab',
+    branch: 'main',
+    tags: ['EasyEDA Pro', 'PCB Placement', 'IPC-2221', 'Simulated Annealing', 'Hardware MCP'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
   }
 ];
+
+const LUCIDE_ICON_MAP = {
+  Palette, FlaskConical, Brain, Zap, Home, Wrench, Terminal, Radio,
+  Calendar, PieChart, Mic, Globe, Mail, Send, Award, Info, Boxes,
+  Server, Code, Share2, CircuitBoard, Cpu, Layers, Sparkles, Package, Download
+};
+
+export function resolveModuleIcon(icon) {
+  if (!icon) return Package;
+  if (typeof icon !== 'string') return icon;
+  return LUCIDE_ICON_MAP[icon] || LUCIDE_ICON_MAP[icon.replace(/Icon$/, '')] || Package;
+}
+
+const MODULE_PRESETS = {};
+OPTIONAL_MODULES.forEach(m => {
+  MODULE_PRESETS[m.id] = m;
+});
 
 // ==============================================================================
 // Remote Catalog Modules (From Separate Git Repository)
@@ -1029,6 +1158,29 @@ export default function MarketplaceTab({ openTab }) {
   const [uninstallingId, setUninstallingId] = useState(null);
   const [isRebuilding, setIsRebuilding] = useState(false);
   const [rebuildStatus, setRebuildStatus] = useState('');
+  const [remoteCatalog, setRemoteCatalog] = useState(null);
+  const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false);
+  const [catalogSyncInfo, setCatalogSyncInfo] = useState({ source: 'github', count: 0 });
+
+  // Se il catalogo remoto da GitHub è disponibile, visualizza ESCLUSIVAMENTE i moduli presenti su GitHub!
+  const activeOptionalModules = useMemo(() => {
+    if (remoteCatalog && Array.isArray(remoteCatalog) && remoteCatalog.length > 0) {
+      return remoteCatalog.map(rem => {
+        const preset = MODULE_PRESETS[rem.id] || {};
+        return {
+          ...preset,
+          ...rem,
+          icon: resolveModuleIcon(rem.icon || preset.icon),
+          highlights: (rem.highlights && rem.highlights.length > 0) ? rem.highlights : (preset.highlights || []),
+          mcpTools: (rem.mcpTools && rem.mcpTools.length > 0) ? rem.mcpTools : (preset.mcpTools || []),
+          techStack: (rem.techStack && rem.techStack.length > 0) ? rem.techStack : (preset.techStack || rem.tags || []),
+          size: rem.size || preset.size || '~1 MB',
+          author: rem.author || preset.author || 'Sigma Core Team'
+        };
+      });
+    }
+    return OPTIONAL_MODULES;
+  }, [remoteCatalog]);
 
   // Optional modules installed state — starts from false, only true if confirmed by backend
   const [optionalInstalledState, setOptionalInstalledState] = useState(() => {
@@ -1050,19 +1202,23 @@ export default function MarketplaceTab({ openTab }) {
 
   const [installLogs, setInstallLogs] = useState([
     `[${new Date().toLocaleTimeString()}] 📦 Sigma Kernel Marketplace inizializzato.`,
-    `[${new Date().toLocaleTimeString()}] 🔗 Catalogo moduli collegato al repository 'Sigmanih/SigmaStudio-Moduli'.`
+    `[${new Date().toLocaleTimeString()}] 🔗 Catalogo moduli collegato al repository remoto 'Sigmanih/SigmaStudio-Moduli'.`
   ]);
 
-  // Sync optional modules installed state from backend (single source of truth)
+  // Sync optional modules installed state and dynamic GitHub catalog
   const fetchInstalledModules = async () => {
     try {
       const res = await fetch('/api/marketplace/modules');
       if (res.ok) {
         const data = await res.json();
+        if (Array.isArray(data.catalog) && data.catalog.length > 0) {
+          setRemoteCatalog(data.catalog);
+          setCatalogSyncInfo({ source: data.source || 'github', count: data.total_remote || data.catalog.length });
+        }
         if (data.modules_state) {
           const nextState = {};
-          OPTIONAL_MODULES.forEach(m => {
-            nextState[m.id] = data.modules_state[m.id] === true;
+          Object.keys(data.modules_state).forEach(k => {
+            nextState[k] = data.modules_state[k] === true;
           });
           setOptionalInstalledState(nextState);
           try {
@@ -1073,6 +1229,41 @@ export default function MarketplaceTab({ openTab }) {
       }
     } catch (e) {
       console.warn('Fallback local optional modules state:', e);
+    }
+  };
+
+  const handleRefreshGitHubCatalog = async () => {
+    setIsRefreshingCatalog(true);
+    setShowLogs(true);
+    setInstallLogs(prev => [
+      ...prev,
+      `[${new Date().toLocaleTimeString()}] 🔄 Interrogazione repository remoto 'Sigmanih/SigmaStudio-Moduli'...`
+    ]);
+    try {
+      const res = await fetch('/api/marketplace/refresh', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.catalog) && data.catalog.length > 0) {
+          setRemoteCatalog(data.catalog);
+          setCatalogSyncInfo({ source: 'github', count: data.total_remote || data.catalog.length });
+          setInstallLogs(prev => [
+            ...prev,
+            `[${new Date().toLocaleTimeString()}] ✅ Catalogo GitHub sincronizzato con successo: ${data.total_remote || data.catalog.length} moduli remoti verificati.`
+          ]);
+        }
+      } else {
+        setInstallLogs(prev => [
+          ...prev,
+          `[${new Date().toLocaleTimeString()}] ⚠️ Risposta server: ${res.status}. Mantenuto catalogo memorizzato.`
+        ]);
+      }
+    } catch (err) {
+      setInstallLogs(prev => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] ❌ Errore durante il refresh del catalogo GitHub: ${err.message}`
+      ]);
+    } finally {
+      setIsRefreshingCatalog(false);
     }
   };
 
@@ -1233,39 +1424,38 @@ export default function MarketplaceTab({ openTab }) {
 
   // Data sets for tabs
   const kernelInstalled = useMemo(() => KERNEL_MODULES.filter(matchesSearch).filter(matchesCategory), [search, selectedCategory]);
+  
   const optionalInstalled = useMemo(() => 
-    OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] === true && matchesSearch(m) && matchesCategory(m)),
-    [optionalInstalledState, search, selectedCategory]
+    activeOptionalModules.filter(m => optionalInstalledState[m.id] === true && matchesSearch(m) && matchesCategory(m)),
+    [activeOptionalModules, optionalInstalledState, search, selectedCategory]
   );
   
   const optionalAvailable = useMemo(() => 
-    OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] !== true && matchesSearch(m) && matchesCategory(m)),
-    [optionalInstalledState, search, selectedCategory]
+    activeOptionalModules.filter(m => optionalInstalledState[m.id] !== true && matchesSearch(m) && matchesCategory(m)),
+    [activeOptionalModules, optionalInstalledState, search, selectedCategory]
   );
   
-  const remoteAvailable = useMemo(() => 
-    REMOTE_CATALOG_MODULES.filter(m => optionalInstalledState[m.id] !== true && matchesSearch(m) && matchesCategory(m)),
-    [optionalInstalledState, search, selectedCategory]
-  );
-
-  const availableToInstall = useMemo(() => [...optionalAvailable, ...remoteAvailable], [optionalAvailable, remoteAvailable]);
+  // Se il catalogo remoto dinamico è attivo, mostra solo ciò che esiste su GitHub
+  const availableToInstall = useMemo(() => {
+    return optionalAvailable;
+  }, [optionalAvailable]);
 
   // Global counts (unfiltered by search/category for stats display)
-  const totalInstalledCount = KERNEL_MODULES.length + OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] === true).length;
-  const totalAvailableCount = OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] !== true).length + REMOTE_CATALOG_MODULES.filter(m => optionalInstalledState[m.id] !== true).length;
+  const totalInstalledCount = KERNEL_MODULES.length + activeOptionalModules.filter(m => optionalInstalledState[m.id] === true).length;
+  const totalAvailableCount = activeOptionalModules.filter(m => optionalInstalledState[m.id] !== true).length;
 
   // Categories list for current tab sorted according to canonical CATEGORY_ORDER
   const availableCategories = useMemo(() => {
     const sourceList = activeSubTab === 'installed'
-      ? [...KERNEL_MODULES, ...OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] === true)]
-      : [...OPTIONAL_MODULES.filter(m => optionalInstalledState[m.id] !== true), ...REMOTE_CATALOG_MODULES.filter(m => optionalInstalledState[m.id] !== true)];
+      ? [...KERNEL_MODULES, ...activeOptionalModules.filter(m => optionalInstalledState[m.id] === true)]
+      : activeOptionalModules.filter(m => optionalInstalledState[m.id] !== true);
     
     const set = new Set();
     sourceList.forEach(m => {
       if (m.category) set.add(m.category);
     });
     return CATEGORY_ORDER.filter(cat => set.has(cat));
-  }, [activeSubTab, optionalInstalledState]);
+  }, [activeSubTab, activeOptionalModules, optionalInstalledState]);
 
   // Determine statusType for the modal
   const getModuleStatusType = (mod) => {
@@ -1299,18 +1489,37 @@ export default function MarketplaceTab({ openTab }) {
         description={
           activeSubTab === 'installed'
             ? 'Gestisci i moduli integrati nel kernel e le estensioni opzionali attive con scheda tecnica dettagliata.'
-            : 'Esplora moduli generativi, audio, domotica e robotica pronti per l\'installazione autonoma da repository Git.'
+            : 'Catalogo dinamico collegato in tempo reale al repository GitHub Sigmanih/SigmaStudio-Moduli.'
         }
         actions={
-          <button
-            onClick={handleTriggerRebuild}
-            disabled={isRebuilding}
-            className="sigma-tab-btn sigma-tab-btn-primary"
-            title="Esegui rebuild del frontend di Sigma Studio"
-          >
-            <RefreshCw size={13} className={isRebuilding ? 'spin' : ''} />
-            <span>{isRebuilding ? 'Ricompilazione...' : (rebuildStatus || 'Rebuild Bundle')}</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              onClick={handleRefreshGitHubCatalog}
+              disabled={isRefreshingCatalog}
+              className="sigma-tab-btn"
+              style={{
+                background: 'rgba(88, 101, 242, 0.15)',
+                border: '1px solid rgba(88, 101, 242, 0.35)',
+                color: '#818cf8',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title="Aggiorna l'elenco dei moduli leggendo direttamente dal repository GitHub"
+            >
+              <RefreshCw size={12} className={isRefreshingCatalog ? 'spin' : ''} />
+              <span>{isRefreshingCatalog ? 'Sync GitHub...' : 'Sincronizza GitHub'}</span>
+            </button>
+            <button
+              onClick={handleTriggerRebuild}
+              disabled={isRebuilding}
+              className="sigma-tab-btn sigma-tab-btn-primary"
+              title="Esegui rebuild del frontend di Sigma Studio"
+            >
+              <RefreshCw size={12} className={isRebuilding ? 'spin' : ''} />
+              <span>{isRebuilding ? 'Ricompilazione...' : (rebuildStatus || 'Rebuild Bundle')}</span>
+            </button>
+          </div>
         }
       />
 
@@ -1331,8 +1540,15 @@ export default function MarketplaceTab({ openTab }) {
             </div>
             <div className="marketplace-stat-pill">
               <Sparkles size={15} style={{ color: '#faa03c' }} />
-              <span>Disponibili nel Catalogo:</span>
+              <span>Disponibili:</span>
               <span className="marketplace-stat-badge amber">{totalAvailableCount} pronti</span>
+            </div>
+            <div className="marketplace-stat-pill" title="Sincronizzato dinamicamente con il repository GitHub Sigmanih/SigmaStudio-Moduli">
+              <GitBranch size={15} style={{ color: '#818cf8' }} />
+              <span>GitHub Sync:</span>
+              <span className="marketplace-stat-badge" style={{ background: 'rgba(88, 101, 242, 0.18)', color: '#c7d2fe' }}>
+                {activeOptionalModules.length} verificati
+              </span>
             </div>
           </div>
 

@@ -63,12 +63,27 @@ RUOLO_PREDEFINITO = "coder"
 STATI = ("pending", "in_progress", "done")
 
 
+def _ruoli_registrati() -> Set[str]:
+    """I ruoli portati dai moduli (video, EDA, KiCad...), letti al momento.
+
+    Import tardivo: `roles` importa il ciclo, che importa questo modulo.
+    Senza questi, un task che l'Architetto affidava a `video_producer`
+    diventava un task del Coder, che non ha nessun tool video: il primo
+    progetto anime e' finito in script Python scritti a mano.
+    """
+    try:
+        from core.harness.roles import DEV_ROLES
+        return {str(r).lower() for r in DEV_ROLES}
+    except Exception:
+        return set()
+
+
 def canonical_role(grezzo: Any) -> str:
     """Il ruolo canonico, o `coder` se non si riconosce."""
     nome = str(grezzo or "").strip().lower()
     if not nome:
         return RUOLO_PREDEFINITO
-    if nome in RUOLI_NOTI:
+    if nome in RUOLI_NOTI or nome in _ruoli_registrati():
         return nome
     return ALIAS_RUOLO.get(nome, RUOLO_PREDEFINITO)
 
@@ -76,7 +91,7 @@ def canonical_role(grezzo: Any) -> str:
 def role_is_known(grezzo: Any) -> bool:
     """Se quel nome corrisponde davvero a un ruolo, alias compresi."""
     nome = str(grezzo or "").strip().lower()
-    return bool(nome) and (nome in RUOLI_NOTI or nome in ALIAS_RUOLO)
+    return bool(nome) and (nome in RUOLI_NOTI or nome in ALIAS_RUOLO or nome in _ruoli_registrati())
 
 
 def _stato(grezzo: Any) -> str:

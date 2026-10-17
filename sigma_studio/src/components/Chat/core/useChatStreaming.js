@@ -113,6 +113,7 @@ export function useChatStreaming({
   activeManifesto,
   selectedHardware,
   devModeEnabled = false,
+  devRole = 'auto',
   workspaceRoot = '',
 }) {
   const [input, setInput] = useState('');
@@ -1147,7 +1148,9 @@ export function useChatStreaming({
           session_id: currentSessionId,
           review_writes: false,
           isolate_worktree: false,
-          review_run: false
+          review_run: false,
+          // Il ruolo scelto nel selettore: "auto" lascia l'agente generico.
+          role: devRole && devRole !== 'auto' ? devRole : undefined
         };
         res = await fetch('/api/developer/agent/chat', {
           method: 'POST',
@@ -1223,7 +1226,7 @@ export function useChatStreaming({
       globalAbortController = null;
       streamingSessionIdRef.current = null;
     }
-  }, [input, loading, selectedModel, providerConfigs, quickConfig, loopMaxIterations, webSearch, attachedFiles, pcFiles, activeMode, selectedManifestoPath, externalOpenFiles, refreshConfig, saveSessionsState, setMessagesForSession, saveMessagesImmediately, sessionRefs, setActiveSessionId]);
+  }, [input, loading, selectedModel, providerConfigs, quickConfig, loopMaxIterations, webSearch, attachedFiles, pcFiles, activeMode, selectedManifestoPath, externalOpenFiles, refreshConfig, saveSessionsState, setMessagesForSession, saveMessagesImmediately, sessionRefs, setActiveSessionId, devModeEnabled, devRole, workspaceRoot]);
 
   const removePcFile = useCallback((filename) => { setPcFiles(prev => prev.filter(f => f.filename !== filename)); }, []);
   const handleDragOver = useCallback((e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }, []);

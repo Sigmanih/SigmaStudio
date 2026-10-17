@@ -379,7 +379,7 @@ export default function Sidebar({
   // Verifica se ci sono skill installate per ciascun macro-sottoargomento (allineato con il catalogo Skills)
   const hasMultimodal = isCreativeInstalled || isVoiceInstalled || isDomoticaInstalled || isAudioInstalled || isAudioEngineInstalled || isVisionInstalled;
   const hasStudio = isBenchmarkInstalled || isTrainingInstalled || isResearchInstalled || isRoadmapInstalled || isKnowledgeInstalled || isQuantInstalled;
-  const hasInfra = isDevInstalled || isHardwareInstalled || isNetworkInstalled || isSigmaNetworkInstalled || isRoboticsInstalled;
+  const hasInfra = isDevInstalled || isHardwareInstalled || isPcbLabInstalled || isNetworkInstalled || isSigmaNetworkInstalled || isRoboticsInstalled;
   const hasComms = isEmailInstalled || isMessagingInstalled;
 
   // Poll for counts (chat sessions, manifesti, topics, etc.)

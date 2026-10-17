@@ -247,6 +247,9 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         devModeAvailable={core.devModeAvailable}
         devModeEnabled={core.devModeEnabled}
         setDevModeEnabled={core.setDevModeEnabled}
+        devRoles={core.devRoles}
+        devRole={core.devRole}
+        setDevRole={core.setDevRole}
         speakerEnabled={core.speakerEnabled}
         setSpeakerEnabled={core.setSpeakerEnabled}
         isRecording={core.isRecording}

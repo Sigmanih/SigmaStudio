@@ -274,6 +274,7 @@ def register_post_handlers(handler_class):
         '/api/marketplace/install': 'handle_marketplace_install',
         '/api/marketplace/uninstall': 'handle_marketplace_uninstall',
         '/api/marketplace/rebuild': 'handle_marketplace_rebuild',
+        '/api/marketplace/refresh': 'handle_marketplace_refresh',
         '/api/manifesti/install_from_hub': 'handle_manifesti_install_from_hub',
         '/api/ruoli/install_from_hub': 'handle_ruoli_install_from_hub',
         '/api/manifesti/uninstall': 'handle_manifesti_uninstall',

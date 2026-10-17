@@ -8,6 +8,7 @@ export default function ChatInput({
   autoScroll, setAutoScroll,
   mcpAutoApprove, setMcpAutoApprove,
   devModeAvailable, devModeEnabled, setDevModeEnabled,
+  devRoles = [], devRole = 'auto', setDevRole,
   speakerEnabled, setSpeakerEnabled,
   isRecording, onToggleRecording,
   smartMicState = 'off', onToggleSmartMic,
@@ -26,6 +27,26 @@ export default function ChatInput({
   children,
 }) {
   const [showVoicePopover, setShowVoicePopover] = useState(false);
+
+  // In Dev Mode il selettore sceglie il ruolo dell'harness, non il manifesto
+  // della chat: e' il ruolo che decide procedura e tool dell'agente.
+  const inDev = !!devModeEnabled;
+  const ruoliDev = [
+    { id: 'auto', name: 'auto', icon: '🎭', role: 'Agente generico: consulta lo specialista quando serve' },
+    ...devRoles.map(r => ({ id: r.id, name: r.name, icon: r.icon, role: r.focus })),
+  ];
+  const ruoloDevAttivo = ruoliDev.find(r => r.id === devRole) || ruoliDev[0];
+  const vociRuolo = inDev ? ruoliDev : (manifestos || []);
+  const ruoloAttivo = inDev ? ruoloDevAttivo : activeManifesto;
+  const eAttivo = (m) => (inDev ? m.id === ruoloDevAttivo.id : activeManifesto?.name === m.name);
+  const scegliRuolo = (m) => {
+    if (inDev) {
+      if (setDevRole) setDevRole(m.id);
+      if (setShowManifestoDropdown) setShowManifestoDropdown(false);
+    } else if (onSelectManifesto) {
+      onSelectManifesto(m);
+    }
+  };
   const [voiceConfig, setVoiceConfigState] = useState(() => getVoiceConfig());
 
   const updateVoiceConfig = (updater) => {
@@ -96,15 +117,15 @@ export default function ChatInput({
             <div className="manifesto-selector-wrapper" style={{ position: 'relative' }}>
               <button
                 type="button"
-                className={`manifesto-selector-btn ${!activeManifesto?.name ? 'no-manifesto' : ''}`}
+                className={`manifesto-selector-btn ${!ruoloAttivo?.name ? 'no-manifesto' : ''}`}
                 onClick={(e) => { e.stopPropagation(); setShowManifestoDropdown && setShowManifestoDropdown(!showManifestoDropdown); }}
-                title="Seleziona il Ruolo Specialistico dell'Agente per la conversazione"
+                title={inDev ? "Ruolo dell'agente in Dev Mode: decide procedura e tool" : "Seleziona il Ruolo Specialistico dell'Agente per la conversazione"}
               >
-                <span className="manifesto-icon">{activeManifesto?.icon || '🎭'}</span>
+                <span className="manifesto-icon">{ruoloAttivo?.icon || '🎭'}</span>
                 <div className="manifesto-info">
-                  <span className="manifesto-name">{activeManifesto?.name || 'Sigma Assistant'}</span>
-                  {activeManifesto?.role && (
-                    <span className="manifesto-role-preview">{activeManifesto.role}</span>
+                  <span className="manifesto-name">{ruoloAttivo?.name || 'Sigma Assistant'}</span>
+                  {ruoloAttivo?.role && (
+                    <span className="manifesto-role-preview">{ruoloAttivo.role}</span>
                   )}
                 </div>
                 <ChevronDown size={11} className={`manifesto-chevron ${showManifestoDropdown ? 'open' : ''}`} />
@@ -112,23 +133,23 @@ export default function ChatInput({
 
               {showManifestoDropdown && (
                 <div className="model-selector-popover manifesto-popover" style={{ left: 0, transform: 'none', minWidth: '280px', maxHeight: '340px', overflowY: 'auto', zIndex: 2100 }}>
-                  {(!manifestos || manifestos.length === 0) && (
+                  {vociRuolo.length === 0 && (
                     <div className="model-selector-option disabled" style={{ padding: '8px 12px', fontSize: '0.74rem', color: '#8b8fa3' }}>
                       Nessun ruolo installato
                     </div>
                   )}
-                  {(manifestos || []).map(m => (
+                  {vociRuolo.map(m => (
                     <div
-                      key={m.path || m.name}
-                      className={`model-selector-option ${activeManifesto?.name === m.name ? 'selected' : ''}`}
-                      onClick={(e) => { e.stopPropagation(); onSelectManifesto && onSelectManifesto(m); }}
+                      key={m.id || m.path || m.name}
+                      className={`model-selector-option ${eAttivo(m) ? 'selected' : ''}`}
+                      onClick={(e) => { e.stopPropagation(); scegliRuolo(m); }}
                       style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', padding: '8px 12px', gap: '2px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', justifyContent: 'space-between' }}>
-                        <span style={{ fontWeight: 800, fontSize: '0.76rem', color: activeManifesto?.name === m.name ? '#00d2ff' : '#f1f5f9' }}>
+                        <span style={{ fontWeight: 800, fontSize: '0.76rem', color: eAttivo(m) ? '#00d2ff' : '#f1f5f9' }}>
                           {m.icon || '📋'} {m.name}
                         </span>
-                        {activeManifesto?.name === m.name && <span style={{ fontSize: '0.74rem', color: '#10b981', fontWeight: 800 }}>✓</span>}
+                        {eAttivo(m) && <span style={{ fontSize: '0.74rem', color: '#10b981', fontWeight: 800 }}>✓</span>}
                       </div>
                       {m.role && (
                         <span style={{ fontSize: '0.64rem', color: 'var(--text-muted, #8b8fa3)', paddingLeft: '18px', lineHeight: 1.3 }}>

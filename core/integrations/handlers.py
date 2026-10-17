@@ -1,6 +1,7 @@
 """Endpoint per skill e applicazioni gestite."""
 
 import json
+from pathlib import Path
 
 from core.integrations import app_manager, skills
 from core import paths
@@ -99,6 +100,11 @@ _OPTIONAL_DEFAULTS = {
     "sigma_network_lab": False,    # Network Explorer & Web Research
     "sigma_email_client": False,   # Email Hub & Client
     "sigma_messaging_hub": False,  # Messaging & Notification Hub
+    "sigma_network": False,        # Sigma Network P2P & Distributed Mesh
+    "sigma_kicad_lab": False,      # PCB Lab — KiCad 10 Native
+    "sigma_eda_lab": False,        # EDA Lab & EasyEDA Bridge
+    "sigma_benchmark_lab": False,  # Benchmark Lab & Model Evaluation
+    "sigma_model_hub": False,      # Model Hub & HF Downloader
 }
 
 def _discovered_modules() -> dict:
@@ -156,15 +162,110 @@ def _save_installed_modules_state(state):
         log.error(f"Errore salvataggio stato marketplace: {e}")
 
 
+CATALOG_CACHE_FILE = Path(paths.var_dir()) / "cache" / "marketplace_github_catalog.json"
+REMOTE_REPO_URL = "https://github.com/Sigmanih/SigmaStudio-Moduli.git"
+
+def _normalize_category(cat: str) -> str:
+    c = (cat or "").strip().lower()
+    if any(k in c for k in ("multimodal", "grafica", "audio", "voce", "music", "video", "3d")):
+        return "Multimodale & Creatività"
+    if any(k in c for k in ("studio", "ricerca", "ai", "benchmark", "training", "slm", "knowledge", "roadmap", "memoria", "quant")):
+        return "Studio, Ricerca & AI"
+    if any(k in c for k in ("infra", "rete", "p2p", "hardware", "kicad", "pcb", "eda", "developer", "docker", "robotica")):
+        return "Infrastruttura & Rete"
+    if any(k in c for k in ("comunicazione", "social", "email", "messagg", "telegram", "discord", "slack")):
+        return "Comunicazione & Social"
+    if any(k in c for k in ("protocollo", "governance", "mcp", "rpc", "sicurezza")):
+        return "Protocollo & Governance"
+    return "Infrastruttura & Rete"
+
+
+def get_github_modules_catalog(force_refresh: bool = False) -> list[dict]:
+    """Recupera dinamicamente solo i moduli presenti su GitHub in Sigmanih/SigmaStudio-Moduli."""
+    from core import module_sync
+    
+    if force_refresh:
+        try:
+            log.info("[Marketplace] Refresh catalogo da GitHub (%s)...", REMOTE_REPO_URL)
+            module_sync.ensure_clone(REMOTE_REPO_URL, "main")
+        except Exception as exc:
+            log.warning("[Marketplace] Pull remoto non riuscito: %s", exc)
+
+    repo_dir = module_sync.repo_workdir(REMOTE_REPO_URL)
+    modules_dir = repo_dir / "modules"
+    
+    if not modules_dir.is_dir():
+        try:
+            module_sync.ensure_clone(REMOTE_REPO_URL, "main")
+        except Exception as exc:
+            log.warning("[Marketplace] Clone iniziale fallito: %s", exc)
+            
+    catalog = []
+    if modules_dir.is_dir():
+        for mod_path in sorted(modules_dir.iterdir()):
+            if not mod_path.is_dir():
+                continue
+            manifest_file = mod_path / "manifest.json"
+            if not manifest_file.is_file():
+                continue
+            try:
+                data = json.loads(manifest_file.read_text(encoding="utf-8"))
+                mod_id = str(data.get("id") or mod_path.name).strip()
+                if not mod_id:
+                    continue
+                
+                raw_icon = data.get("icon") or data.get("sidebarIcon") or "Package"
+                if raw_icon == "Network":
+                    raw_icon = "Share2"
+                
+                cat = _normalize_category(data.get("category") or data.get("sidebarCategory") or "")
+                
+                catalog.append({
+                    "id": mod_id,
+                    "name": data.get("name") or mod_id,
+                    "category": cat,
+                    "domain": data.get("category") or cat,
+                    "icon": raw_icon,
+                    "color": data.get("color") or "#00d2ff",
+                    "tabType": data.get("tabType") or mod_id,
+                    "version": data.get("version") or "v1.0.0",
+                    "description": data.get("description") or "",
+                    "highlights": data.get("highlights") or [f"Modulo #{t}" for t in data.get("tags", [])[:3]],
+                    "detailedDescription": data.get("detailedDescription") or data.get("description") or "",
+                    "mcpTools": data.get("mcpTools") or [],
+                    "techStack": data.get("tags") or [],
+                    "gitUrl": data.get("repository") or f"https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/{mod_id}",
+                    "branch": data.get("branch") or "main",
+                    "tags": data.get("tags") or [],
+                    "size": data.get("size") or "~1 MB",
+                    "author": data.get("author") or "Sigma Core Team",
+                    "surface": data.get("surface") or "full",
+                })
+            except Exception as e:
+                log.warning("[Marketplace] Errore lettura manifest %s: %s", manifest_file, e)
+
+    if catalog:
+        try:
+            CATALOG_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+            CATALOG_CACHE_FILE.write_text(json.dumps(catalog, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception as e:
+            log.warning("[Marketplace] Impossibile salvare cache catalogo: %s", e)
+    elif CATALOG_CACHE_FILE.is_file():
+        try:
+            catalog = json.loads(CATALOG_CACHE_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    return catalog
+
+
 def handle_marketplace_modules(self):
-    """GET /api/marketplace/modules — Elenco moduli installati e catalogo remoto."""
+    """GET /api/marketplace/modules — Elenco moduli installati e catalogo dinamico da GitHub."""
     try:
         state = _get_installed_modules_state()
+        catalog = get_github_modules_catalog(force_refresh=False)
         
-        # Build installed list based strictly on active state
         installed_list = []
-        # Si itera sullo stato completo, non sul solo elenco scritto a
-        # mano: un modulo scoperto dal manifest deve poter comparire.
         for mod_id in state.keys():
             is_installed = state.get(mod_id, False)
             if is_installed:
@@ -173,10 +274,29 @@ def handle_marketplace_modules(self):
         self.send_json_response({
             "success": True,
             "installed": installed_list,
-            "modules_state": state
+            "modules_state": state,
+            "catalog": catalog,
+            "total_remote": len(catalog),
+            "source": "github"
         })
     except Exception as e:
         log.error(f"Errore marketplace modules: {e}")
+        self.send_json_response({"success": False, "error": str(e)}, 500)
+
+
+def handle_marketplace_refresh(self):
+    """POST /api/marketplace/refresh — Ricarica forzata del catalogo da GitHub."""
+    try:
+        catalog = get_github_modules_catalog(force_refresh=True)
+        self.send_json_response({
+            "success": True,
+            "message": f"Catalogo sincronizzato con GitHub: {len(catalog)} moduli remoti disponibili.",
+            "catalog": catalog,
+            "total_remote": len(catalog),
+            "source": "github"
+        })
+    except Exception as e:
+        log.error(f"Errore refresh marketplace da GitHub: {e}")
         self.send_json_response({"success": False, "error": str(e)}, 500)
 
 

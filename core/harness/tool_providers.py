@@ -192,6 +192,38 @@ def schemas() -> List[Dict[str, Any]]:
             for schema in provider.schemas]
 
 
+def firme_per_prompt(massimo_descrizione: int = 120) -> str:
+    """Una riga per tool dei moduli: nome, parametri e scopo, per il prompt dei modelli locali.
+
+    Col percorso recintato il modello conosce un tool solo da cio' che legge
+    nel prompt, e i tool dei moduli vi comparivano solo per nome: nel primo
+    progetto anime l'agente ha chiamato `video_manga_read` senza `prod_id` e
+    ha speso un turno per scoprirlo dall'errore. I parametri obbligatori sono
+    senza `?`, i facoltativi con.
+    """
+    righe = []
+    for provider in _provider.values():
+        voci = []
+        for schema in provider.schemas:
+            f = schema.get("function", schema) if isinstance(schema, dict) else {}
+            nome = f.get("name")
+            if not nome:
+                continue
+            par = f.get("parameters") or {}
+            richiesti = set(par.get("required") or [])
+            argomenti = ", ".join(p if p in richiesti else f"{p}?" for p in (par.get("properties") or {}))
+            scopo = str(f.get("description") or "").strip().split(". ")[0]
+            if len(scopo) > massimo_descrizione:
+                scopo = scopo[:massimo_descrizione - 1].rstrip() + "…"
+            voci.append(f"- `{nome}({argomenti})` — {scopo}")
+        if voci:
+            righe.append(f"### {provider.label or provider.id}\n" + "\n".join(voci))
+    if not righe:
+        return ""
+    return ("## TOOL DEI MODULI\nSi chiamano come gli altri tool, con un oggetto JSON coi parametri indicati.\n\n"
+            + "\n\n".join(righe))
+
+
 def write_tools() -> set:
     return {n for p in _provider.values() for n in p.write}
 
@@ -217,8 +249,20 @@ def dispatch(tool_name: str,
     if provider is None:      # pragma: no cover - `unregister` mantiene la coerenza
         return {"tool": nome, "success": False,
                 "error": f"Provider '{proprietario}' non piu' registrato."}
+    argomenti = dict(args or {})
+    if "raw" in argomenti:
+        # `raw` lo aggiunge l'estrattore quando il corpo della chiamata non e' JSON.
+        # Per un tool senza parametri (video_char_list) e' solo rumore che lo faceva
+        # fallire due volte di fila nel collaudo Mx0: si toglie se lo schema non lo dichiara.
+        dichiarati = set()
+        for schema in provider.schemas:
+            f = schema.get("function", schema) if isinstance(schema, dict) else {}
+            if f.get("name") == nome:
+                dichiarati = set((f.get("parameters") or {}).get("properties") or {})
+        if "raw" not in dichiarati:
+            argomenti.pop("raw", None)
     try:
-        esito = provider.execute(nome, dict(args or {}))
+        esito = provider.execute(nome, argomenti)
     except Exception as exc:
         log.exception("[Providers] '%s' di '%s' fallito", nome, proprietario)
         return {"tool": nome, "success": False,

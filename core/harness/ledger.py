@@ -1454,6 +1454,37 @@ def looks_like_verification(command: str) -> bool:
     return any(hint in c for hint in VERIFICATION_HINTS)
 
 
+#: Frasi con cui un agente chiude senza aver concluso: rimanda la palla all'utente.
+_RINVII = re.compile(
+    r"attendo (?:le tue |tue |ulteriori |nuove )?istruzioni|in attesa di (?:tue |ulteriori |nuove )?istruzioni"
+    r"|fammi sapere (?:cosa|come)|dimmi (?:tu )?(?:cosa|come) (?:vuoi|procedere|fare)"
+    r"|cosa (?:vuoi|desideri) che (?:io )?faccia|come (?:vuoi|desideri) (?:che )?procedere"
+    r"|awaiting (?:your |further )?instructions|let me know (?:what|how)",
+    re.IGNORECASE)
+#: Oltre questa lunghezza un riassunto riporta comunque dei risultati, anche se chiude con una domanda.
+_CHIUSURA_BREVE = 400
+
+
+def chiusura_vuota(summary: str) -> Optional[str]:
+    """Il motivo per rifiutare una chiusura che non chiude niente, o None.
+
+    Collaudo Mx0: dopo aver letto un file sbagliato l'agente ha chiamato
+    `complete_goal` con «ho letto il file, attendo istruzioni». Il compito era
+    un lavoro con i tool del Video Studio, che non toccano file: il ledger lo
+    trattava da esplorazione, bastava aver letto qualcosa, e la chiusura e'
+    passata come VERIFICATA. Una chiusura breve che rimanda all'utente non e'
+    un risultato; una lunga che riporta il lavoro fatto e poi chiede, si'.
+    """
+    testo = str(summary or "").strip()
+    if not testo:
+        return "il summary e' vuoto: scrivi cosa hai fatto e con quale risultato."
+    if len(testo) < _CHIUSURA_BREVE and _RINVII.search(testo):
+        return ("il summary rimanda all'utente invece di riportare un risultato. Riprendi l'obiettivo "
+                "originale dal punto in cui eri e portalo avanti; chiudi solo con il lavoro fatto. Se "
+                "davvero serve una decisione dell'utente, spiega quale e perche', con le opzioni.")
+    return None
+
+
 def check_completion_allowed(ledger: DevSessionLedger) -> Dict[str, Any]:
     """Decides whether `complete_goal` may be honoured yet.
 
