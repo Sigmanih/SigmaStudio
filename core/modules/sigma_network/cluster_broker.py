@@ -39,8 +39,8 @@ class ClusterBroker:
         self._get_settings = settings_getter
         self._http_session = requests.Session()
 
-    def get_cluster_models(self) -> List[Dict[str, Any]]:
-        """Restituisce il catalogo unificato dei modelli disponibili nell'intero cluster."""
+    def get_cluster_models(self, include_local: bool = False) -> List[Dict[str, Any]]:
+        """Restituisce il catalogo dei modelli disponibili nel cluster (offerti dai nodi remoti)."""
         registry = self._get_registry()
         identity = self._get_identity()
         settings = self._get_settings()
@@ -48,40 +48,39 @@ class ClusterBroker:
 
         models_catalog: List[Dict[str, Any]] = []
 
-        # 1. Modelli locali condivisi di questa istanza
-        local_sharing = bool(settings.get("sharing_enabled", False))
-        local_rate = float(settings.get("rate_tokens_per_coin", 1000))
+        # 1. Modelli locali condivisi (solo se esplicitamente richiesto con include_local=True)
+        if include_local:
+            local_sharing = bool(settings.get("sharing_enabled", False))
+            local_rate = float(settings.get("rate_tokens_per_coin", 1000))
 
-        # Recupera modelli reali disponibili in locale
-        local_models_list: List[str] = []
-        try:
-            from core.engine.provider_server import get_all_available_models
-            for m in get_all_available_models():
-                mid = m.get("id") or m.get("name")
-                if mid:
-                    local_models_list.append(mid)
-        except Exception:
-            local_models_list = list(settings.get("shared_models", []))
+            local_models_list: List[str] = []
+            try:
+                from core.engine.provider_server import get_all_available_models
+                for m in get_all_available_models():
+                    mid = m.get("id") or m.get("name")
+                    if mid:
+                        local_models_list.append(mid)
+            except Exception:
+                local_models_list = list(settings.get("shared_models", []))
 
-        # Se ci sono modelli condivisi configurati, filtra, altrimenti esponi quelli rilevati
-        configured_shared = set(settings.get("shared_models", []))
-        active_local_models = [m for m in local_models_list if not configured_shared or m in configured_shared]
+            configured_shared = set(settings.get("shared_models", []))
+            active_local_models = [m for m in local_models_list if not configured_shared or m in configured_shared]
 
-        for m_id in active_local_models:
-            models_catalog.append({
-                "model_id": m_id,
-                "name": m_id.split("/")[-1].replace(".gguf", ""),
-                "provider_id": local_peer_id,
-                "provider_name": str(settings.get("display_name") or "Il tuo nodo (Locale)"),
-                "host": "127.0.0.1",
-                "port": 8000,
-                "is_local": True,
-                "is_trusted": True,
-                "sharing_active": local_sharing,
-                "rate_tokens_per_coin": local_rate,
-                "latency_ms": 0.0,
-                "status": "ready",
-            })
+            for m_id in active_local_models:
+                models_catalog.append({
+                    "model_id": m_id,
+                    "name": m_id.split("/")[-1].replace(".gguf", ""),
+                    "provider_id": local_peer_id,
+                    "provider_name": str(settings.get("display_name") or "Il tuo nodo (Locale)"),
+                    "host": "127.0.0.1",
+                    "port": 8000,
+                    "is_local": True,
+                    "is_trusted": True,
+                    "sharing_active": local_sharing,
+                    "rate_tokens_per_coin": local_rate,
+                    "latency_ms": 0.0,
+                    "status": "ready",
+                })
 
         # 2. Modelli dei peer remoti
         now = time.time()

@@ -26,7 +26,8 @@ const EnsembleSwarm = ({ identity, onRefreshWallet }) => {
       const resp = await fetch('/api/sigma_network/cluster/models');
       if (resp.ok) {
         const data = await resp.json();
-        const modelsList = Array.isArray(data) ? data : (data.models || []);
+        const rawList = Array.isArray(data) ? data : (data.models || []);
+        const modelsList = rawList.filter(m => !m.is_local);
         setAvailableModels(modelsList);
         if (modelsList.length > 0 && selectedModels.length === 0) {
           // Seleziona di default fino a 3 modelli diversi o nodi per l'ensemble

@@ -18,6 +18,7 @@ import base64
 import json
 import threading
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -51,6 +52,7 @@ _identity_file: Optional[str] = None
 _peers_file: Optional[str] = None
 _wallet_file: Optional[str] = None
 _auth_file: Optional[str] = None
+_settings_file: Optional[str] = None
 
 _identity: Optional[Dict[str, str]] = None
 _registry_instance: Optional[PeerRegistry] = None
@@ -112,6 +114,7 @@ def _reset_singletons() -> None:
         _wallet_instance = None
         _discovery_instance = None
         _settings = None
+        _settings_file = None
         _broker_instance = None
         _mining_instance = None
         _aggregator_instance = None
@@ -164,7 +167,16 @@ def _get_settings() -> Dict[str, Any]:
     global _settings
     with _lock:
         if _settings is None:
-            _settings = dict(DEFAULT_SETTINGS)
+            path = _settings_file or _default_path("settings.json")
+            try:
+                p = Path(path)
+                if p.is_file():
+                    loaded = json.loads(p.read_text(encoding="utf-8"))
+                    _settings = {**DEFAULT_SETTINGS, **loaded}
+                else:
+                    _settings = dict(DEFAULT_SETTINGS)
+            except Exception:
+                _settings = dict(DEFAULT_SETTINGS)
         return _settings
 
 
@@ -533,20 +545,29 @@ def get_settings() -> Dict[str, Any]:
 
 @router.post("/settings")
 def update_settings(body: SettingsRequest) -> Dict[str, Any]:
-    """Aggiorna le impostazioni e diffonde immediatamente l'annuncio UDP broadcast se attivo."""
+    """Aggiorna le impostazioni, le salva su file e diffonde immediatamente l'annuncio UDP broadcast se attivo."""
     changes = {k: v for k, v in body.model_dump().items() if v is not None}
     with _lock:
         current = _get_settings()
         current.update(changes)
         res = dict(current)
+        try:
+            path = _settings_file or _default_path("settings.json")
+            p = Path(path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(res, indent=2), encoding="utf-8")
+        except Exception as e:
+            log.warning("Salvataggio persistente settings fallito: %s", e)
 
-    # Annuncio gossip/UDP immediato se discovery è attiva
+    # Annuncio gossip/UDP immediato se discovery è attiva o se la condivisione è stata abilitata
     try:
-        disc = _discovery_instance
-        if disc and getattr(disc, "is_running", lambda: False)():
+        disc = _get_discovery()
+        if changes.get("sharing_enabled") is True and not disc.is_running():
+            disc.start()
+        if disc.is_running():
             disc.announce_now()
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("Annuncio P2P durante update_settings fallito: %s", e)
 
     return res
 
@@ -694,10 +715,10 @@ def p2p_handshake(body: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.get("/cluster/models")
-def get_cluster_models() -> Dict[str, Any]:
-    """Restituisce il catalogo aggregato dei modelli disponibili nell'intero cluster P2P."""
+def get_cluster_models(include_local: bool = False) -> Dict[str, Any]:
+    """Restituisce il catalogo aggregato dei modelli disponibili nel cluster P2P offerti da altri nodi."""
     broker = _get_broker()
-    models = broker.get_cluster_models()
+    models = broker.get_cluster_models(include_local=include_local)
     return {
         "models": models,
         "total": len(models),

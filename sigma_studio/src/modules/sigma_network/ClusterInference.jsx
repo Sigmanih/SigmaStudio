@@ -9,7 +9,8 @@ import {
   Activity,
   Layers,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Globe
 } from 'lucide-react';
 
 const ClusterInference = ({ initialPeer, walletBalance, onReceiptCreated }) => {
@@ -28,16 +29,19 @@ const ClusterInference = ({ initialPeer, walletBalance, onReceiptCreated }) => {
       const resp = await fetch('/api/sigma_network/cluster/models');
       if (resp.ok) {
         const data = await resp.json();
-        const modelsList = Array.isArray(data) ? data : (data.models || []);
+        const rawList = Array.isArray(data) ? data : (data.models || []);
+        // In Sigma Network devono apparire solo i modelli messi a disposizione dagli altri nodi
+        const modelsList = rawList.filter(m => !m.is_local);
         setClusterModels(modelsList);
         if (modelsList.length > 0 && !selectedModel) {
-          // Seleziona preferibilmente il peer passato da radar o il primo disponibile
           if (initialPeer && Array.isArray(initialPeer.models) && initialPeer.models.length > 0) {
             const match = modelsList.find(m => m.provider_id === initialPeer.peer_id);
             setSelectedModel(match || modelsList[0]);
           } else {
             setSelectedModel(modelsList[0]);
           }
+        } else if (modelsList.length === 0) {
+          setSelectedModel(null);
         }
       }
     } catch (e) {
@@ -162,7 +166,28 @@ const ClusterInference = ({ initialPeer, walletBalance, onReceiptCreated }) => {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', maxHeight: '560px' }}>
-          {clusterModels.map((m, idx) => {
+          {clusterModels.length === 0 ? (
+            <div style={{
+              padding: '36px 18px',
+              textAlign: 'center',
+              background: 'rgba(30, 41, 59, 0.3)',
+              border: '1px dashed rgba(255, 255, 255, 0.1)',
+              borderRadius: '12px',
+              color: '#94a3b8',
+              fontSize: '0.82rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <Globe size={26} color="#00d4ff" />
+              <strong style={{ color: '#f1f5f9' }}>Nessun modello offerto da altri nodi P2P</strong>
+              <span>
+                I modelli messi a disposizione da altri PC collegati appariranno qui automaticamente.
+              </span>
+            </div>
+          ) : (
+            clusterModels.map((m, idx) => {
             const isSelected = selectedModel?.model_id === m.model_id && selectedModel?.provider_id === m.provider_id;
             return (
               <div
@@ -198,7 +223,7 @@ const ClusterInference = ({ initialPeer, walletBalance, onReceiptCreated }) => {
                 </div>
               </div>
             );
-          })}
+          }))}
         </div>
       </div>
 
