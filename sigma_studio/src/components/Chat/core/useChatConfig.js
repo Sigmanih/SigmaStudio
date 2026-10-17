@@ -165,6 +165,38 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
         console.warn("Modelli Locali fetching error:", locErr);
       }
 
+      // 1.5. Fetch modelli distribuiti dal Sigma Network Cluster (AiloToken P2P Provider)
+      try {
+        const clusterRes = await fetch('/api/sigma_network/cluster/models');
+        if (clusterRes.ok) {
+          const clusterJson = await clusterRes.json();
+          if (Array.isArray(clusterJson.models)) {
+            clusterJson.models.forEach(cm => {
+              if (cm.is_local) return; // I modelli locali sono già inclusi sopra
+              const displayName = `[Cluster: ${cm.provider_name}] ${cm.name}`;
+              if (!known.has(displayName)) {
+                models.push({
+                  name: displayName,
+                  model_id: cm.model_id,
+                  filename: cm.name,
+                  display_name: displayName,
+                  provider: 'sigma_network',
+                  provider_id: cm.provider_id,
+                  size: `P2P Cluster (~${Math.round(cm.latency_ms || 35)}ms)`,
+                  format: 'AiloToken P2P',
+                  status: cm.status,
+                  rate_tokens_per_coin: cm.rate_tokens_per_coin || 1000,
+                  is_cluster: true,
+                });
+                known.add(displayName);
+              }
+            });
+          }
+        }
+      } catch (clusterErr) {
+        console.debug("Sigma Network Cluster models non disponibili:", clusterErr);
+      }
+
       // 2. Fetch external Ollama ONLY IF explicitly configured & enabled by user
       if (isOllamaExplicitlyEnabled) {
         try {

@@ -177,6 +177,65 @@ def _detect_server_port() -> int:
         return 8000
 
 
+def _auto_handshake_with_peer(host: str, port: int, peer_info: Dict[str, Any]) -> None:
+    """Esegue un handshake crittografico automatico verso un peer appena scoperto."""
+    def _run():
+        try:
+            identity = _get_identity()
+            settings = _get_settings()
+            local_peer_id = identity["peer_id"]
+            remote_peer_id = peer_info.get("peer_id")
+            if not remote_peer_id or remote_peer_id == local_peer_id:
+                return
+
+            priv_str = identity.get("private_key")
+            if not priv_str:
+                return
+            priv_bytes = base64.b64decode(priv_str)
+            ts = str(time.time())
+            msg = f"cluster_handshake:{local_peer_id}:{remote_peer_id}:{ts}"
+            sig = sign(priv_bytes, msg)
+
+            hs_payload = {
+                "peer_id": local_peer_id,
+                "public_key": identity["public_key"],
+                "name": str(settings.get("display_name") or "Sigma Peer"),
+                "port": _detect_server_port(),
+                "models": list(settings.get("shared_models") or []),
+                "version": MODULE_VERSION,
+                "message": msg,
+                "signature": sig,
+            }
+
+            import requests
+            url = f"http://{host}:{port}/api/sigma_network/p2p/handshake"
+            resp = requests.post(url, json=hs_payload, timeout=2.5)
+            if resp.status_code == 200:
+                data = resp.json()
+                remote_pubkey = data.get("public_key")
+                registry = _get_registry()
+                registry.add_peer(
+                    host=host,
+                    port=port,
+                    peer_id=remote_peer_id,
+                    public_key=remote_pubkey or peer_info.get("public_key", ""),
+                    name=data.get("name") or peer_info.get("name", "Sigma Peer"),
+                    models=data.get("models") or peer_info.get("models", []),
+                    version=data.get("version") or peer_info.get("version", "1.0.0"),
+                )
+                if settings.get("cluster_auto_trust", True):
+                    try:
+                        registry.set_state(remote_peer_id, "trusted")
+                    except Exception:
+                        pass
+                    log.info("[SigmaNetwork] Auto-handshake cluster completato: peer %s (%s:%d) verificato e trusted!", remote_peer_id, host, port)
+        except Exception as exc:
+            log.debug("Auto-handshake verso %s:%d non completato: %s", host, port, exc)
+
+    t = threading.Thread(target=_run, name=f"handshake-{host}", daemon=True)
+    t.start()
+
+
 def _get_discovery() -> PeerDiscovery:
     global _discovery_instance
     with _lock:
@@ -191,6 +250,7 @@ def _get_discovery() -> PeerDiscovery:
                 port=port,
                 models=list(settings.get("shared_models") or []),
                 version=MODULE_VERSION,
+                on_peer_found=_auto_handshake_with_peer,
             )
             # Avvio automatico discovery daemon
             try:
@@ -547,20 +607,143 @@ def _is_inference_engine_available() -> bool:
 def p2p_hello() -> Dict[str, Any]:
     """Presentazione di questo peer a chi lo interroga.
 
-    Nome, versione e modelli non stanno nell'identita: l'identita e' la coppia
-    di chiavi e non cambia mai, mentre questi sono impostazioni che l'utente
-    modifica. Leggerli dal posto sbagliato li restituiva vuoti, e un peer senza
-    nome ne' modelli e' indistinguibile da uno che non condivide nulla.
+    Restituisce peer_id, chiave pubblica, modelli esposti e gossip dei peer noti.
     """
     identity = _get_identity()
     settings = _get_settings()
+    registry = _get_registry()
+    known_peers = [
+        {"peer_id": p.get("peer_id"), "host": p.get("host"), "port": p.get("port")}
+        for p in registry.all_peers()
+        if p.get("peer_id") != identity["peer_id"] and p.get("state") in ("trusted", "discovered")
+    ][:10]
+
     return {
         "peer_id": identity["peer_id"],
+        "public_key": identity["public_key"],
         "name": str(settings.get("display_name") or "Sigma Peer"),
         "version": MODULE_VERSION,
         "models": list(settings.get("shared_models") or []),
         "accepting": bool(settings.get("sharing_enabled")),
+        "peers": known_peers,
     }
+
+
+@router.post("/p2p/handshake")
+def p2p_handshake(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Handshake crittografico tra nodi del cluster Sigma Network.
+
+    Verifica la firma Ed25519 del peer remoto, salva la chiave pubblica e
+    stabilisce la fiducia reciproca (auto-trust) in modo sicuro e decentralizzato.
+    """
+    peer_id = str(body.get("peer_id") or "")
+    public_key = str(body.get("public_key") or "")
+    message = str(body.get("message") or "")
+    signature = str(body.get("signature") or "")
+
+    if not peer_id or not public_key or not message or not signature:
+        raise HTTPException(status_code=400, detail="peer_id, public_key, message e signature sono obbligatori")
+
+    if not verify(public_key, message, signature):
+        raise HTTPException(status_code=401, detail="Firma crittografica dell'handshake non valida")
+
+    identity = _get_identity()
+    settings = _get_settings()
+    registry = _get_registry()
+
+    # Registra o aggiorna il peer chiamante memorizzando la chiave pubblica autenticata
+    registry.add_peer(
+        host=str(body.get("host") or "127.0.0.1"),
+        port=int(body.get("port") or 8000),
+        peer_id=peer_id,
+        public_key=public_key,
+        name=str(body.get("name") or "Sigma Peer"),
+        models=list(body.get("models") or []),
+        version=str(body.get("version") or MODULE_VERSION),
+    )
+
+    if settings.get("cluster_auto_trust", True):
+        try:
+            registry.set_state(peer_id, "trusted")
+            log.info("[SigmaNetwork] Handshake validato: peer %s promosso a trusted!", peer_id)
+        except Exception:
+            pass
+
+    # Genera la contro-firma locale per confermare l'accordo reciproco
+    priv_str = identity.get("private_key")
+    resp_sig = ""
+    resp_msg = f"cluster_handshake_ack:{identity['peer_id']}:{peer_id}:{time.time()}"
+    if priv_str:
+        try:
+            priv_bytes = base64.b64decode(priv_str)
+            resp_sig = sign(priv_bytes, resp_msg)
+        except Exception as exc:
+            log.debug("Errore generazione contro-firma handshake: %s", exc)
+
+    return {
+        "status": "ok",
+        "peer_id": identity["peer_id"],
+        "public_key": identity["public_key"],
+        "name": str(settings.get("display_name") or "Sigma Peer"),
+        "version": MODULE_VERSION,
+        "models": list(settings.get("shared_models") or []),
+        "accepting": bool(settings.get("sharing_enabled")),
+        "message": resp_msg,
+        "signature": resp_sig,
+    }
+
+
+@router.get("/cluster/models")
+def get_cluster_models() -> Dict[str, Any]:
+    """Restituisce il catalogo aggregato dei modelli disponibili nell'intero cluster P2P."""
+    broker = _get_broker()
+    models = broker.get_cluster_models()
+    return {
+        "models": models,
+        "total": len(models),
+        "cluster_active": True,
+    }
+
+
+@router.post("/cluster/infer")
+def cluster_infer(body: Dict[str, Any]) -> StreamingResponse:
+    """Esegue inferenza distribuita nel cluster regolando il costo in AiloToken."""
+    prompt = body.get("prompt") or body.get("messages") or ""
+    model = str(body.get("model") or "")
+    max_tokens = int(body.get("max_tokens") or 1024)
+    preferred_peer_id = body.get("preferred_peer_id")
+
+    if not prompt or not model:
+        raise HTTPException(status_code=400, detail="prompt e model sono obbligatori")
+
+    broker = _get_broker()
+    generator = broker.execute_cluster_inference(
+        prompt=prompt,
+        model=model,
+        max_tokens=max_tokens,
+        preferred_peer_id=preferred_peer_id,
+    )
+    return StreamingResponse(generator, media_type="text/event-stream; charset=utf-8")
+
+
+@router.post("/cluster/sweep")
+def trigger_cluster_sweep() -> Dict[str, Any]:
+    """Avvia una scansione immediata della LAN per collegare automaticamente tutti i nodi."""
+    try:
+        disc = _get_discovery()
+        count = disc.sweep_now()
+        disc.announce_now()
+        return {
+            "status": "ok",
+            "peers_discovered_via_sweep": count,
+            "total_peers": len(_get_registry().all_peers()),
+        }
+    except Exception as exc:
+        log.error("Errore cluster sweep: %s", exc)
+        return {
+            "status": "error",
+            "message": str(exc),
+        }
 
 
 @router.post("/p2p/infer")

@@ -75,6 +75,28 @@ const WalletDashboard = ({ walletData, identity, onRefresh }) => {
     }
   };
 
+  const [isSettling, setIsSettling] = useState(false);
+  const [settlementBundle, setSettlementBundle] = useState(null);
+
+  const handleGenerateSettlement = async () => {
+    setIsSettling(true);
+    try {
+      const resp = await fetch('/api/sigma_network/wallet/settle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chain_id: 8453 }), // Base Mainnet / Base Sepolia (84532)
+      });
+      if (resp.ok) {
+        const bundle = await resp.json();
+        setSettlementBundle(bundle);
+      }
+    } catch (e) {
+      console.error('Errore generazione Merkle Settlement', e);
+    } finally {
+      setIsSettling(false);
+    }
+  };
+
   const handleVerifyChain = async () => {
     setIsVerifyingChain(true);
     setChainStatus(null);
@@ -489,8 +511,61 @@ const WalletDashboard = ({ walletData, identity, onRefresh }) => {
             <RefreshCw size={13} className={isVerifyingChain ? 'sn-spin' : ''} />
             <span>{isVerifyingChain ? 'Verifica...' : 'Verifica Catena'}</span>
           </button>
+
+          <button
+            onClick={handleGenerateSettlement}
+            disabled={isSettling}
+            style={{
+              background: 'rgba(168, 85, 247, 0.15)',
+              border: '1px solid rgba(168, 85, 247, 0.35)',
+              borderRadius: 6,
+              color: '#c084fc',
+              padding: '6px 14px',
+              cursor: 'pointer',
+              fontSize: '0.8rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6
+            }}
+          >
+            <Coins size={13} className={isSettling ? 'sn-spin' : ''} />
+            <span>{isSettling ? 'Generazione...' : 'Web3 Merkle Settlement'}</span>
+          </button>
         </div>
       </div>
+
+      {/* Pannello Dettaglio Merkle Settlement EIP-712 */}
+      {settlementBundle && (
+        <div style={{
+          background: 'rgba(15, 23, 42, 0.85)',
+          borderRadius: 10,
+          padding: '16px 20px',
+          border: '1px solid rgba(168, 85, 247, 0.3)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#c084fc', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Coins size={16} /> Merkle Root EIP-712 Pronto per Smart Contract Base (Chain ID 8453)
+            </span>
+            <button
+              onClick={() => setSettlementBundle(null)}
+              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.8rem' }}
+            >
+              Chiudi
+            </button>
+          </div>
+          <div style={{ fontSize: '0.78rem', color: '#cbd5e1', wordBreak: 'break-all', fontFamily: 'monospace', background: 'rgba(0,0,0,0.3)', padding: '8px 12px', borderRadius: 6 }}>
+            <strong>Merkle Root:</strong> {settlementBundle.merkle_root}
+          </div>
+          <div style={{ display: 'flex', gap: 16, fontSize: '0.76rem', color: '#94a3b8' }}>
+            <span>Ricevute incluse: <strong>{settlementBundle.leaf_count}</strong></span>
+            <span>Rete di destinazione: <strong>Base Mainnet (8453)</strong></span>
+            <span>Standard: <strong>EIP-712 / Merkle Proof</strong></span>
+          </div>
+        </div>
+      )}
 
       {/* Registro Transazioni & Ricevute Firmate */}
       <div>

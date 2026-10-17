@@ -91,8 +91,9 @@ class ClusterBroker:
                 continue
 
             last_seen = p.get("last_seen", 0.0)
-            is_online = (now - last_seen) < 120.0
-            is_trusted = (p.get("state") == "trusted")
+            is_online = (now - last_seen) < 180.0
+            auto_trust = bool(settings.get("cluster_auto_trust", True))
+            is_trusted = (p.get("state") == "trusted") or (auto_trust and is_online)
 
             for m_id in p.get("models", []):
                 models_catalog.append({
@@ -114,7 +115,7 @@ class ClusterBroker:
 
     def execute_cluster_inference(
         self,
-        prompt: str,
+        prompt: Any,
         model: str,
         max_tokens: int = 1024,
         preferred_peer_id: Optional[str] = None,
@@ -123,6 +124,7 @@ class ClusterBroker:
         identity = self._get_identity()
         wallet = self._get_wallet()
         registry = self._get_registry()
+        settings = self._get_settings()
         local_peer_id = identity.get("peer_id", "")
         priv_key_str = identity.get("private_key")
         private_key_bytes: Optional[bytes] = None
@@ -172,13 +174,22 @@ class ClusterBroker:
 
         token_count = 0
 
+        # Normalizza prompt testuale
+        prompt_text = prompt
+        if isinstance(prompt, list):
+            prompt_text = "\n".join(
+                f"{m.get('role', 'user')}: {m.get('content', '')}" for m in prompt if isinstance(m, dict)
+            )
+        elif not isinstance(prompt, str):
+            prompt_text = str(prompt)
+
         # CASO 1: Nodo Locale
         if is_local:
             try:
                 from core.engine.unified_runtime import sigma_engine
                 from core.engine.provider_server import is_notice
                 for chunk in sigma_engine.generate_stream(
-                    prompt=prompt,
+                    prompt=prompt_text,
                     model_name=selected["model_id"],
                     max_tokens=max_tokens,
                 ):
@@ -207,7 +218,7 @@ class ClusterBroker:
             yield "data: [DONE]\n\n"
             return
 
-        # CASO 2: Peer Remoto P2P con regolamento AiloCoin
+        # CASO 2: Peer Remoto P2P con regolamento AiloToken
         if not private_key_bytes:
             err = {
                 "error": "Chiave privata del wallet assente o bloccata. Effettua l'accesso con password o importa il tuo wallet per firmare le richieste P2P."
@@ -216,11 +227,20 @@ class ClusterBroker:
             yield "data: [DONE]\n\n"
             return
 
-        # Verifica saldo disponibile
+        # Verifica saldo disponibile con auto-erogazione Genesis Faucet
         current_balance = wallet.balance(local_peer_id).get("balance", 0.0)
         if current_balance <= 0.0:
+            try:
+                wallet.mint_faucet(local_peer_id, amount=100.0, force=False)
+                current_balance = 100.0
+                logger.info("[ClusterBroker] Genesis Faucet accreditato automaticamente a %s (100 AiloToken)", local_peer_id)
+            except Exception as f_err:
+                logger.debug("Tentativo faucet: %s", f_err)
+                current_balance = wallet.balance(local_peer_id).get("balance", 0.0)
+
+        if current_balance <= 0.0:
             err = {
-                "error": "Saldo AiloCoin insufficiente. Richiedi AiloCoin dal Faucet o avvia il Mining per guadagnare token."
+                "error": "Saldo AiloToken insufficiente. Richiedi AiloToken dal Faucet o avvia il Mining per guadagnare token."
             }
             yield f"data: {json.dumps(err)}\n\n"
             yield "data: [DONE]\n\n"
@@ -256,6 +276,11 @@ class ClusterBroker:
             for line in resp.iter_lines(decode_unicode=True):
                 if not line:
                     continue
+                if isinstance(line, bytes):
+                    try:
+                        line = line.decode("utf-8")
+                    except Exception:
+                        continue
                 if line.startswith("data: "):
                     content = line[6:].strip()
                     if content == "[DONE]":

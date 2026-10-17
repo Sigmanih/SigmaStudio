@@ -31,6 +31,21 @@ const PeerRadar = ({ networkMap, onRefresh, onSelectPeerForQuery }) => {
 
   const selectedPeer = peers.find(p => p.peer_id === selectedPeerId) || peers[0] || null;
 
+  const [isSweeping, setIsSweeping] = useState(false);
+
+  const handleClusterSweep = async () => {
+    setIsSweeping(true);
+    try {
+      await fetch('/api/sigma_network/cluster/sweep', { method: 'POST' });
+      await fetch('/api/sigma_network/peers/ping', { method: 'POST' });
+      if (onRefresh) onRefresh();
+    } catch (e) {
+      console.error('Auto-cluster sweep fallito', e);
+    } finally {
+      setIsSweeping(false);
+    }
+  };
+
   const handlePing = async () => {
     setIsPinging(true);
     try {
@@ -157,6 +172,25 @@ const PeerRadar = ({ networkMap, onRefresh, onSelectPeerForQuery }) => {
             <span style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Radio size={14} color="#00d4ff" /> UDP 47777 Scan
             </span>
+            <button
+              onClick={handleClusterSweep}
+              disabled={isSweeping}
+              title="Scansiona automaticamente la subnet locale per trovare ed eseguire l'handshake con altri Sigma Studio"
+              style={{
+                background: 'rgba(168, 85, 247, 0.15)',
+                border: '1px solid rgba(168, 85, 247, 0.4)',
+                color: '#c084fc',
+                borderRadius: '6px',
+                padding: '4px 10px',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5
+              }}
+            >
+              <Zap size={12} className={isSweeping ? 'sn-spin' : ''} /> {isSweeping ? 'Scansione...' : 'Auto-Cluster LAN'}
+            </button>
             <button
               onClick={handlePing}
               disabled={isPinging}

@@ -1284,6 +1284,63 @@ def call_ai_model_stream(messages, ai_cfg, model, provider, endpoint, api_url, a
             target_hardware=target_hardware,
         )
 
+    if provider in ('sigma_network', 'cluster'):
+        try:
+            import json
+            from core.modules.sigma_network.handlers import _get_broker
+            broker = _get_broker()
+
+            prompt_str = ""
+            if isinstance(messages, str):
+                prompt_str = messages
+            elif isinstance(messages, list):
+                prompt_str = "\n".join(
+                    f"{m.get('role', 'user')}: {m.get('content', '')}" for m in messages if isinstance(m, dict)
+                )
+
+            def _cluster_gen():
+                for raw in broker.execute_cluster_inference(
+                    prompt=prompt_str,
+                    model=model,
+                    max_tokens=max_tokens or 2048,
+                ):
+                    if cancel is not None and cancel.cancelled:
+                        return
+                    if not raw or not raw.startswith("data: "):
+                        continue
+                    body_str = raw[6:].strip()
+                    if body_str == "[DONE]":
+                        yield {"done": True}
+                        return
+                    try:
+                        parsed = json.loads(body_str)
+                        if "token" in parsed:
+                            yield {"token": parsed["token"]}
+                        elif "error" in parsed:
+                            yield {"error": True, "message": str(parsed["error"])}
+                            return
+                        elif parsed.get("type") == "start":
+                            yield {
+                                "status": True,
+                                "model_status": f"🌐 [Sigma Cluster] Connesso al provider {parsed.get('provider_name')}",
+                            }
+                        elif parsed.get("type") == "finish":
+                            cost = parsed.get("cost_ailocoin", 0.0)
+                            toks = parsed.get("tokens_generated", 0)
+                            yield {
+                                "status": True,
+                                "model_status": f"💎 [AiloToken] {toks} token regolati (-{cost} AILO)",
+                                "done": True,
+                            }
+                    except Exception:
+                        pass
+
+            return _cluster_gen()
+        except Exception as exc:
+            def _cluster_err():
+                yield {"error": True, "message": f"Errore provider Sigma Network: {exc}"}
+            return _cluster_err()
+
     route_provider = provider
     if route_provider in ('deepseek', 'openai'):
         route_provider = 'api'
