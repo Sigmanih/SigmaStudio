@@ -168,6 +168,8 @@ export const PROVIDER_COLORS = {
   glm: { bg: '#2a1a2a', color: '#c084fc' },
   moonshot: { bg: '#1a1a2a', color: '#60a5fa' },
   yi: { bg: '#2a2a1a', color: '#facc15' },
+  sigma_network: { bg: 'rgba(168, 85, 247, 0.2)', color: '#c084fc' },
+  cluster: { bg: 'rgba(168, 85, 247, 0.2)', color: '#c084fc' },
 };
 
 /**
@@ -180,6 +182,11 @@ export function getProviderForModel(modelName, providerConfigs) {
   if (!modelName) return 'sigma_engine';
 
   const lower = modelName.toLowerCase();
+
+  // 0) Rilevamento prioritario per modelli distribuiti su Sigma Network Cluster
+  if (lower.startsWith('[cluster') || lower.includes('[cluster') || lower.startsWith('sigma_network') || lower.startsWith('cluster:')) {
+    return 'sigma_network';
+  }
 
   // Rule 0: SigmaEngine native models & Ailo
   if (lower.startsWith('sigma-') || lower.startsWith('sigma:') || lower.startsWith('sigma_') || lower.startsWith('ailo-')) {

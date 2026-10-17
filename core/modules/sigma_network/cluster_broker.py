@@ -136,10 +136,19 @@ class ClusterBroker:
 
         # Identifica il provider adatto
         cluster_models = self.get_cluster_models()
+        clean_model_name = model.split("]")[-1].strip() if "]" in model else model
         candidates = [
             m for m in cluster_models
             if m["model_id"] == model or m["name"] == model
+            or m["model_id"] == clean_model_name or m["name"] == clean_model_name
+            or clean_model_name.lower() in m["model_id"].lower()
         ]
+
+        if "]" in model and "[" in model:
+            prov_tag = model.split("]")[0].replace("[", "").replace("Cluster:", "").strip()
+            prov_match = [m for m in candidates if prov_tag.lower() in m.get("provider_name", "").lower()]
+            if prov_match:
+                candidates = prov_match
 
         if preferred_peer_id:
             candidates = [m for m in candidates if m["provider_id"] == preferred_peer_id]

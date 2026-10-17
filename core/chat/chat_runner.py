@@ -1258,7 +1258,10 @@ def handle_chat(self):
             model = prov_cfg.get("model") or "llama3.2"
 
         requested_provider = req.get("model_provider")
-        if requested_provider and requested_provider in ai_cfg.get("providers", {}):
+        if requested_provider in ("sigma_network", "cluster") or (model and "[cluster" in str(model).lower()):
+            active_provider = "sigma_network"
+            active_prov_cfg = {"provider": "sigma_network"}
+        elif requested_provider and requested_provider in ai_cfg.get("providers", {}):
             active_provider = requested_provider
             active_prov_cfg = ai_cfg.get("providers", {})[requested_provider]
         else:

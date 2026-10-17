@@ -28,14 +28,15 @@ const ClusterInference = ({ initialPeer, walletBalance, onReceiptCreated }) => {
       const resp = await fetch('/api/sigma_network/cluster/models');
       if (resp.ok) {
         const data = await resp.json();
-        setClusterModels(data);
-        if (data.length > 0 && !selectedModel) {
+        const modelsList = Array.isArray(data) ? data : (data.models || []);
+        setClusterModels(modelsList);
+        if (modelsList.length > 0 && !selectedModel) {
           // Seleziona preferibilmente il peer passato da radar o il primo disponibile
-          if (initialPeer && initialPeer.models && initialPeer.models.length > 0) {
-            const match = data.find(m => m.provider_id === initialPeer.peer_id);
-            setSelectedModel(match || data[0]);
+          if (initialPeer && Array.isArray(initialPeer.models) && initialPeer.models.length > 0) {
+            const match = modelsList.find(m => m.provider_id === initialPeer.peer_id);
+            setSelectedModel(match || modelsList[0]);
           } else {
-            setSelectedModel(data[0]);
+            setSelectedModel(modelsList[0]);
           }
         }
       }

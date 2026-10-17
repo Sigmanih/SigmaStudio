@@ -355,7 +355,7 @@ const PeerRadar = ({ networkMap, onRefresh, onSelectPeerForQuery }) => {
 
               <div>
                 <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 4 }}>Modelli Offerti nel Cluster:</div>
-                {selectedPeer.models && selectedPeer.models.length > 0 ? (
+                {Array.isArray(selectedPeer?.models) && selectedPeer.models.length > 0 ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {selectedPeer.models.map((m, i) => (
                       <span key={i} style={{

@@ -26,14 +26,15 @@ const EnsembleSwarm = ({ identity, onRefreshWallet }) => {
       const resp = await fetch('/api/sigma_network/cluster/models');
       if (resp.ok) {
         const data = await resp.json();
-        setAvailableModels(data);
-        if (data.length > 0 && selectedModels.length === 0) {
+        const modelsList = Array.isArray(data) ? data : (data.models || []);
+        setAvailableModels(modelsList);
+        if (modelsList.length > 0 && selectedModels.length === 0) {
           // Seleziona di default fino a 3 modelli diversi o nodi per l'ensemble
-          setSelectedModels(data.slice(0, Math.min(3, data.length)).map(m => ({
-            model: m.model,
-            peer_id: m.peer_id,
-            node_name: m.node_name,
-            rate: m.rate_tokens_per_coin,
+          setSelectedModels(modelsList.slice(0, Math.min(3, modelsList.length)).map(m => ({
+            model: m.model_id || m.model || m.name,
+            peer_id: m.provider_id || m.peer_id,
+            node_name: m.provider_name || m.node_name,
+            rate: m.rate_tokens_per_coin || 1000,
           })));
         }
       }

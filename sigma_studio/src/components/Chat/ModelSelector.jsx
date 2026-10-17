@@ -82,7 +82,7 @@ export default function ModelSelector({
       })
       .filter(m => {
         if (disabledMap[m.provider] === true) return false;
-        if (m.provider === 'sigma_engine' || m.provider === 'sigma' || m.provider === 'ailoflow') return true;
+        if (m.provider === 'sigma_engine' || m.provider === 'sigma' || m.provider === 'ailoflow' || m.provider === 'sigma_network' || m.provider === 'cluster') return true;
         if (m.provider === 'ollama') return disabledMap.ollama !== true;
         const pCfg = providerConfigs?.[m.provider];
         return (
@@ -102,7 +102,7 @@ export default function ModelSelector({
     modelsWithProvider.forEach(m => {
       counts[m.provider] = (counts[m.provider] || 0) + 1;
     });
-    const preferredOrder = ['favorites', 'all', 'sigma_engine', 'ollama', 'ailoflow', 'deepseek', 'openai', 'anthropic', 'google', 'groq', 'openrouter', 'mistral', 'xai', 'perplexity', 'together', 'qwen', 'glm', 'custom'];
+    const preferredOrder = ['favorites', 'all', 'sigma_engine', 'sigma_network', 'ollama', 'ailoflow', 'deepseek', 'openai', 'anthropic', 'google', 'groq', 'openrouter', 'mistral', 'xai', 'perplexity', 'together', 'qwen', 'glm', 'custom'];
     const availableProviders = Object.keys(counts).filter(p => p !== 'all' && p !== 'favorites');
     
     const sorted = preferredOrder.filter(p => p in counts);
@@ -114,6 +114,7 @@ export default function ModelSelector({
       if (p === 'favorites') return '⭐ Preferiti';
       if (p === 'all') return 'Tutti';
       if (p === 'sigma_engine' || p === 'sigma') return '⚡ SIGMA';
+      if (p === 'sigma_network' || p === 'cluster') return '🌐 CLUSTER P2P';
       if (p === 'ailoflow') return '🌊 AILOFLOW';
       if (p === 'ollama') return '🦙 OLLAMA';
       return p.toUpperCase();
