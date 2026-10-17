@@ -584,6 +584,11 @@ def needs_upgrade() -> Optional[str]:
         if cartella:
             dll_path = os.path.join(cartella, "ggml-cuda.dll")
             if os.path.isfile(dll_path):
+                if os.name == "nt" and hasattr(os, "add_dll_directory"):
+                    try:
+                        os.add_dll_directory(cartella)
+                    except Exception:
+                        pass
                 setup_dll_directories()
                 try:
                     import ctypes

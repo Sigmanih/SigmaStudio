@@ -81,37 +81,71 @@ def detect_platform():
     info.update(detect_compute_backend(info))
     return info
 
+def _find_nvidia_smi():
+    """Trova il percorso dell'eseguibile nvidia-smi anche se non è registrato nel PATH."""
+    smi = shutil.which("nvidia-smi")
+    if smi:
+        return smi
+    if platform.system() == "Windows":
+        candidati = [
+            os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvidia-smi.exe"),
+            r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+        ]
+        for c in candidati:
+            if os.path.isfile(c):
+                return c
+    return None
+
 
 def _nvidia_smi_cuda_version():
     """CUDA version the installed driver supports, as (major, minor), or None."""
-    if not shutil.which("nvidia-smi"):
-        return None
-    try:
-        out = subprocess.check_output(["nvidia-smi"], stderr=subprocess.DEVNULL,
-                                      timeout=20).decode("utf-8", "replace")
-    except Exception:
-        return None
-    # Driver builds label this differently ("CUDA Version" on older releases,
-    # "CUDA UMD Version" on newer ones); both mean the highest CUDA runtime this
-    # driver can load, which is what bounds the wheel we may install.
-    match = re.search(r"CUDA(?:\s+UMD)?\s+Version:\s*(\d+)\.(\d+)", out)
-    if not match:
-        return None
-    return int(match.group(1)), int(match.group(2))
+    smi = _find_nvidia_smi()
+    if smi:
+        try:
+            out = subprocess.check_output([smi], stderr=subprocess.DEVNULL,
+                                          timeout=20).decode("utf-8", "replace")
+            match = re.search(r"CUDA(?:\s+UMD)?\s+Version:\s*(\d+)\.(\d+)", out)
+            if match:
+                return int(match.group(1)), int(match.group(2))
+        except Exception:
+            pass
+
+    # Se nvidia-smi fallisce ma nvcuda.dll esiste su Windows, il driver NVIDIA 12.x è attivo
+    if platform.system() == "Windows":
+        sys32_nvcuda = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvcuda.dll")
+        if os.path.isfile(sys32_nvcuda):
+            return 12, 4
+
+    return None
 
 
 def _has_nvidia_gpu():
-    """True only when a driver answers for a real device."""
-    if not shutil.which("nvidia-smi"):
-        return False
-    try:
-        out = subprocess.check_output(
-            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-            stderr=subprocess.DEVNULL, timeout=20,
-        ).decode("utf-8", "replace").strip()
-        return bool(out)
-    except Exception:
-        return False
+    """True quando un driver o dispositivo NVIDIA risponde."""
+    smi = _find_nvidia_smi()
+    if smi:
+        try:
+            out = subprocess.check_output(
+                [smi, "--query-gpu=name", "--format=csv,noheader"],
+                stderr=subprocess.DEVNULL, timeout=20,
+            ).decode("utf-8", "replace").strip()
+            if bool(out):
+                return True
+        except Exception:
+            pass
+
+    # Rilevamento di riserva su Windows (driver nvcuda.dll o adattatori WMI)
+    if platform.system() == "Windows":
+        sys32_nvcuda = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvcuda.dll")
+        if os.path.isfile(sys32_nvcuda):
+            return True
+        try:
+            from core.engine.gpu_vendors import _vendor_windows
+            if "nvidia" in _vendor_windows():
+                return True
+        except Exception:
+            pass
+
+    return False
 
 
 def detect_compute_backend(platform_info):
@@ -260,32 +294,77 @@ def verify_critical_versions(python_exe):
 
 
 def ensure_cuda_runtime_packages(python_exe, platform_info):
-    """Garantisce la presenza del runtime CUDA (cudart64) su Windows senza necessita' del CUDA Toolkit esterno."""
+    """Garantisce la presenza del runtime CUDA (cudart64 e cublas64) su Windows senza necessita' del CUDA Toolkit esterno."""
     if platform_info.get("compute") != "cuda" or not platform_info.get("is_windows"):
         return
 
-    # Verifica se un runtime e' gia' apribile
+    # Verifica se entrambi i runtime sono gia' apribili
     try:
         from core.engine.llama_runtime import setup_dll_directories
         setup_dll_directories()
-        from core.engine.gpu_vendors import _libreria_apribile, _CUDA_RUNTIME
-        if _libreria_apribile(_CUDA_RUNTIME):
-            print_log("[SIGMA] Runtime CUDA (cudart) verificato e operativo.", Colors.OKGREEN)
+        from core.engine.gpu_vendors import _libreria_apribile, _CUDA_RUNTIME, _CUBLAS_RUNTIME
+        has_cudart = _libreria_apribile(_CUDA_RUNTIME)
+        has_cublas = _libreria_apribile(_CUBLAS_RUNTIME)
+        if has_cudart and has_cublas:
+            print_log("[SIGMA] Runtime CUDA (cudart + cublas) verificato e operativo.", Colors.OKGREEN)
             return
     except Exception:
-        pass
+        has_cudart = False
+        has_cublas = False
 
-    print_log("[SIGMA] Driver NVIDIA rilevato. Installazione automatica del runtime ufficiale NVIDIA (cudart64)...", Colors.OKCYAN)
+    da_installare = []
+    if not has_cudart:
+        da_installare.append("nvidia-cuda-runtime-cu12")
+    if not has_cublas:
+        da_installare.append("nvidia-cublas-cu12")
+
+    if da_installare:
+        print_log(
+            f"[SIGMA] Driver NVIDIA rilevato. Configurazione runtime ufficiale NVIDIA ({', '.join(da_installare)})...",
+            Colors.OKCYAN,
+        )
+        try:
+            subprocess.check_call([python_exe, "-m", "pip", "install", "--default-timeout=120"] + da_installare)
+            print_log(f"[SIGMA] Pacchetti {', '.join(da_installare)} configurati con successo.", Colors.OKGREEN)
+            activate_venv_env()
+            from core.engine.llama_runtime import setup_dll_directories
+            setup_dll_directories()
+            from core.engine import gpu_vendors
+            gpu_vendors.reset_cache()
+        except Exception as exc:
+            print_log(f"[SIGMA] Impossibile auto-installare pacchetti CUDA {da_installare}: {exc}", Colors.WARNING)
+
+
+def ensure_pytorch_cuda(python_exe, platform_info):
+    """Garantisce che PyTorch utilizzi i kernel CUDA se è presente una GPU NVIDIA supportata."""
+    if platform_info.get("compute") != "cuda":
+        return
+
     try:
-        subprocess.check_call([python_exe, "-m", "pip", "install", "--default-timeout=120", "nvidia-cuda-runtime-cu12"])
-        print_log("[SIGMA] Runtime NVIDIA CUDA configurato con successo.", Colors.OKGREEN)
-        activate_venv_env()
-        from core.engine.llama_runtime import setup_dll_directories
-        setup_dll_directories()
-        from core.engine import gpu_vendors
-        gpu_vendors.reset_cache()
+        check_code = "import torch; print('CUDA_OK' if torch.cuda.is_available() else 'NO_CUDA')"
+        res = subprocess.check_output(
+            [python_exe, "-c", check_code],
+            stderr=subprocess.DEVNULL, timeout=15,
+        ).decode("utf-8", "replace").strip()
+        if "CUDA_OK" in res:
+            return
+    except Exception:
+        return
+
+    print_log(
+        "[SIGMA] GPU NVIDIA rilevata ma PyTorch è in modalità CPU: "
+        "installazione automatica dei kernel PyTorch con accelerazione CUDA (cu124)...",
+        Colors.OKCYAN,
+    )
+    try:
+        subprocess.check_call([
+            python_exe, "-m", "pip", "install", "--default-timeout=180",
+            "torch", "torchvision", "torchaudio",
+            "--index-url", "https://download.pytorch.org/whl/cu124",
+        ])
+        print_log("[SIGMA] PyTorch CUDA configurato con successo.", Colors.OKGREEN)
     except Exception as exc:
-        print_log(f"[SIGMA] Impossibile auto-installare nvidia-cuda-runtime-cu12: {exc}", Colors.WARNING)
+        print_log(f"[SIGMA] Avviso configurazione PyTorch CUDA: {exc}", Colors.WARNING)
 
 
 def install_dependencies(platform_info):
@@ -326,6 +405,7 @@ def install_dependencies(platform_info):
 
     activate_venv_env()
     ensure_cuda_runtime_packages(python_exe, platform_info)
+    ensure_pytorch_cuda(python_exe, platform_info)
     install_gguf_runtime(platform_info)
 
     # Entrambi i percorsi devono funzionare: il GGUF appena installato e i
@@ -492,9 +572,18 @@ def install_gguf_runtime(platform_info, force=False):
         motivo = needs_upgrade()
         if motivo is None:
             return True
+        if "non carica le proprie dipendenze" in motivo:
+            python_exe, _ = ensure_venv()
+            ensure_cuda_runtime_packages(python_exe, platform_info)
+            from core.engine.llama_runtime import setup_dll_directories
+            setup_dll_directories()
+            motivo = needs_upgrade()
+            if motivo is None:
+                print_log("[SIGMA] Runtime GGUF verificato e operativo dopo la configurazione dei pacchetti CUDA.", Colors.OKGREEN)
+                return True
         print_log(f"[SIGMA] Runtime GGUF installato ma non ottimale: {motivo}", Colors.WARNING)
         print_log("[SIGMA] Scarico la build corretta...", Colors.OKCYAN)
-        # La build vecchia resta al suo posto finche' la nuova non e' pronta.
+        force = True
         # Cancellare qui tutto engine_runtime lasciava l'applicazione senza
         # motore per l'intera durata del download: il backend a processo
         # separato risultava non installato, la selezione ripiegava sulla

@@ -325,6 +325,13 @@ class ModuleLoader:
             return False
 
         try:
+            if app is None:
+                try:
+                    from core.fastapi_app import app as _fastapi_app
+                    app = _fastapi_app
+                except Exception:
+                    app = None
+
             if hasattr(mod, "register_routes"):
                 mod.register_routes(app)
                 log.info(f"[ModuleLoader] '{module_id}' route registrate da {loaded_path}.")

@@ -186,6 +186,8 @@ _LIBRERIE = {
 #: I nomi sono quelli reali delle release: CUDA 11 spedisce cudart64_110.dll,
 #: CUDA 12 cudart64_12.dll, CUDA 13 cudart64_13.dll.
 _CUDA_RUNTIME = ("cudart64_13.dll", "cudart64_12.dll", "cudart64_110.dll")
+#: Anche cublas64 è richiesto esplicitamente da ggml-cuda.dll nelle build ufficiali di llama.cpp.
+_CUBLAS_RUNTIME = ("cublas64_13.dll", "cublas64_12.dll", "cublas64_11.dll")
 
 
 def _libreria_apribile(nomi) -> bool:
@@ -235,15 +237,23 @@ def available_runtimes() -> Dict[str, bool]:
         esiti[nome] = _libreria_apribile(librerie)
 
         # Il driver da solo non basta. Su una macchina con scheda NVIDIA ma
-        # senza Toolkit, dichiarare CUDA fa scaricare una build che non parte;
-        # escluderlo fa scegliere Vulkan, che con quel driver c'e' gia'.
+        # senza Toolkit o pacchetti runtime (cudart e cublas), dichiarare CUDA
+        # fa scaricare una build che non parte; escluderlo fa scegliere Vulkan,
+        # che con quel driver c'e' gia'.
         if nome == "cuda" and esiti[nome] and platform.system() == "Windows":
-            if not _libreria_apribile(_CUDA_RUNTIME):
+            has_cudart = _libreria_apribile(_CUDA_RUNTIME)
+            has_cublas = _libreria_apribile(_CUBLAS_RUNTIME)
+            if not has_cudart or not has_cublas:
+                mancanti = []
+                if not has_cudart:
+                    mancanti.append(", ".join(_CUDA_RUNTIME))
+                if not has_cublas:
+                    mancanti.append(", ".join(_CUBLAS_RUNTIME))
                 log.info(
                     "[GpuVendors] Driver CUDA presente ma runtime assente "
                     "(nessuna fra %s si apre): CUDA escluso, si ripiega su "
-                    "Vulkan o CPU. Il CUDA Toolkit lo riabilita.",
-                    ", ".join(_CUDA_RUNTIME),
+                    "Vulkan o CPU. I pacchetti nvidia-*-cu12 o il Toolkit lo riabilitano.",
+                    " / ".join(mancanti),
                 )
                 esiti[nome] = False
 

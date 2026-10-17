@@ -667,6 +667,12 @@ except Exception as _mod_err:
     import traceback as _tb
     _module_loader_error = f"{type(_mod_err).__name__}: {_mod_err}\n{_tb.format_exc()}"
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
+# Fallback per /api/developer/status se sigma_developer_lab non è installato o attivo
+if "sigma_developer_lab" not in getattr(module_loader, "_loaded", {}):
+    @app.get("/api/developer/status")
+    async def api_developer_status_fallback():
+        """Informa il frontend che il modulo Developer Lab non è attualmente installato/attivo."""
+        return {"success": True, "available": False, "workspace_root": ""}
 
 
 @app.get("/api/harness/activity")

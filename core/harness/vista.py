@@ -429,6 +429,16 @@ def risolvi_percorso(path: str, radice: Optional[str] = None) -> Path:
                 raise VistaError(
                     f"{p.name} non e' un'immagine ({', '.join(sorted(ESTENSIONI))})")
             return p.resolve()
+    # L'agente indovina spesso l'estensione (005.png per 005.jpg): con i nomi
+    # simili nella stessa cartella si corregge da solo invece di cercare con glob.
+    simili = []
+    for p in tentativi:
+        if p.parent.is_dir():
+            simili = sorted(q.name for q in p.parent.glob(f"{p.stem}.*") if q.suffix.lower() in ESTENSIONI)
+            if simili:
+                break
+    if simili:
+        raise VistaError(f"immagine non trovata: {grezzo}; nella stessa cartella c'e': {', '.join(simili[:5])}")
     raise VistaError(f"immagine non trovata: {grezzo}")
 
 

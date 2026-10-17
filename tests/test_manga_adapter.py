@@ -140,3 +140,89 @@ class TestVoci:
         esito = manga.rivedi_voci(tmp_path, ["Aika"], "Aika", "Comparsa",
                                   lambda m, n: '{"lines": [{"id": "L1", "who": "Mister X"}]}')
         assert esito["changed"] == 0
+
+
+class TestStoryboard:
+
+    def test_piu_pagine_con_didascalie_ed_esclusioni(self, tmp_path):
+        """Una didascalia (fuori campo) seguita da un'altra pagina: il nome «fuori» serviva
+        a due cose e la seconda pagina faceva esplodere il controllo delle esclusioni."""
+        import json
+        vignetta = lambda vid, testi: {"id": vid, "ritaglio": f"vignette/{vid}.png", "inquadratura": "campo lungo",
+                                       "testi": testi, "regia": {"presenti": ["Taiga"], "voci": {}}}
+        stato = {"pagine": [
+            {"pagina": "004.jpg", "vignette": [vignetta("004_01", [])]},
+            {"pagina": "005.jpg", "vignette": [vignetta("005_01", [{"tipo": "didascalia", "testo": "APRILE"}])]},
+            {"pagina": "008.jpg", "vignette": [vignetta("008_01", [{"tipo": "battuta", "testo": "CIAO"}])]},
+        ]}
+        (tmp_path / "vignette.json").write_text(json.dumps(stato), encoding="utf-8")
+        shots = manga.storyboard(tmp_path, "Taiga", "Comparsa", ["004"])
+        assert [s["panel_id"] for s in shots] == ["005_01", "008_01"]
+        assert shots[0]["dialogue"]["off_screen"] is True
+        assert shots[0]["dialogue"]["character"] == "Taiga"
+
+
+class TestRevisione:
+
+    def test_correzione_passa_allo_storyboard_e_resta(self, tmp_path):
+        """La battuta corretta cambia voce nell'inquadratura gia' resa, che torna da rifare;
+        la regia automatica non la sovrascrive piu'."""
+        import json
+        stato = {"pagine": [{"pagina": "010.jpg", "vignette": [{
+            "id": "010_01", "ritaglio": "vignette/010_01.png", "inquadratura": "figura intera",
+            "testi": [{"tipo": "battuta", "testo": "STA VOLANDO!!!"}],
+            "regia": {"presenti": ["Hiragi-sensei"], "firma": "x",
+                      "voci": {"0": {"chi": "Hiragi-sensei", "fuori_campo": False}}}}]}]}
+        (tmp_path / "vignette.json").write_text(json.dumps(stato), encoding="utf-8")
+        prod = {"shots": [{"id": "010_01_1", "panel_id": "010_01", "status": "done", "refs": ["Hiragi-sensei"],
+                           "dialogue": {"character": "Hiragi-sensei", "text": "STA VOLANDO!!!", "audio": "a.wav"}}]}
+        manga.correggi_vignetta(tmp_path, "010_01", None, {"0": {"chi": "Kuzumi Taiga", "fuori_campo": True}})
+        assert manga.applica_allo_storyboard(prod, tmp_path, "010_01", "Kuzumi Taiga", "Comparsa") == 1
+        shot = prod["shots"][0]
+        assert shot["dialogue"]["character"] == "Kuzumi Taiga" and shot["dialogue"]["off_screen"] is True
+        assert "audio" not in shot["dialogue"] and shot["status"] == "pending"
+        # La regia rifatta con una bibbia diversa salta la vignetta rivista.
+        manga.regia_capitolo(tmp_path, [{"name": "Kuzumi Taiga", "description": "nuova"}])
+        v = json.loads((tmp_path / "vignette.json").read_text(encoding="utf-8"))["pagine"][0]["vignette"][0]
+        assert v["regia"]["voci"]["0"]["chi"] == "Kuzumi Taiga" and v["regia"]["revisione_umana"] is True
+        assert manga.elenco_revisione(tmp_path)[0]["rivista"] is True
+
+
+class TestFotogrammiDaVignetta:
+
+    def test_riferimento_solo_colori_comparsa_esclusa(self, tmp_path):
+        """005_03: la comparsa entrava come ragazza inventata, il foglio di Kuzumi come doppione."""
+        from core.modules.sigma_creative_lab.video import genres
+        ref = tmp_path / "k.png"
+        ref.write_bytes(b"x")
+        prod = {"bible": {"characters": [{"name": "Kuzumi Taiga", "ref_image": str(ref)},
+                                         {"name": "Comparsa Generica", "ref_image": str(ref)}]}}
+        shot = {"refs": ["Kuzumi Taiga", "Comparsa Generica"], "prompt": ""}
+        bn = tmp_path / "bn.png"
+        PIL.new("RGB", (60, 90), (200, 200, 200)).save(bn)
+        prompt, refs = genres.panel_keyframe(prod, shot, str(bn))
+        assert refs == [str(bn), str(ref)]
+        assert "only a color reference for Kuzumi Taiga" in prompt and "do not copy its figure" in prompt
+        assert "is the character in image" not in prompt and "Comparsa" not in prompt
+        # A colori la vignetta basta: niente foglio da incollare.
+        colore = tmp_path / "c.png"
+        PIL.new("RGB", (60, 90), (240, 120, 60)).save(colore)
+        assert genres.panel_keyframe(prod, shot, str(colore))[1] == [str(colore)]
+
+    def test_correzione_rifa_il_fotogramma(self, monkeypatch):
+        """La correzione del QA vale anche per il fotogramma: LTX parte da li'."""
+        from core.modules.sigma_creative_lab.video import production
+        prod = {"shots": [{"prompt": "p", "keyframe": "k.png", "keyframe_check": {}, "status": "done"}]}
+
+        class Store:
+            def get(self, pid):
+                return prod
+
+            def save(self, p):
+                pass
+        monkeypatch.setattr(production.manager, "store", Store())
+        out = tools.video_shot_fix("x", 0, "Kuzumi alone, no duplicate")
+        shot = prod["shots"][0]
+        assert out["success"] and "keyframe" not in shot and shot["status"] == "pending"
+        assert shot["keyframe_fixes"] == ["Kuzumi alone, no duplicate"]
+        assert shot["prompt_fixes"] == ["Kuzumi alone, no duplicate"]

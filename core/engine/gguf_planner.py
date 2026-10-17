@@ -416,6 +416,33 @@ def _plan_settings(
                     kv_quant = "q4_0"
                     break
 
+        # Se l'offload completo (-1) non è raggiungibile a causa della grandezza del modello
+        # rispetto alla VRAM, non sprechiamo gigabyte preziosi con una finestra sproporzionata
+        # che costringe troppi layer su CPU: cerchiamo il miglior compromesso (fino a 8192 o 4096)
+        # e quantizzazione KV (q8_0) che massimizza il numero di layer in VRAM.
+        if plain != -1 and halved != -1 and layers > 0 and not env_ceiling:
+            miglior_l = halved if kv_quant else plain
+            miglior_c = n_ctx
+            miglior_q = kv_quant
+            miglior_f16 = kv_gb_f16
+
+            for cand_c in (12288, 8192, 6144, 4096):
+                if cand_c >= n_ctx:
+                    continue
+                c_f16 = ModelInspector.estimate_kv_cache_gb(facts, cand_c)
+                l_q8 = _layers_that_fit(weights_gb, layers, total_usable, c_f16 / 2)
+                if l_q8 > miglior_l and (l_q8 - miglior_l >= max(3, int(layers * 0.10))):
+                    miglior_l = l_q8
+                    miglior_c = cand_c
+                    miglior_q = _KV_QUANT_TYPE
+                    miglior_f16 = c_f16
+
+            if miglior_l > (halved if kv_quant else plain):
+                n_ctx = miglior_c
+                kv_quant = miglior_q
+                kv_gb_f16 = miglior_f16
+                halved = miglior_l
+
         kv_gb = round(kv_gb_f16 / 4, 3) if kv_quant == "q4_0" else (round(kv_gb_f16 / 2, 3) if kv_quant else kv_gb_f16)
         n_gpu_layers = halved if kv_quant else plain
 

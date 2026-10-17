@@ -154,7 +154,10 @@ def _get_model():
             _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
             log.info("Loaded SentenceTransformer router model successfully")
         except Exception as e:
-            log.warning("Could not load SentenceTransformer: %s", e)
+            if isinstance(e, (ImportError, ModuleNotFoundError)):
+                log.debug("sentence-transformers non installato: attivato fallback TF-IDF cosine similarity.")
+            else:
+                log.warning("Could not load SentenceTransformer: %s", e)
             _model = False
     return _model if _model else None
 

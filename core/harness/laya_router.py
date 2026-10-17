@@ -101,7 +101,10 @@ def _get_agent():
             return _agent
         except Exception as exc:
             _load_error = str(exc)
-            log.warning("[LayaRouter] Modello Laya non disponibile (%s). Routing disattivato.", exc)
+            if isinstance(exc, (ImportError, ModuleNotFoundError)):
+                log.debug("[LayaRouter] Modulo opzionale 'laya' non installato. Routing semantico disattivato (fallback euristico attivo).")
+            else:
+                log.warning("[LayaRouter] Modello Laya non disponibile (%s). Routing disattivato.", exc)
             return None
 
 

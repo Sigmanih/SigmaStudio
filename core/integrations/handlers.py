@@ -312,7 +312,14 @@ def handle_marketplace_install(self):
         
         from core.module_loader import ModuleLoader
         loader = ModuleLoader()
-        res = loader.install(module_id, repo_url, branch, module_path, app=getattr(self, 'app', None))
+        app = getattr(self, 'app', None)
+        if app is None:
+            try:
+                from core.fastapi_app import app as _fastapi_app
+                app = _fastapi_app
+            except Exception:
+                app = None
+        res = loader.install(module_id, repo_url, branch, module_path, app=app)
         
         self.send_json_response({
             "success": True,

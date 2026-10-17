@@ -102,6 +102,11 @@ class TestEsecuzione:
         assert "Accettati" in vista.esegui("view_image", {"path": "x.png", "colore": 1})["error"]
         assert not occhio_finto
 
+    def test_estensione_sbagliata_suggerisce_il_file(self, pagina, occhio_finto):
+        """Collaudo Mx0: l'agente chiedeva 005.png, la scansione era 005.jpg."""
+        errore = vista.esegui("view_image", {"path": str(pagina.with_suffix(".jpg"))})["error"]
+        assert "pagina.png" in errore
+
     def test_osservazione_per_l_agente(self, pagina, occhio_finto):
         testo = vista.descrivi(vista.esegui("view_image", {"path": str(pagina)}))
         assert "Una pagina bianca e rossa." in testo
