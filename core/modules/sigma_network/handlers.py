@@ -241,6 +241,16 @@ def _auto_handshake_with_peer(host: str, port: int, peer_info: Dict[str, Any]) -
                     except Exception:
                         pass
                     log.info("[SigmaNetwork] Auto-handshake cluster completato: peer %s (%s:%d) verificato e trusted!", remote_peer_id, host, port)
+
+                    # Gossip Protocol (PEX): scopri e collega a cascata i peer noti al peer remoto
+                    gossip_peers = data.get("peers") or []
+                    for gp in gossip_peers:
+                        gp_id = gp.get("peer_id")
+                        gp_host = gp.get("host")
+                        gp_port = gp.get("port")
+                        if gp_id and gp_host and gp_port and gp_id != local_peer_id:
+                            if not registry.get(gp_id):
+                                _auto_handshake_with_peer(gp_host, gp_port, {"peer_id": gp_id})
         except Exception as exc:
             log.debug("Auto-handshake verso %s:%d non completato: %s", host, port, exc)
 
@@ -566,6 +576,16 @@ def update_settings(body: SettingsRequest) -> Dict[str, Any]:
             disc.start()
         if disc.is_running():
             disc.announce_now()
+
+        # Se il provider viene abilitato, tenta auto-port forwarding UPnP sul router
+        if changes.get("sharing_enabled") is True:
+            def _upnp_bg():
+                try:
+                    from core.modules.sigma_network.nat_traversal import forward_port_upnp
+                    forward_port_upnp(internal_port=_detect_server_port())
+                except Exception as upnp_err:
+                    log.debug("UPnP auto-forwarding fallito: %s", upnp_err)
+            threading.Thread(target=_upnp_bg, daemon=True).start()
     except Exception as e:
         log.warning("Annuncio P2P durante update_settings fallito: %s", e)
 
@@ -701,6 +721,12 @@ def p2p_handshake(body: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as exc:
             log.debug("Errore generazione contro-firma handshake: %s", exc)
 
+    known_peers = [
+        {"peer_id": p.get("peer_id"), "host": p.get("host"), "port": p.get("port")}
+        for p in registry.all_peers()
+        if p.get("peer_id") != identity["peer_id"] and p.get("state") in ("trusted", "discovered")
+    ][:15]
+
     return {
         "status": "ok",
         "peer_id": identity["peer_id"],
@@ -711,6 +737,7 @@ def p2p_handshake(body: Dict[str, Any]) -> Dict[str, Any]:
         "accepting": bool(settings.get("sharing_enabled")),
         "message": resp_msg,
         "signature": resp_sig,
+        "peers": known_peers,
     }
 
 
@@ -763,8 +790,38 @@ def trigger_cluster_sweep() -> Dict[str, Any]:
         log.error("Errore cluster sweep: %s", exc)
         return {
             "status": "error",
-            "message": str(exc),
+            "detail": str(exc),
+            "total_peers": len(_get_registry().all_peers()),
         }
+
+
+@router.post("/cluster/bootstrap")
+def trigger_cluster_bootstrap(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Interroga i nodi seed globali e sincronizza la rete P2P mondiale."""
+    try:
+        disc = _get_discovery()
+        seeds = (body.get("seeds") if body else None)
+        count = disc.bootstrap_now(seeds=seeds)
+        return {
+            "status": "ok",
+            "peers_discovered_via_bootstrap": count,
+            "total_peers": len(_get_registry().all_peers()),
+        }
+    except Exception as exc:
+        log.error("Errore cluster bootstrap: %s", exc)
+        return {
+            "status": "error",
+            "detail": str(exc),
+            "total_peers": len(_get_registry().all_peers()),
+        }
+
+
+@router.post("/nat/upnp/forward")
+def trigger_upnp_forward(body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Mappa automaticamente la porta del server sul router domestico via UPnP IGD."""
+    from core.modules.sigma_network.nat_traversal import forward_port_upnp
+    target_port = (body.get("port") if body else None) or _detect_server_port()
+    return forward_port_upnp(internal_port=target_port, external_port=target_port)
 
 
 @router.post("/p2p/infer")

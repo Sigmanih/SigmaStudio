@@ -222,3 +222,55 @@ def test_call_ai_model_stream_sigma_network_provider(clean_environment):
 
     tokens = [c["token"] for c in chunks if "token" in c]
     assert "".join(tokens) == "Elaborato in rete P2P"
+
+
+def test_nat_and_upnp_discovery():
+    """Verifica che il modulo NAT traversal e UPnP IGD risponda con i metadati corretti."""
+    from core.modules.sigma_network.nat_traversal import detect_nat_info, forward_port_upnp
+
+    # Simula probe NAT info
+    with patch("core.modules.sigma_network.nat_traversal.STUNClient.get_public_address", return_value=("203.0.113.195", 47777)):
+        with patch("core.modules.sigma_network.nat_traversal.UPnPClient.discover_control_url", return_value=("http://192.168.1.1:5000/ctl", "urn:schemas-upnp-org:service:WANIPConnection:1")):
+            nat_info = detect_nat_info(local_service_port=8000)
+            assert nat_info["wan_ip"] == "203.0.113.195"
+            assert nat_info["upnp_available"] is True
+            assert nat_info["public_reachability"] == "upnp_ready"
+
+    # Simula auto-port forwarding UPnP
+    with patch("core.modules.sigma_network.nat_traversal.UPnPClient.add_port_mapping", return_value=True):
+        res = forward_port_upnp(internal_port=8000, external_port=8000)
+        assert res["success"] is True
+        assert res["external_port"] == 8000
+
+
+def test_gossip_pex_and_bootstrap(clean_environment):
+    """Verifica che il discovery globale e il Gossip PEX registrino i peer ricevuti."""
+    from fastapi import FastAPI
+    app = FastAPI()
+    app.include_router(handlers.router)
+    client = TestClient(app)
+
+    disc = handlers._get_discovery()
+
+    # Mock del file seed globale
+    fake_seed_payload = json.dumps([
+        {"host": "198.51.100.5", "port": 8000, "peer_id": "seed-node-worldwide-1"},
+    ]).encode("utf-8")
+
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.read.return_value = fake_seed_payload
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        with patch.object(disc, "_probe_url_and_handshake", return_value=True):
+            discovered = disc.bootstrap_from_global_seeds(seeds=["https://test-seeds.org/nodes.json"])
+            assert discovered == 1
+
+    # Verifica endpoint /cluster/bootstrap
+    with patch.object(disc, "bootstrap_now", return_value=2):
+        resp = client.post("/cluster/bootstrap", json={"seeds": ["https://test.org/seeds.json"]})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert data["peers_discovered_via_bootstrap"] == 2

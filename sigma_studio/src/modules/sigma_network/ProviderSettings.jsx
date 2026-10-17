@@ -17,7 +17,11 @@ import {
   Search,
   Globe,
   Share2,
-  CheckCircle2
+  CheckCircle2,
+  Network,
+  Radio,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 
 const ProviderSettings = ({ settings, onSaveSettings }) => {
@@ -43,6 +47,11 @@ const ProviderSettings = ({ settings, onSaveSettings }) => {
     max_memory_percent: 88,
     local_user_priority: true,
   });
+
+  const [natInfo, setNatInfo] = useState(null);
+  const [natLoading, setNatLoading] = useState(false);
+  const [upnpLoading, setUpnpLoading] = useState(false);
+  const [natNotice, setNatNotice] = useState('');
 
   // Carica modelli locali disponibili
   useEffect(() => {
@@ -87,6 +96,47 @@ const ProviderSettings = ({ settings, onSaveSettings }) => {
     const interval = setInterval(fetchTelemetry, 3500);
     return () => clearInterval(interval);
   }, [fetchTelemetry]);
+
+  // Carica stato NAT, IP WAN pubblico da STUN e stato UPnP
+  const fetchNatStatus = useCallback(async () => {
+    setNatLoading(true);
+    try {
+      const res = await fetch('/api/sigma_network/nat/status');
+      if (res.ok) {
+        const data = await res.json();
+        setNatInfo(data);
+      }
+    } catch (err) {
+      console.warn('Impossibile verificare lo stato NAT/STUN', err);
+    } finally {
+      setNatLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNatStatus();
+  }, [fetchNatStatus]);
+
+  const handleForwardUpnp = async () => {
+    setUpnpLoading(true);
+    setNatNotice('');
+    try {
+      const res = await fetch('/api/sigma_network/nat/upnp/forward', {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNatNotice(`Porta ${data.external_port} mappata con successo sul router via UPnP IGD!`);
+      } else {
+        setNatNotice(`Avviso UPnP: ${data.message || 'Router UPnP non raggiungibile. Se sei dietro NAT/CGNAT, configura il port forwarding manuale o usa una VPN mesh.'}`);
+      }
+      await fetchNatStatus();
+    } catch (err) {
+      setNatNotice('Errore durante la richiesta di apertura porta UPnP.');
+    } finally {
+      setUpnpLoading(false);
+    }
+  };
 
   const saveSettingsPayload = async (newForm, noticeMsg = null) => {
     setSaving(true);
@@ -807,7 +857,123 @@ const ProviderSettings = ({ settings, onSaveSettings }) => {
         )}
       </div>
 
-      {/* 6. Parametri Economici e Form di Salvataggio */}
+      {/* 6. Connettività P2P Mondiale & NAT Traversal (STUN / UPnP) */}
+      <div style={{
+        background: 'rgba(15, 23, 42, 0.65)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        borderRadius: '16px',
+        padding: '20px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '0.95rem', color: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Network size={18} color="#00d4ff" /> Connettività P2P Mondiale & NAT Traversal (STUN / UPnP)
+            </h3>
+            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>
+              Rende il tuo nodo accessibile dai peer di tutto il mondo su Internet, aprendo automaticamente la porta di ascolto sul router di casa via UPnP IGD o STUN.
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              type="button"
+              className="sn-btn-secondary"
+              onClick={fetchNatStatus}
+              disabled={natLoading}
+              style={{ fontSize: '0.78rem', padding: '6px 12px' }}
+              title="Aggiorna diagnostica NAT e verifica indirizzo pubblico STUN"
+            >
+              <RefreshCw size={13} className={natLoading ? 'sn-spin' : ''} />
+              <span>{natLoading ? 'Verifica STUN...' : 'Test NAT / STUN'}</span>
+            </button>
+
+            <button
+              type="button"
+              className="sn-btn-primary"
+              onClick={handleForwardUpnp}
+              disabled={upnpLoading}
+              style={{ fontSize: '0.78rem', padding: '6px 14px' }}
+              title="Richiede al router gateway l'apertura automatica della porta di inferenza"
+            >
+              <Globe size={13} />
+              <span>{upnpLoading ? 'Mappatura UPnP...' : 'Apri Porta UPnP sul Router'}</span>
+            </button>
+          </div>
+        </div>
+
+        {natNotice && (
+          <div style={{
+            background: 'rgba(56, 189, 248, 0.12)',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            borderRadius: '10px',
+            padding: '10px 14px',
+            fontSize: '0.82rem',
+            color: '#38bdf8',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}>
+            <ShieldCheck size={16} />
+            <span>{natNotice}</span>
+          </div>
+        )}
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: 12,
+        }}>
+          <div style={{
+            background: 'rgba(30, 41, 59, 0.5)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '10px',
+            padding: '12px 14px',
+          }}>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 4 }}>IP Pubblico Esterno (STUN):</div>
+            <div style={{ fontFamily: 'monospace', fontSize: '0.92rem', color: '#00d4ff', fontWeight: 600 }}>
+              {natInfo?.wan_ip || natInfo?.external_ip || (natLoading ? 'Rilevamento in corso...' : 'Non rilevato')}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
+              Porta Riflessiva: {natInfo?.reflexive_port || 8000} | Porta Locale: {natInfo?.internal_port || 8000}
+            </div>
+          </div>
+
+          <div style={{
+            background: 'rgba(30, 41, 59, 0.5)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '10px',
+            padding: '12px 14px',
+          }}>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 4 }}>Tipologia NAT / Firewall:</div>
+            <div style={{ fontSize: '0.86rem', color: '#f8fafc', fontWeight: 600 }}>
+              {natInfo?.nat_type || 'Endpoint-Independent / Normal NAT'}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: natInfo?.public_reachability ? '#34d399' : '#fbbf24', marginTop: 4 }}>
+              {natInfo?.public_reachability ? '✓ Raggiungibile direttamente da Internet' : 'ℹ Dietro NAT / Richiede UPnP o Seed Relay'}
+            </div>
+          </div>
+
+          <div style={{
+            background: 'rgba(30, 41, 59, 0.5)',
+            border: '1px solid rgba(255, 255, 255, 0.06)',
+            borderRadius: '10px',
+            padding: '12px 14px',
+          }}>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: 4 }}>Stato Router UPnP IGD:</div>
+            <div style={{ fontSize: '0.86rem', color: natInfo?.upnp_available ? '#34d399' : '#94a3b8', fontWeight: 600 }}>
+              {natInfo?.upnp_available ? '✓ UPnP Supportato e Attivo' : 'Non rilevato sulla LAN'}
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 4 }}>
+              {natInfo?.upnp_forwarded ? 'Porta aperta via UPnP' : 'Mappatura automatica all\'avvio del provider'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 7. Parametri Economici e Form di Salvataggio */}
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <div style={{
           background: 'rgba(15, 23, 42, 0.65)',

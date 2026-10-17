@@ -32,6 +32,25 @@ const PeerRadar = ({ networkMap, onRefresh, onSelectPeerForQuery }) => {
   const selectedPeer = peers.find(p => p.peer_id === selectedPeerId) || peers[0] || null;
 
   const [isSweeping, setIsSweeping] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [bootstrapNotice, setBootstrapNotice] = useState(null);
+
+  const handleGlobalBootstrap = async () => {
+    setIsBootstrapping(true);
+    setBootstrapNotice(null);
+    try {
+      const resp = await fetch('/api/sigma_network/cluster/bootstrap', { method: 'POST' });
+      const data = await resp.json();
+      await fetch('/api/sigma_network/peers/ping', { method: 'POST' });
+      if (onRefresh) onRefresh();
+      setBootstrapNotice(`Sincronizzazione completata: ${data.peers_discovered_via_bootstrap || 0} nodi mondiali scoperti!`);
+      setTimeout(() => setBootstrapNotice(null), 4000);
+    } catch (e) {
+      console.error('Bootstrap globale fallito', e);
+    } finally {
+      setIsBootstrapping(false);
+    }
+  };
 
   const handleClusterSweep = async () => {
     setIsSweeping(true);
@@ -168,14 +187,35 @@ const PeerRadar = ({ networkMap, onRefresh, onSelectPeerForQuery }) => {
       {/* Pannello Radar Interattivo */}
       <div className="sn-radar-panel">
         <div className="sn-radar-display">
-          <div style={{ position: 'absolute', top: 12, left: 16, display: 'flex', gap: 8, alignItems: 'center', zIndex: 10 }}>
+          <div style={{ position: 'absolute', top: 12, left: 16, display: 'flex', gap: 8, alignItems: 'center', zIndex: 10, flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Radio size={14} color="#00d4ff" /> UDP 47777 Scan
+              <Radio size={14} color="#00d4ff" /> P2P Mesh
             </span>
+            <button
+              onClick={handleGlobalBootstrap}
+              disabled={isBootstrapping}
+              title="Interroga i seed globali su Internet per scoprire ed eseguire l'handshake con i nodi del cluster P2P mondiale"
+              style={{
+                background: 'linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(168, 85, 247, 0.25))',
+                border: '1px solid #00d4ff',
+                color: '#38bdf8',
+                borderRadius: '6px',
+                padding: '4px 12px',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5
+              }}
+            >
+              <Globe size={13} className={isBootstrapping ? 'sn-spin' : ''} />
+              {isBootstrapping ? 'Connessione Globale...' : 'Sincronizza P2P Mondiale'}
+            </button>
             <button
               onClick={handleClusterSweep}
               disabled={isSweeping}
-              title="Scansiona automaticamente la subnet locale per trovare ed eseguire l'handshake con altri Sigma Studio"
+              title="Scansiona la subnet LAN locale per scoprire altri Sigma Studio"
               style={{
                 background: 'rgba(168, 85, 247, 0.15)',
                 border: '1px solid rgba(168, 85, 247, 0.4)',
@@ -336,7 +376,7 @@ const PeerRadar = ({ networkMap, onRefresh, onSelectPeerForQuery }) => {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <span className={`sn-badge`} style={{
                   background: selectedPeer.state === 'trusted' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
                   color: selectedPeer.state === 'trusted' ? '#34d399' : '#fbbf24',
@@ -347,6 +387,19 @@ const PeerRadar = ({ networkMap, onRefresh, onSelectPeerForQuery }) => {
                 <span className="sn-badge" style={{ background: 'rgba(0, 212, 255, 0.15)', color: '#38bdf8' }}>
                   {selectedPeer.latency_ms ? `${Math.round(selectedPeer.latency_ms)} ms` : 'Inattivo'}
                 </span>
+                {(() => {
+                  const ip = selectedPeer.host || '';
+                  const isPrivate = !ip || ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.16.') || ip.startsWith('127.');
+                  return (
+                    <span className="sn-badge" style={{
+                      background: isPrivate ? 'rgba(56, 189, 248, 0.15)' : 'rgba(168, 85, 247, 0.2)',
+                      color: isPrivate ? '#38bdf8' : '#c084fc',
+                      border: `1px solid ${isPrivate ? 'rgba(56, 189, 248, 0.3)' : 'rgba(168, 85, 247, 0.4)'}`
+                    }}>
+                      {isPrivate ? '🏠 LAN LOCALE' : '🌍 WAN INTERNET'}
+                    </span>
+                  );
+                })()}
               </div>
 
               <div style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>

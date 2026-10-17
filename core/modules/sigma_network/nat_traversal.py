@@ -128,8 +128,196 @@ class STUNClient:
         return None
 
 
+class UPnPClient:
+    """Client UPnP IGD (Internet Gateway Device) leggero in puro Python per auto-port forwarding su router."""
+
+    def __init__(self, timeout: float = 2.0) -> None:
+        self.timeout = timeout
+        self._control_url: Optional[str] = None
+        self._service_type: Optional[str] = None
+
+    def discover_control_url(self) -> Optional[Tuple[str, str]]:
+        """Rileva l'URL di controllo del router tramite SSDP su 239.255.255.250:1900."""
+        if self._control_url and self._service_type:
+            return (self._control_url, self._service_type)
+
+        msg = (
+            "M-SEARCH * HTTP/1.1\r\n"
+            "HOST: 239.255.255.250:1900\r\n"
+            'MAN: "ssdp:discover"\r\n'
+            "MX: 2\r\n"
+            "ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n"
+            "\r\n"
+        ).encode("utf-8")
+
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(self.timeout)
+        try:
+            sock.sendto(msg, ("239.255.255.250", 1900))
+            start_time = time.time()
+            location = None
+            while time.time() - start_time < self.timeout:
+                try:
+                    data, _ = sock.recvfrom(2048)
+                    text = data.decode("utf-8", errors="ignore")
+                    for line in text.splitlines():
+                        if line.lower().startswith("location:"):
+                            location = line.split(":", 1)[1].strip()
+                            break
+                    if location:
+                        break
+                except socket.timeout:
+                    break
+
+            if not location:
+                return None
+
+            import urllib.request
+            import urllib.parse
+            import xml.etree.ElementTree as ET
+
+            req = urllib.request.Request(location, headers={"User-Agent": "SigmaStudio-P2P"})
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                xml_content = resp.read()
+
+            root = ET.fromstring(xml_content)
+            for service in root.iter():
+                if "service" in service.tag:
+                    st_elem = None
+                    ctrl_elem = None
+                    for child in service:
+                        tag_lower = child.tag.lower()
+                        if "servicetype" in tag_lower:
+                            st_elem = child
+                        elif "controlurl" in tag_lower:
+                            ctrl_elem = child
+                    if st_elem is not None and ctrl_elem is not None:
+                        st_text = st_elem.text or ""
+                        if "WANIPConnection" in st_text or "WANPPPConnection" in st_text:
+                            ctrl_url = ctrl_elem.text or ""
+                            full_url = urllib.parse.urljoin(location, ctrl_url)
+                            self._control_url = full_url
+                            self._service_type = st_text
+                            return (full_url, st_text)
+
+        except Exception as e:
+            logger.debug("[UPnP] Errore durante la scoperta SSDP del router: %s", e)
+        finally:
+            sock.close()
+
+        return None
+
+    def add_port_mapping(
+        self,
+        internal_port: int,
+        external_port: int,
+        lan_ip: str,
+        protocol: str = "TCP",
+        description: str = "Sigma Studio P2P",
+    ) -> bool:
+        """Invia richiesta SOAP per mappare la porta esterna sull'IP LAN locale."""
+        endpoint = self.discover_control_url()
+        if not endpoint:
+            return False
+
+        control_url, service_type = endpoint
+        import urllib.request
+
+        soap_body = f"""<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:AddPortMapping xmlns:u="{service_type}">
+      <NewRemoteHost></NewRemoteHost>
+      <NewExternalPort>{external_port}</NewExternalPort>
+      <NewProtocol>{protocol.upper()}</NewProtocol>
+      <NewInternalPort>{internal_port}</NewInternalPort>
+      <NewInternalClient>{lan_ip}</NewInternalClient>
+      <NewEnabled>1</NewEnabled>
+      <NewPortMappingDescription>{description}</NewPortMappingDescription>
+      <NewLeaseDuration>0</NewLeaseDuration>
+    </u:AddPortMapping>
+  </s:Body>
+</s:Envelope>"""
+
+        headers = {
+            "Content-Type": 'text/xml; charset="utf-8"',
+            "SOAPAction": f'"{service_type}#AddPortMapping"',
+            "User-Agent": "SigmaStudio-P2P",
+        }
+
+        try:
+            req = urllib.request.Request(control_url, data=soap_body.encode("utf-8"), headers=headers)
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                if resp.status == 200:
+                    logger.info("[UPnP] Porta WAN %d mappata con successo su %s:%d (%s)", external_port, lan_ip, internal_port, protocol)
+                    return True
+        except Exception as e:
+            logger.debug("[UPnP] Mappatura porta fallita: %s", e)
+
+        return False
+
+    def delete_port_mapping(self, external_port: int, protocol: str = "TCP") -> bool:
+        """Rimuove la mappatura della porta dal router."""
+        endpoint = self.discover_control_url()
+        if not endpoint:
+            return False
+
+        control_url, service_type = endpoint
+        import urllib.request
+
+        soap_body = f"""<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:DeletePortMapping xmlns:u="{service_type}">
+      <NewRemoteHost></NewRemoteHost>
+      <NewExternalPort>{external_port}</NewExternalPort>
+      <NewProtocol>{protocol.upper()}</NewProtocol>
+    </u:DeletePortMapping>
+  </s:Body>
+</s:Envelope>"""
+
+        headers = {
+            "Content-Type": 'text/xml; charset="utf-8"',
+            "SOAPAction": f'"{service_type}#DeletePortMapping"',
+            "User-Agent": "SigmaStudio-P2P",
+        }
+
+        try:
+            req = urllib.request.Request(control_url, data=soap_body.encode("utf-8"), headers=headers)
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+
+
+def forward_port_upnp(
+    internal_port: int = 8000,
+    external_port: Optional[int] = None,
+    protocol: str = "TCP"
+) -> Dict[str, Any]:
+    """Tenta automaticamente la mappatura della porta sul router UPnP IGD."""
+    from core.ssl_manager import get_lan_ip
+    lan_ip = get_lan_ip()
+    ext_p = external_port or internal_port
+    upnp = UPnPClient(timeout=2.0)
+    success = upnp.add_port_mapping(internal_port, ext_p, lan_ip, protocol=protocol)
+    return {
+        "success": success,
+        "internal_port": internal_port,
+        "external_port": ext_p if success else None,
+        "lan_ip": lan_ip,
+        "protocol": protocol,
+    }
+
+
+def delete_port_upnp(external_port: int = 8000, protocol: str = "TCP") -> bool:
+    """Rimuove la mappatura UPnP della porta esterna."""
+    upnp = UPnPClient(timeout=2.0)
+    return upnp.delete_port_mapping(external_port, protocol=protocol)
+
+
 def detect_nat_info(local_service_port: int = 8000) -> Dict[str, Any]:
-    """Restituisce informazioni complete sullo stato di rete e NAT Traversal."""
+    """Restituisce informazioni complete sullo stato di rete, NAT Traversal e UPnP."""
     from core.ssl_manager import get_lan_ip
 
     lan_ip = get_lan_ip()
@@ -144,6 +332,10 @@ def detect_nat_info(local_service_port: int = 8000) -> Dict[str, Any]:
         reflexive_port = None
         is_behind_nat = False
 
+    # Prova rapida presenza UPnP router
+    upnp = UPnPClient(timeout=1.5)
+    upnp_endpoint = upnp.discover_control_url()
+
     return {
         "lan_ip": lan_ip,
         "local_port": local_service_port,
@@ -151,4 +343,6 @@ def detect_nat_info(local_service_port: int = 8000) -> Dict[str, Any]:
         "reflexive_port": reflexive_port,
         "is_behind_nat": is_behind_nat,
         "stun_available": wan_ip is not None,
+        "upnp_available": upnp_endpoint is not None,
+        "public_reachability": "direct" if not is_behind_nat else ("upnp_ready" if upnp_endpoint else "relay_required"),
     }

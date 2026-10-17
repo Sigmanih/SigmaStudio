@@ -38,6 +38,15 @@ BROADCAST_INTERVAL: float = 12.0
 #: Intervallo di sweep della subnet locale in secondi.
 SWEEP_INTERVAL: float = 90.0
 
+#: Lista di registry seed decentralizzati per bootstrap globale su Internet
+DEFAULT_BOOTSTRAP_SEEDS: List[str] = [
+    "https://raw.githubusercontent.com/xxrickyxx/ailo-network/main/seeds/nodes.json",
+    "https://raw.githubusercontent.com/sigmanih/sigma-network/main/seeds/nodes.json",
+]
+
+#: Intervallo di sync bootstrap globale in secondi
+GLOBAL_BOOTSTRAP_INTERVAL: float = 180.0
+
 
 def get_active_interfaces_and_broadcasts() -> List[Tuple[str, str, str]]:
     """Rileva le interfacce IPv4 attive escludendo loopback e APIPA.
@@ -125,6 +134,7 @@ class PeerDiscovery:
         self._broadcast_thread: Optional[threading.Thread] = None
         self._listen_thread: Optional[threading.Thread] = None
         self._sweep_thread: Optional[threading.Thread] = None
+        self._bootstrap_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
         self._running = False
@@ -157,9 +167,15 @@ class PeerDiscovery:
                 name="sigma-discovery-sweep",
                 daemon=True,
             )
+            self._bootstrap_thread = threading.Thread(
+                target=self._global_bootstrap_loop,
+                name="sigma-discovery-bootstrap",
+                daemon=True,
+            )
             self._broadcast_thread.start()
             self._listen_thread.start()
             self._sweep_thread.start()
+            self._bootstrap_thread.start()
             self._running = True
             logger.info("PeerDiscovery avviato (peer_id=%s, port=%d, multicast=%s)", self._peer_id, self._port, MULTICAST_GROUP)
 
@@ -170,7 +186,7 @@ class PeerDiscovery:
                 return
             self._stop_event.set()
 
-            for thread in (self._broadcast_thread, self._listen_thread, self._sweep_thread):
+            for thread in (self._broadcast_thread, self._listen_thread, self._sweep_thread, self._bootstrap_thread):
                 if thread is not None and thread.is_alive():
                     thread.join(timeout=2.0)
 
@@ -186,6 +202,7 @@ class PeerDiscovery:
             self._broadcast_thread = None
             self._listen_thread = None
             self._sweep_thread = None
+            self._bootstrap_thread = None
             self._running = False
             logger.info("PeerDiscovery fermato")
 
@@ -206,6 +223,10 @@ class PeerDiscovery:
     def sweep_now(self) -> int:
         """Esegue una scansione immediata della subnet locale per scoprire peer collegati."""
         return self._perform_subnet_sweep()
+
+    def bootstrap_now(self, seeds: Optional[List[str]] = None) -> int:
+        """Esegue immediatamente il bootstrap da seed globali su Internet."""
+        return self.bootstrap_from_global_seeds(seeds=seeds)
 
     # ------------------------------------------------------------------
     # Costruzione socket
@@ -363,6 +384,93 @@ class PeerDiscovery:
                     logger.debug("Errore valutazione probe IP: %s", exc)
 
         return discovered_count
+
+    # ------------------------------------------------------------------
+    # Loop di Bootstrap Globale su Internet (P2P Mondiale)
+    # ------------------------------------------------------------------
+
+    def _global_bootstrap_loop(self) -> None:
+        """Interroga periodicamente i seed globali e aggiorna la mesh mondiale."""
+        time.sleep(3.0)
+        while not self._stop_event.is_set():
+            try:
+                self.bootstrap_from_global_seeds()
+            except Exception as exc:
+                logger.debug("Errore durante bootstrap globale: %s", exc)
+            self._stop_event.wait(GLOBAL_BOOTSTRAP_INTERVAL)
+
+    def bootstrap_from_global_seeds(self, seeds: Optional[List[str]] = None) -> int:
+        """Contatta i registry seed globali e scopre i peer attivi su Internet."""
+        target_seeds = seeds or DEFAULT_BOOTSTRAP_SEEDS
+        discovered = 0
+        candidate_peers: List[Dict[str, Any]] = []
+
+        for seed_url in target_seeds:
+            try:
+                req = urllib.request.Request(
+                    seed_url,
+                    headers={"User-Agent": "SigmaStudio-P2P/GlobalBootstrap"},
+                )
+                with urllib.request.urlopen(req, timeout=3.5) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        if isinstance(data, list):
+                            candidate_peers.extend(data)
+                        elif isinstance(data, dict) and "nodes" in data:
+                            candidate_peers.extend(data["nodes"])
+            except Exception as e:
+                logger.debug("[Bootstrap] Impossibile contattare seed %s: %s", seed_url, e)
+
+        if not candidate_peers:
+            return 0
+
+        # Esegui probe e handshake con i nodi candidati mondiali
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_peer = {}
+            for p in candidate_peers:
+                host = p.get("host")
+                port = int(p.get("port", self._port))
+                pid = p.get("peer_id")
+                if host and pid != self._peer_id:
+                    url = f"http://{host}:{port}/api/sigma_network/p2p/hello"
+                    future_to_peer[executor.submit(self._probe_url_and_handshake, url, host, port)] = p
+
+            for future in concurrent.futures.as_completed(future_to_peer):
+                try:
+                    res = future.result()
+                    if res:
+                        discovered += 1
+                except Exception:
+                    pass
+
+        return discovered
+
+    def _probe_url_and_handshake(self, url: str, host: str, port: int) -> bool:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "SigmaStudio-P2P"})
+            with urllib.request.urlopen(req, timeout=2.5) as resp:
+                if resp.status == 200:
+                    payload = json.loads(resp.read().decode("utf-8"))
+                    pid = payload.get("peer_id")
+                    if pid and pid != self._peer_id:
+                        self._registry.add_peer(
+                            host=host,
+                            port=port,
+                            peer_id=pid,
+                            public_key=payload.get("public_key", ""),
+                            name=payload.get("name", "Sigma Peer"),
+                            models=payload.get("models", []),
+                            version=payload.get("version", "1.0.0"),
+                        )
+                        if self._on_peer_found and callable(self._on_peer_found):
+                            try:
+                                self._on_peer_found(host, port, payload)
+                            except Exception:
+                                pass
+                        return True
+        except Exception:
+            pass
+        return False
 
     # ------------------------------------------------------------------
     # Loop di ascolto
