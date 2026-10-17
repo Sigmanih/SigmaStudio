@@ -23,8 +23,6 @@ const AuthWalletModal = ({ isOpen, onClose, onAuthSuccess }) => {
   const [generatedSeed, setGeneratedSeed] = useState(null);
   const [copiedSeed, setCopiedSeed] = useState(false);
 
-  if (!isOpen) return null;
-
   useEffect(() => {
     if (isOpen) {
       fetch('/api/sigma_network/auth/session')
@@ -37,6 +35,8 @@ const AuthWalletModal = ({ isOpen, onClose, onAuthSuccess }) => {
         .catch(() => {});
     }
   }, [isOpen]);
+
+  if (!isOpen) return null;
 
   const resetForm = () => {
     setUsername('');

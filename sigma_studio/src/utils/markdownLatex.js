@@ -109,19 +109,29 @@ function renderLatexInText(text, katexBlocks = null) {
 
 /**
  * Convert paths like data/file.md to clickable links.
+ * Ignores code blocks (<pre>, <code>), existing links (<a>), and template/placeholder paths.
  */
 function linkifyPaths(text) {
   if (typeof text !== 'string') return '';
-  return text.replace(
-    /((?:data\/|manifesti\/|Ruoli\/|ruoli\/)[^\s<>"'`]+\.(?:md|py|html|js|jsx|css|json|txt|png|jpg|jpeg|webp|svg|gif))/gi,
-    (match) => {
-      const isImage = /\.(?:png|jpg|jpeg|webp|svg|gif)$/i.test(match);
-      if (isImage) {
-        return `<div class="chat-image-preview-card"><img src="/${match}" class="chat-inline-image" loading="lazy" /><span class="chat-image-caption">📄 ${match}</span></div>`;
+  return text.replace(/(<pre[\s\S]*?<\/pre>|<code[\s\S]*?<\/code>|<a\b[\s\S]*?<\/a>|<[^>]+>)|([^<]+)/gi, (fullMatch, tag, plainText) => {
+    if (tag) return tag;
+    if (!plainText) return '';
+
+    return plainText.replace(
+      /((?:data\/|manifesti\/|Ruoli\/|ruoli\/)[^\s<>"'`&{}*]+\.(?:md|py|html|js|jsx|css|json|txt|png|jpg|jpeg|webp|svg|gif))/gi,
+      (match) => {
+        // Discard placeholders containing template tokens or html entities
+        if (/(&lt;|&gt;|%3[ce]|<|>|\{|\}|\*|\[|\])/i.test(match)) {
+          return match;
+        }
+        const isImage = /\.(?:png|jpg|jpeg|webp|svg|gif)$/i.test(match);
+        if (isImage) {
+          return `<div class="chat-image-preview-card"><img src="/${match}" class="chat-inline-image" loading="lazy" onerror="this.parentElement.style.display='none'" /><span class="chat-image-caption">📄 ${match}</span></div>`;
+        }
+        return `<a class="chat-file-link" title="Apri ${match}" data-path="${match}">📄 ${match}</a>`;
       }
-      return `<a class="chat-file-link" title="Apri ${match}" data-path="${match}">📄 ${match}</a>`;
-    }
-  );
+    );
+  });
 }
 
 /**
@@ -251,12 +261,15 @@ function processInlineFormatting(text) {
   });
   // Markdown images: ![alt](url)
   text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+    if (/[<>{}\*]|&lt;|&gt;|%3[ce]/i.test(url)) {
+      return `<code>${escapeHtml(match)}</code>`;
+    }
     const isBadge = isBadgeUrl(url);
     if (isBadge) {
       return `<img src="${url}" alt="${alt}" class="inline-badge" style="display:inline-block; vertical-align:middle; margin:2px 3px 2px 0; max-height:22px; border-radius:3px;" loading="lazy" />`;
     }
     const caption = alt && alt.trim().length > 0 && !alt.startsWith('http') ? `<span class="chat-image-caption">${alt}</span>` : '';
-    return `<div class="chat-image-preview-card" style="margin:14px 0;"><img src="${url}" alt="${alt}" class="chat-inline-image" loading="lazy" />${caption}</div>`;
+    return `<div class="chat-image-preview-card" style="margin:14px 0;"><img src="${url}" alt="${alt}" class="chat-inline-image" loading="lazy" onerror="this.parentElement.style.display='none'" />${caption}</div>`;
   });
   // Markdown links: [text](url) — with instant inline YouTube video embed right underneath!
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {

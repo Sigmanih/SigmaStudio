@@ -15,7 +15,11 @@ import 'katex/dist/katex.min.css';
 
 // Helper: check if a file path is an image
 const IMAGE_EXTENSIONS = /\.(?:png|jpg|jpeg|webp|svg|gif|bmp|tiff)$/i;
-const isImagePath = (p) => typeof p === 'string' && IMAGE_EXTENSIONS.test(p);
+const isImagePath = (p) => {
+  if (typeof p !== 'string') return false;
+  if (/[<>{}\*\[\]]|&lt;|&gt;|%3[ce]/i.test(p)) return false;
+  return IMAGE_EXTENSIONS.test(p);
+};
 
 /**
  * Un riepilogo di chiusura che la bolla dell'assistente mostra gia' non va
