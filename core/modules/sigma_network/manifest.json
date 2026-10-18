@@ -1,7 +1,7 @@
 {
   "id": "sigma_network",
   "name": "Sigma Network",
-  "version": "v0.3.0",
+  "version": "v0.4.0",
   "category": "Rete & Inferenza Distribuita",
   "tabType": "sigma_network",
   "sidebarLabel": "Sigma Network",
@@ -9,7 +9,7 @@
   "sidebarBadge": "NET",
   "sidebarBadgeColor": "rgba(88,101,242,0.15)",
   "sidebarCategory": "Infrastruttura & Sistema",
-  "description": "Rete peer-to-peer per inferenza distribuita: scoperta UDP, fiducia esplicita dei peer, contabilita' AiloCoin, streaming SSE e collegamento nativo alla rete AiLo (wallet ALC, nodo di inferenza GPU, chat distribuita).",
+  "description": "Rete peer-to-peer per inferenza distribuita con contabilita' AiloCoin. Ospita l'infrastruttura AiLo (il coordinatore originale e' dismesso): hub con registro ALC, account, smistamento dell'inferenza ai nodi via WebSocket e migrazione dal vecchio ailo.db.",
   "author": "Sigma Core Team",
   "repository": "https://github.com/Sigmanih/SigmaStudio-Moduli",
   "branch": "main",
@@ -20,7 +20,8 @@
     "AiloCoin",
     "Discovery UDP",
     "AiLo Network",
-    "ALC"
+    "ALC",
+    "AiLo Hub"
   ],
   "size": "~1 MB",
   "icon": "Network",

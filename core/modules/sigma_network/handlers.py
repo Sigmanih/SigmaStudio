@@ -14,8 +14,10 @@ dettaglio interno.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -1624,3 +1626,344 @@ def _reset_ailo_singletons() -> None:
             _ailo_node_instance.stop()
         _ailo_config_instance = None
         _ailo_node_instance = None
+    # Definita piu' in basso: a runtime esiste sempre.
+    _reset_ailo_hub_singletons()
+
+
+# ==============================================================================
+# Hub AiLo nativo — l'infrastruttura AiLo ospitata da Sigma Studio
+# ==============================================================================
+# Il coordinatore AiLo originale e' dismesso: queste route ne riproducono le API
+# sotto /api/sigma_network/ailo_hub, cosi' il bridge (e qualunque client AiLo)
+# usa come server l'URL di un'istanza Sigma con l'hub attivo.
+
+from fastapi import Request, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+
+from core.modules.sigma_network.ailo_hub import (  # noqa: E402
+    TOKEN_SCHEMA,
+    AiloLedger,
+    AiloNodeHub,
+    LedgerError,
+    MIN_LEDGER_FEE,
+)
+
+HUB_PREFIX = "/ailo_hub"
+_ailo_hub_db_file: Optional[str] = None
+_ailo_ledger_instance: Optional[AiloLedger] = None
+_ailo_node_hub_instance: Optional[AiloNodeHub] = None
+
+_LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+
+def _ailo_ledger() -> AiloLedger:
+    global _ailo_ledger_instance
+    with _lock:
+        if _ailo_ledger_instance is None:
+            _ailo_ledger_instance = AiloLedger(_ailo_hub_db_file or _default_path("ailo_hub.db"))
+        return _ailo_ledger_instance
+
+
+def _ailo_node_hub() -> AiloNodeHub:
+    global _ailo_node_hub_instance
+    with _lock:
+        if _ailo_node_hub_instance is None:
+            _ailo_node_hub_instance = AiloNodeHub(_ailo_ledger())
+        return _ailo_node_hub_instance
+
+
+def _hub_enabled() -> bool:
+    return bool(_ailo_config().get().get("hub_enabled"))
+
+
+def _hub_off() -> JSONResponse:
+    return JSONResponse(status_code=404, content={"error": "Hub AiLo non attivo su questa istanza"})
+
+
+def _hub_error(exc: LedgerError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status, content={"success": False, "error": str(exc)})
+
+
+def _is_local(request: Request) -> bool:
+    """I comandi di amministrazione dell'hub si danno solo da questa macchina."""
+    return bool(request.client and request.client.host in _LOOPBACK)
+
+
+async def _json_body(request: Request) -> Dict[str, Any]:
+    try:
+        body = await request.json()
+    except ValueError:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+# --- API pubbliche compatibili con il coordinatore AiLo ---------------------
+
+@router.get(HUB_PREFIX + "/api/status")
+def hub_status() -> Any:
+    if not _hub_enabled():
+        return _hub_off()
+    nodes = _ailo_node_hub().nodes()
+    return {"activeNodes": len(nodes), "globalHashrate": 0, "globalModelVersion": 1,
+            "isNetworkActive": True, "hub": "sigma-network", "hubVersion": MODULE_VERSION}
+
+
+@router.get(HUB_PREFIX + "/api/network-stats")
+def hub_network_stats() -> Any:
+    if not _hub_enabled():
+        return _hub_off()
+    nodes = _ailo_node_hub().nodes()
+    return {"totalNodes": len(nodes), "trainingNodes": 0, "inferenceNodes": len(nodes),
+            "globalHashrate": 0, "models": {"total": 0, "available": 0, "comingSoon": 0, "list": []}}
+
+
+@router.get(HUB_PREFIX + "/api/nodes")
+def hub_nodes() -> Any:
+    if not _hub_enabled():
+        return _hub_off()
+    return _ailo_node_hub().nodes()
+
+
+@router.get(HUB_PREFIX + "/api/v1/token")
+def hub_token() -> Any:
+    return TOKEN_SCHEMA if _hub_enabled() else _hub_off()
+
+
+@router.get(HUB_PREFIX + "/api/balance/{wallet}")
+def hub_balance(wallet: str) -> Any:
+    if not _hub_enabled():
+        return _hub_off()
+    return _ailo_ledger().balance(wallet)
+
+
+@router.post(HUB_PREFIX + "/api/register")
+async def hub_register(request: Request) -> Any:
+    if not _hub_enabled():
+        return _hub_off()
+    body = await _json_body(request)
+    try:
+        return {"user": _ailo_ledger().register(str(body.get("email") or ""), body.get("password"))}
+    except LedgerError as exc:
+        return _hub_error(exc)
+
+
+@router.post(HUB_PREFIX + "/api/login")
+async def hub_login(request: Request) -> Any:
+    if not _hub_enabled():
+        return _hub_off()
+    body = await _json_body(request)
+    try:
+        return {"user": _ailo_ledger().login(str(body.get("email") or ""), body.get("password"))}
+    except LedgerError as exc:
+        return _hub_error(exc)
+
+
+@router.post(HUB_PREFIX + "/api/transfer")
+async def hub_transfer(request: Request) -> Any:
+    if not _hub_enabled():
+        return _hub_off()
+    body = await _json_body(request)
+    try:
+        return _ailo_ledger().transfer(str(body.get("fromEmail") or ""), str(body.get("toWallet") or ""),
+                                       body.get("amount"), body.get("password"))
+    except LedgerError as exc:
+        return _hub_error(exc)
+
+
+@router.post(HUB_PREFIX + "/api/ledger/transfer")
+async def hub_ledger_transfer(request: Request) -> Any:
+    """Variante del wallet web: mittente per wallet o email, commissione minima."""
+    if not _hub_enabled():
+        return _hub_off()
+    body = await _json_body(request)
+    try:
+        fee = max(float(body.get("fee") or MIN_LEDGER_FEE), MIN_LEDGER_FEE)
+    except (TypeError, ValueError):
+        fee = MIN_LEDGER_FEE
+    try:
+        return _ailo_ledger().transfer(str(body.get("from") or ""), str(body.get("to") or ""),
+                                       body.get("amount"), body.get("password"), fee=fee,
+                                       note=str(body.get("note") or ""))
+    except LedgerError as exc:
+        return _hub_error(exc)
+
+
+@router.post(HUB_PREFIX + "/api/v1/rpc")
+async def hub_rpc(request: Request) -> Any:
+    """JSON-RPC 2.0 con i metodi alc_* dell'AiloCoin SDK."""
+    if not _hub_enabled():
+        return _hub_off()
+    body = await _json_body(request)
+    rpc_id = body.get("id")
+    if body.get("jsonrpc") != "2.0":
+        return {"jsonrpc": "2.0", "error": {"code": -32600, "message": "Invalid Request - must be JSON-RPC 2.0"}, "id": rpc_id}
+    params = body.get("params") or []
+    ledger = _ailo_ledger()
+
+    def need(i: int) -> Any:
+        if len(params) <= i or not params[i]:
+            raise LedgerError("Invalid params", -32602)
+        return params[i]
+
+    try:
+        method = body.get("method")
+        if method == "alc_getBalance":
+            result: Any = ledger.balance(str(need(0)))["balance"]
+        elif method == "alc_getTransaction":
+            result = ledger.transaction(str(need(0)))
+            if result is None:
+                raise LedgerError("Transaction not found", -32602)
+        elif method == "alc_getTransactionsByAddress":
+            result = ledger.transactions(str(need(0)), int(params[1]) if len(params) > 1 else 50)
+        elif method == "alc_getBlockNumber":
+            result = ledger.stats()["blockNumber"]
+        elif method == "alc_getTotalSupply":
+            result = ledger.stats()["totalSupply"]
+        elif method == "alc_getNetworkStats":
+            result = ledger.stats()
+        elif method == "alc_getTokenInfo":
+            result = TOKEN_SCHEMA
+        else:
+            raise LedgerError(f"Method not found: {method}", -32601)
+    except LedgerError as exc:
+        return {"jsonrpc": "2.0", "error": {"code": exc.status, "message": str(exc)}, "id": rpc_id}
+    except (TypeError, ValueError) as exc:
+        return {"jsonrpc": "2.0", "error": {"code": -32602, "message": f"Invalid params: {exc}"}, "id": rpc_id}
+    return {"jsonrpc": "2.0", "result": result, "id": rpc_id}
+
+
+def _hub_infer_args(body: Dict[str, Any]) -> Tuple[str, int, float]:
+    prompt = str(body.get("prompt") or "")
+    try:
+        max_tokens = max(1, min(int(body.get("max_tokens") or 100), 4096))
+    except (TypeError, ValueError):
+        max_tokens = 100
+    try:
+        temperature = float(body.get("temperature", 0.8))
+    except (TypeError, ValueError):
+        temperature = 0.8
+    return prompt, max_tokens, temperature
+
+
+@router.post(HUB_PREFIX + "/api/inference/gpu")
+async def hub_inference_gpu(request: Request) -> Any:
+    """Smista la richiesta al nodo GPU libero usato meno di recente."""
+    if not _hub_enabled():
+        return _hub_off()
+    prompt, max_tokens, temperature = _hub_infer_args(await _json_body(request))
+    if not prompt.strip():
+        return JSONResponse(status_code=400, content={"error": "Prompt required"})
+    return await _ailo_node_hub().dispatch(prompt, max_tokens, temperature)
+
+
+@router.post(HUB_PREFIX + "/api/inference/fused")
+async def hub_inference_fused(request: Request) -> Any:
+    """Il modello "fused" dell'hub e' il motore locale di questa istanza."""
+    if not _hub_enabled():
+        return _hub_off()
+    prompt, max_tokens, temperature = _hub_infer_args(await _json_body(request))
+    if not prompt.strip():
+        return JSONResponse(status_code=400, content={"error": "Prompt required"})
+    if not _is_inference_engine_available():
+        return {"success": False, "error": "Motore dell'hub non disponibile", "model": "AILO-Fused",
+                "response": "[AILO Fused] Nessun modello caricato sull'hub."}
+    started = time.monotonic()
+    try:
+        loop = asyncio.get_running_loop()
+        text, tokens = await loop.run_in_executor(None, _ailo_generate, prompt, max_tokens, temperature)
+    except Exception as exc:  # noqa: BLE001 - l'errore torna al chiamante
+        log.warning("Inferenza fused fallita: %s", exc)
+        return {"success": False, "error": str(exc), "model": "AILO-Fused"}
+    return {"success": True, "prompt": prompt, "response": text, "tokens_generated": tokens,
+            "model": "AILO-Fused", "backend": "sigma-hub", "latency_ms": int((time.monotonic() - started) * 1000)}
+
+
+@router.websocket(HUB_PREFIX + "/ws/gpu-inference")
+async def hub_gpu_inference_ws(websocket: WebSocket) -> None:
+    """Endpoint dei nodi di inferenza (protocollo del client CUDA AiLo)."""
+    if not _hub_enabled():
+        await websocket.close(code=1008)
+        return
+    await websocket.accept()
+    hub = _ailo_node_hub()
+    node_id = hub.connect(websocket)
+    try:
+        while True:
+            await hub.handle_message(node_id, await websocket.receive_text())
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:  # noqa: BLE001 - un nodo guasto non deve toccare gli altri
+        log.warning("Nodo AiLo %s scollegato per errore: %s", node_id, exc)
+    finally:
+        hub.disconnect(node_id)
+
+
+# --- Amministrazione locale dell'hub -----------------------------------------
+
+def _local_hub_url() -> str:
+    scheme = "http"
+    try:
+        from sigma_server import _get_configured_host_port_ssl
+
+        scheme = "https" if _get_configured_host_port_ssl()[2] else "http"
+    except Exception as exc:  # noqa: BLE001 - senza config si assume http
+        log.debug("Config server non leggibile: %s", exc)
+    return f"{scheme}://127.0.0.1:{_detect_server_port()}/api/sigma_network{HUB_PREFIX}"
+
+
+@router.get("/ailo/hub/status")
+def ailo_hub_admin_status() -> Dict[str, Any]:
+    enabled = _hub_enabled()
+    out: Dict[str, Any] = {"enabled": enabled, "local_url": _local_hub_url()}
+    if enabled:
+        out["ledger"] = _ailo_ledger().stats()
+        out["nodes"] = _ailo_node_hub().nodes()
+    return out
+
+
+class AiloHubToggleRequest(BaseModel):
+    enabled: bool
+
+
+@router.post("/ailo/hub/enable")
+def ailo_hub_enable(body: AiloHubToggleRequest, request: Request) -> Dict[str, Any]:
+    if not _is_local(request):
+        raise HTTPException(status_code=403, detail="Solo da questa macchina")
+    _ailo_config().update({"hub_enabled": bool(body.enabled)})
+    return ailo_hub_admin_status()
+
+
+@router.post("/ailo/hub/use_local")
+def ailo_hub_use_local(request: Request) -> Dict[str, Any]:
+    """Collega il bridge all'hub di questa stessa istanza."""
+    if not _is_local(request):
+        raise HTTPException(status_code=403, detail="Solo da questa macchina")
+    if not _hub_enabled():
+        raise HTTPException(status_code=400, detail="Attiva prima l'hub AiLo")
+    return _ailo_config().update({"server_url": _local_hub_url()})
+
+
+class AiloHubImportRequest(BaseModel):
+    path: str
+
+
+@router.post("/ailo/hub/import")
+def ailo_hub_import(body: AiloHubImportRequest, request: Request) -> Dict[str, Any]:
+    """Migra account, saldi e storico da un ailo.db del vecchio coordinatore."""
+    if not _is_local(request):
+        raise HTTPException(status_code=403, detail="Solo da questa macchina")
+    try:
+        return _ailo_ledger().import_ailo_db(body.path)
+    except LedgerError as exc:
+        raise HTTPException(status_code=exc.status if exc.status >= 400 else 400, detail=str(exc)) from exc
+    except sqlite3.Error as exc:
+        raise HTTPException(status_code=400, detail=f"Database non leggibile: {exc}") from exc
+
+
+def _reset_ailo_hub_singletons() -> None:
+    global _ailo_ledger_instance, _ailo_node_hub_instance
+    with _lock:
+        if _ailo_ledger_instance is not None:
+            _ailo_ledger_instance.close()
+        _ailo_ledger_instance = None
+        _ailo_node_hub_instance = None

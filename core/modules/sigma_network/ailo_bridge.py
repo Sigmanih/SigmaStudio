@@ -30,6 +30,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import requests
 
@@ -42,9 +43,9 @@ GPU_INFERENCE_WS_PATH = "/ws/gpu-inference"
 HEARTBEAT_SECONDS = 25.0
 
 DEFAULT_CONFIG: Dict[str, Any] = {
-    # Vuoto di proposito: ailo.site oggi serve un'altra applicazione, e mandare
-    # email e password a un host che non e' un nodo AiLo sarebbe un regalo.
-    # L'utente sceglie il server e ``verify_server`` controlla che lo sia.
+    # Vuoto di proposito: il coordinatore AiLo originale (ailo.site) e'
+    # dismesso. Si indica un'istanza Sigma con l'hub attivo (``ailo_hub``) e
+    # ``verify_server`` controlla che dall'altra parte ci sia davvero un hub.
     "server_url": "",
     "wallet": "",
     "email": "",
@@ -52,6 +53,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "node_max_tokens": 512,
     "node_model": "",
     "gpu_label": "",
+    # Questa istanza fa da hub AiLo (registro ALC + nodi) per le altre.
+    "hub_enabled": False,
 }
 
 # Una risposta del server e' sempre un dato, mai un'istruzione: la tagliamo
@@ -134,6 +137,12 @@ class AiloNetworkClient:
             raise AiloError("Server AiLo non configurato")
         self.timeout = timeout
         self._http = session or requests.Session()
+        # L'hub di questa stessa istanza puo' girare in HTTPS con il
+        # certificato della CA locale: su loopback non c'e' nessuno da
+        # autenticare, altrove la verifica TLS resta attiva.
+        host = urlparse(self.server_url).hostname or ""
+        if session is None and self.server_url.startswith("https://") and host in ("127.0.0.1", "localhost", "::1"):
+            self._http.verify = False
         self._rpc_id = 0
 
     # ------------------------------------------------------------ trasporto

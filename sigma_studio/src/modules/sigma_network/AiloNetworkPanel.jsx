@@ -12,7 +12,8 @@ import {
   Cpu,
   Activity,
   ArrowRightLeft,
-  Loader2
+  Loader2,
+  Database
 } from 'lucide-react';
 
 const API = '/api/sigma_network/ailo';
@@ -70,8 +71,15 @@ const AiloNetworkPanel = () => {
   const [prompt, setPrompt] = useState('');
   const [backend, setBackend] = useState('gpu');
   const [answer, setAnswer] = useState(null);
+  const [hub, setHub] = useState(null);
+  const [importPath, setImportPath] = useState('');
 
   const refresh = useCallback(async () => {
+    try {
+      setHub(await call('/hub/status'));
+    } catch (e) {
+      setHub({ error: e.message });
+    }
     try {
       const st = await call('/status');
       setStatus(st);
@@ -125,6 +133,21 @@ const AiloNetworkPanel = () => {
       setPassword('');
       return out;
     }, out => `Wallet collegato: ${out.wallet}`);
+
+  const toggleHub = () =>
+    run('hub', () => call('/hub/enable', { method: 'POST', body: JSON.stringify({ enabled: !hub?.enabled }) }),
+      out => (out.enabled ? 'Hub AiLo attivo: questa istanza ospita registro ALC e nodi.' : 'Hub AiLo spento.'));
+
+  const useLocalHub = () =>
+    run('uselocal', async () => {
+      const out = await call('/hub/use_local', { method: 'POST' });
+      setServerUrl(out.server_url);
+      return out;
+    }, "Collegato all'hub di questa istanza.");
+
+  const importDb = () =>
+    run('import', () => call('/hub/import', { method: 'POST', body: JSON.stringify({ path: importPath }) }),
+      out => `Importati ${out.users} account e ${out.transactions} transazioni (${out.skipped_users} gia' presenti).`);
 
   const toggleNode = () =>
     run('node', () => call(status?.node?.running ? '/node/stop' : '/node/start', { method: 'POST' }),
@@ -200,13 +223,51 @@ const AiloNetworkPanel = () => {
         {/* Colonna sinistra: collegamento e wallet */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, minWidth: 0 }}>
           <div className="sn-card-cyber">
+            <h3 className="sn-inspector-title"><Database size={16} /> Hub AiLo su questa istanza</h3>
+            <p className="sn-stat-label" style={{ margin: 0 }}>
+              Il coordinatore AiLo originale è dismesso: l'hub ospita qui il registro AiloCoin, gli account
+              e lo smistamento dell'inferenza ai nodi. Le altre istanze Sigma vi si collegano con l'URL qui sotto.
+            </p>
+            {hub?.error && <Notice kind="error">{hub.error}</Notice>}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className={hub?.enabled ? 'sn-btn-secondary' : 'sn-btn-primary'} onClick={toggleHub} disabled={!!busy}>
+                {busy === 'hub' ? <Loader2 size={14} /> : hub?.enabled ? 'Spegni hub' : 'Attiva hub'}
+              </button>
+              {hub?.enabled && (
+                <button className="sn-btn-secondary" onClick={useLocalHub} disabled={!!busy}>
+                  {busy === 'uselocal' ? 'Collegamento…' : 'Usa questo hub'}
+                </button>
+              )}
+            </div>
+            {hub?.enabled && (
+              <>
+                <div className="sn-stat-label" style={{ overflowWrap: 'anywhere' }}>
+                  URL hub: <span style={{ fontFamily: 'monospace' }}>{hub.local_url}</span>
+                </div>
+                <div className="sn-stat-label">
+                  Account {hub.ledger?.activeAddresses ?? 0} · Transazioni {hub.ledger?.blockNumber ?? 0} ·
+                  Nodi collegati {hub.nodes?.length ?? 0}
+                </div>
+                <label className="sn-stat-label" htmlFor="ailo-import">Migra da un ailo.db del vecchio server</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input id="ailo-import" className="sn-prompt-input" placeholder="percorso/del/vecchio/ailo.db"
+                    value={importPath} onChange={e => setImportPath(e.target.value)} />
+                  <button className="sn-btn-secondary" onClick={importDb} disabled={!!busy || !importPath.trim()}>
+                    {busy === 'import' ? 'Import…' : 'Importa'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="sn-card-cyber">
             <h3 className="sn-inspector-title"><Link2 size={16} /> Collegamento</h3>
-            <label className="sn-stat-label" htmlFor="ailo-server">URL del server AiLo</label>
+            <label className="sn-stat-label" htmlFor="ailo-server">URL dell'hub AiLo</label>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <input
                 id="ailo-server"
                 className="sn-prompt-input"
-                placeholder="http://localhost:3000"
+                placeholder="http://host:8000/api/sigma_network/ailo_hub"
                 value={serverUrl}
                 onChange={e => setServerUrl(e.target.value)}
               />
