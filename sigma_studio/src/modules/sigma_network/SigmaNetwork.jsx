@@ -11,7 +11,8 @@ import {
   Globe,
   KeyRound,
   UserCheck,
-  LogOut
+  LogOut,
+  Link2
 } from 'lucide-react';
 import PeerRadar from './PeerRadar.jsx';
 import ClusterInference from './ClusterInference.jsx';
@@ -21,6 +22,7 @@ import WalletDashboard from './WalletDashboard.jsx';
 import MiningConsole from './MiningConsole.jsx';
 import ProviderSettings from './ProviderSettings.jsx';
 import AuthWalletModal from './AuthWalletModal.jsx';
+import AiloNetworkPanel from './AiloNetworkPanel.jsx';
 import './styles/sigma-network.css';
 
 const SigmaNetwork = () => {
@@ -251,6 +253,13 @@ const SigmaNetwork = () => {
         </button>
 
         <button
+          className={`sn-tab-btn ${activeTab === 'ailo' ? 'active' : ''}`}
+          onClick={() => setActiveTab('ailo')}
+        >
+          <Link2 size={16} /> Rete AiLo
+        </button>
+
+        <button
           className={`sn-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
           onClick={() => setActiveTab('settings')}
         >
@@ -302,6 +311,8 @@ const SigmaNetwork = () => {
             onRewardMined={fetchAllData}
           />
         )}
+
+        {activeTab === 'ailo' && <AiloNetworkPanel />}
 
         {activeTab === 'settings' && (
           <ProviderSettings

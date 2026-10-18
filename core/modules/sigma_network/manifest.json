@@ -1,7 +1,7 @@
 {
   "id": "sigma_network",
   "name": "Sigma Network",
-  "version": "v0.1.0",
+  "version": "v0.3.0",
   "category": "Rete & Inferenza Distribuita",
   "tabType": "sigma_network",
   "sidebarLabel": "Sigma Network",
@@ -9,7 +9,7 @@
   "sidebarBadge": "NET",
   "sidebarBadgeColor": "rgba(88,101,242,0.15)",
   "sidebarCategory": "Infrastruttura & Sistema",
-  "description": "Rete peer-to-peer per inferenza distribuita: scoperta UDP, fiducia esplicita dei peer, contabilita' AiloCoin e streaming SSE delle risposte.",
+  "description": "Rete peer-to-peer per inferenza distribuita: scoperta UDP, fiducia esplicita dei peer, contabilita' AiloCoin, streaming SSE e collegamento nativo alla rete AiLo (wallet ALC, nodo di inferenza GPU, chat distribuita).",
   "author": "Sigma Core Team",
   "repository": "https://github.com/Sigmanih/SigmaStudio-Moduli",
   "branch": "main",
@@ -18,7 +18,9 @@
     "P2P",
     "Inferenza Remota",
     "AiloCoin",
-    "Discovery UDP"
+    "Discovery UDP",
+    "AiLo Network",
+    "ALC"
   ],
   "size": "~1 MB",
   "icon": "Network",

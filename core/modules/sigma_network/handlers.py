@@ -19,9 +19,10 @@ import json
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from core.logger import get_logger
@@ -42,6 +43,8 @@ from core.modules.sigma_network.federated_aggregator import FederatedAggregator
 from core.modules.sigma_network.auth_manager import AuthManager
 
 log = get_logger("sigma_network.handlers")
+# Alcune route storiche usano `logger`: stesso logger, niente NameError.
+logger = log
 
 router = APIRouter()
 
@@ -121,6 +124,8 @@ def _reset_singletons() -> None:
         _auth_instance = None
         _provider_instance = None
         _current_session_token = None
+    # Definita in fondo al file: a runtime esiste sempre.
+    _reset_ailo_singletons()
 
 
 def _get_auth() -> AuthManager:
@@ -1381,5 +1386,241 @@ def set_provider_guard(body: ProviderGuardRequest) -> Dict[str, Any]:
     }
 
 
+# ==============================================================================
+# Rete AiLo — AiloCoin (ALC) e inferenza distribuita
+# ==============================================================================
+# Collegamento nativo al coordinatore AiLo (ailo-network). Le password non
+# passano mai dalla configurazione: arrivano nella singola richiesta di login o
+# trasferimento e vengono inoltrate al server senza essere salvate o loggate.
+
+from core.modules.sigma_network.ailo_bridge import (  # noqa: E402 - sezione autonoma
+    AiloConfig,
+    AiloError,
+    AiloInferenceNode,
+    AiloNetworkClient,
+)
+
+_ailo_config_file: Optional[str] = None
+_ailo_config_instance: Optional[AiloConfig] = None
+_ailo_node_instance: Optional[AiloInferenceNode] = None
 
 
+class AiloConfigRequest(BaseModel):
+    server_url: Optional[str] = None
+    wallet: Optional[str] = None
+    email: Optional[str] = None
+    node_max_tokens: Optional[int] = None
+    node_model: Optional[str] = None
+    gpu_label: Optional[str] = None
+
+
+class AiloCredentialsRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AiloTransferRequest(BaseModel):
+    to_wallet: str
+    amount: float
+    password: str
+
+
+class AiloInferRequest(BaseModel):
+    prompt: str
+    max_tokens: Optional[int] = 200
+    temperature: Optional[float] = 0.8
+    backend: Optional[str] = "gpu"
+
+
+def _ailo_config() -> AiloConfig:
+    global _ailo_config_instance
+    with _lock:
+        if _ailo_config_instance is None:
+            _ailo_config_instance = AiloConfig(_ailo_config_file or _default_path("ailo.json"))
+        return _ailo_config_instance
+
+
+def _ailo_client() -> AiloNetworkClient:
+    try:
+        return AiloNetworkClient(_ailo_config().get()["server_url"])
+    except AiloError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _ailo_call(fn: Any, *args: Any, **kwargs: Any) -> Any:
+    """Traduce gli errori della rete AiLo in 502: il guasto e' a monte, non qui."""
+    try:
+        return fn(*args, **kwargs)
+    except AiloError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+def _ailo_generate(prompt: str, max_tokens: int, temperature: float) -> Tuple[str, int]:
+    """Genera la risposta per la rete AiLo con il motore locale di Sigma Studio."""
+    from core.engine.unified_runtime import sigma_engine
+    from core.engine.provider_server import is_notice
+
+    model = _ailo_config().get().get("node_model") or None
+    parts: List[str] = []
+    tokens = 0
+    for chunk in sigma_engine.generate_stream(
+        prompt=prompt, model_name=model, max_tokens=max_tokens, temperature=temperature,
+    ):
+        if is_notice(chunk):
+            continue
+        if isinstance(chunk, dict):
+            text = chunk.get("token") or chunk.get("content") or ""
+        else:
+            text = str(chunk or "")
+        if text:
+            parts.append(text)
+            tokens += 1
+    return "".join(parts), tokens
+
+
+def _ailo_gate() -> Tuple[bool, str]:
+    """Stessi guard del provider P2P (RAM, priorita' utente locale, concorrenza).
+
+    ``sharing_enabled`` e' forzato a vero: avviare il nodo AiLo e' gia' il
+    consenso esplicito a servire quella rete, indipendente dalla condivisione
+    verso i peer Sigma.
+    """
+    if not _is_inference_engine_available():
+        return False, "Motore di inferenza Sigma non disponibile"
+    settings = {**_get_settings(), "sharing_enabled": True}
+    return _provider().can_serve(None, None, settings)
+
+
+def _ailo_node_state() -> Dict[str, Any]:
+    node = _ailo_node_instance
+    return node.status() if node else {"running": False, "connected": False}
+
+
+@router.get("/ailo/config")
+def ailo_get_config() -> Dict[str, Any]:
+    return _ailo_config().get()
+
+
+@router.post("/ailo/config")
+def ailo_set_config(body: AiloConfigRequest) -> Dict[str, Any]:
+    changes = body.model_dump() if hasattr(body, "model_dump") else body.dict()
+    return _ailo_config().update(changes)
+
+
+@router.get("/ailo/status")
+def ailo_status() -> Dict[str, Any]:
+    """Verifica il server e riassume rete, catena ALC e nodo locale."""
+    cfg = _ailo_config().get()
+    out: Dict[str, Any] = {
+        "configured": bool(cfg["server_url"]), "server_url": cfg["server_url"],
+        "wallet": cfg["wallet"], "email": cfg["email"], "node": _ailo_node_state(), "verified": False,
+    }
+    if not cfg["server_url"]:
+        return out
+    client = _ailo_client()
+    try:
+        verified = client.verify_server()
+        out.update(verified=True, token=verified["token"], coordinator=verified["status"])
+        out["chain"] = client.chain_stats()
+        out["network"] = client.network_stats()
+    except AiloError as exc:
+        out["error"] = str(exc)
+    return out
+
+
+@router.get("/ailo/wallet")
+def ailo_wallet() -> Dict[str, Any]:
+    cfg = _ailo_config().get()
+    if not cfg["wallet"]:
+        raise HTTPException(status_code=400, detail="Wallet AiLo non collegato")
+    client = _ailo_client()
+    balance = _ailo_call(client.balance, cfg["wallet"])
+    txs = _ailo_call(client.transactions, cfg["wallet"], 50)
+    return {**balance, "transactions": txs, "symbol": "ALC"}
+
+
+def _ailo_link_account(user: Dict[str, Any]) -> Dict[str, Any]:
+    cfg = _ailo_config().update({"wallet": user.get("wallet"), "email": user.get("email")})
+    return {"linked": True, "wallet": cfg["wallet"], "email": cfg["email"],
+            "balance": user.get("balance", 0)}
+
+
+@router.post("/ailo/login")
+def ailo_login(body: AiloCredentialsRequest) -> Dict[str, Any]:
+    client = _ailo_client()
+    _ailo_call(client.verify_server)
+    return _ailo_link_account(_ailo_call(client.login, body.email, body.password))
+
+
+@router.post("/ailo/register")
+def ailo_register(body: AiloCredentialsRequest) -> Dict[str, Any]:
+    client = _ailo_client()
+    _ailo_call(client.verify_server)
+    return _ailo_link_account(_ailo_call(client.register, body.email, body.password))
+
+
+@router.post("/ailo/transfer")
+def ailo_transfer(body: AiloTransferRequest) -> Dict[str, Any]:
+    cfg = _ailo_config().get()
+    if not cfg["email"]:
+        raise HTTPException(status_code=400, detail="Account AiLo non collegato")
+    return _ailo_call(_ailo_client().transfer, cfg["email"], body.to_wallet, body.amount, body.password)
+
+
+@router.post("/ailo/infer")
+def ailo_infer(body: AiloInferRequest) -> Dict[str, Any]:
+    """Inferenza distribuita sulla rete AiLo (nodi GPU remoti o modello Fused)."""
+    if not body.prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt vuoto")
+    max_tokens = max(1, min(int(body.max_tokens or 200), 4096))
+    return _ailo_call(_ailo_client().infer, body.prompt, max_tokens,
+                      float(body.temperature or 0.8), body.backend or "gpu")
+
+
+@router.post("/ailo/node/start")
+def ailo_node_start() -> Dict[str, Any]:
+    """Mette questo PC nella rete AiLo come nodo di inferenza che guadagna ALC."""
+    global _ailo_node_instance
+    cfg = _ailo_config().get()
+    if not cfg["server_url"] or not cfg["wallet"]:
+        raise HTTPException(status_code=400, detail="Configura server e wallet AiLo prima di avviare il nodo")
+    _ailo_call(_ailo_client().verify_server)
+    with _lock:
+        node = _ailo_node_instance
+        if node is not None and (node.wallet != cfg["wallet"] or node.max_tokens != cfg["node_max_tokens"]):
+            node.stop()
+            node = None
+        if node is None:
+            node = AiloInferenceNode(
+                server_url=cfg["server_url"], wallet=cfg["wallet"], email=cfg["email"],
+                generate_fn=_ailo_generate, gate_fn=_ailo_gate,
+                max_tokens=cfg["node_max_tokens"], gpu_label=cfg["gpu_label"] or "Sigma Studio",
+            )
+            _ailo_node_instance = node
+        node.start()
+    _ailo_config().update({"node_enabled": True})
+    return node.status()
+
+
+@router.post("/ailo/node/stop")
+def ailo_node_stop() -> Dict[str, Any]:
+    node = _ailo_node_instance
+    if node is not None:
+        node.stop()
+    _ailo_config().update({"node_enabled": False})
+    return _ailo_node_state()
+
+
+@router.get("/ailo/node/status")
+def ailo_node_status() -> Dict[str, Any]:
+    return _ailo_node_state()
+
+
+def _reset_ailo_singletons() -> None:
+    """Ferma il nodo AiLo e scorda la configurazione (usata dai test)."""
+    global _ailo_config_instance, _ailo_node_instance
+    with _lock:
+        if _ailo_node_instance is not None:
+            _ailo_node_instance.stop()
+        _ailo_config_instance = None
+        _ailo_node_instance = None

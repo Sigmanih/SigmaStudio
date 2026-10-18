@@ -8,6 +8,7 @@ Funziona in background con consumo regolabile per non impattare le prestazioni.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 import random
