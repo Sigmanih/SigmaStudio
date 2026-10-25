@@ -226,3 +226,78 @@ class TestFotogrammiDaVignetta:
         assert out["success"] and "keyframe" not in shot and shot["status"] == "pending"
         assert shot["keyframe_fixes"] == ["Kuzumi alone, no duplicate"]
         assert shot["prompt_fixes"] == ["Kuzumi alone, no duplicate"]
+
+
+class TestRigheModificabili:
+
+    def test_aggiunta_e_tolta_cambiano_le_inquadrature(self, tmp_path):
+        """Chi rivede aggiunge un balloon saltato e toglie quello inventato: la riga rimasta
+        tiene la sua clip, la nuova diventa un'inquadratura da fare."""
+        import json
+        stato = {"pagine": [{"pagina": "010.jpg", "vignette": [
+            {"id": "010_01", "ritaglio": "vignette/010_01.png", "testi": [],
+             "regia": {"presenti": ["Aika"], "firma": "x"}},
+            {"id": "010_02", "ritaglio": "vignette/010_02.png",
+             "testi": [{"tipo": "onomatopea", "testo": "BAM"}, {"tipo": "battuta", "testo": "CIAO"},
+                       {"tipo": "battuta", "testo": "INVENTATA"}],
+             "regia": {"presenti": ["Aika"], "firma": "x",
+                       "voci": {"1": {"chi": "Aika"}, "2": {"chi": "Aika"}}}}]}]}
+        (tmp_path / "vignette.json").write_text(json.dumps(stato), encoding="utf-8")
+        shots = manga.storyboard(tmp_path, "Kuzumi Taiga", "Comparsa")
+        for s in shots:
+            s.update(status="done", clip_path=f"{s['id']}.mp4")
+        prod = {"shots": shots}
+        manga.correggi_vignetta(tmp_path, "010_02", None, None, [
+            {"tipo": "battuta", "testo": "CIAO", "chi": "Aika"},
+            {"tipo": "pensiero", "testo": "  CHE  STRANO ", "chi": "Kuzumi Taiga", "fuori_campo": True}])
+        assert manga.applica_allo_storyboard(prod, tmp_path, "010_02", "Kuzumi Taiga", "Comparsa") == 2
+        assert [s["id"] for s in prod["shots"]] == ["010_01", "010_02_1", "010_02_2"]
+        ciao, nuova = prod["shots"][1], prod["shots"][2]
+        assert ciao["clip_path"] == "010_02_1.mp4" and ciao["status"] == "done"
+        assert nuova["dialogue"] == {"character": "Kuzumi Taiga", "text": "CHE STRANO", "kind": "pensiero",
+                                     "off_screen": True}
+        assert nuova["status"] != "done" and nuova["ltx_prompt"]["text"] == nuova["prompt"]
+        v = json.loads((tmp_path / "vignette.json").read_text(encoding="utf-8"))["pagine"][0]["vignette"][1]
+        assert v["testi"][0]["tipo"] == "onomatopea" and len(v["testi_letti"]) == 3
+
+    def test_bianco_e_nero_coi_colori_scritti(self, tmp_path):
+        """008_04: coi fogli klein scambiava le identita'; coi colori scritti e chi-fa-cosa no.
+        E la regia che descrive la scansione ("black and white") non deve finire nel prompt."""
+        from core.modules.sigma_creative_lab.video import genres
+        ref = tmp_path / "k.png"
+        ref.write_bytes(b"x")
+        bn = tmp_path / "bn.png"
+        PIL.new("RGB", (60, 90), (200, 200, 200)).save(bn)
+        prod = {"bible": {"characters": [
+            {"name": "Kuzumi Taiga", "ref_image": str(ref), "panel_colors": "orange hooded jacket"},
+            {"name": "Aika", "ref_image": str(ref), "panel_colors": "navy sailor uniform"}]}}
+        shot = {"refs": ["Kuzumi Taiga", "Aika"], "prompt": "Kuzumi grips a railing, Aika looks at him",
+                "panel_colors": "The scene is black and white."}
+        prompt, refs = genres.panel_keyframe(prod, shot, str(bn))
+        assert refs == [str(bn)]
+        assert "Kuzumi Taiga has orange hooded jacket; Aika has navy sailor uniform." in prompt
+        assert "In this panel: Kuzumi grips a railing" in prompt and "black and white." not in prompt
+        assert "Color everything" in prompt
+
+
+class TestColonnaSonora:
+
+    def test_attiva_e_rimonta_solo_a_clip_finite(self, monkeypatch):
+        """Collaudo Mx0: capitolo montato, musica chiesta, nessun tool per aggiungerla."""
+        from core.modules.sigma_creative_lab.video import production
+        prod = {"shots": [{"status": "done"}, {"status": "pending"}], "soundtrack": {"enabled": False}}
+        avvii = []
+
+        class Store:
+            def get(self, pid):
+                return prod
+
+            def save(self, p):
+                pass
+        monkeypatch.setattr(production.manager, "store", Store())
+        monkeypatch.setattr(tools, "_start_render", lambda pid: avvii.append(pid))
+        out = tools.video_soundtrack("x", tags="anime, piano", bpm=100)
+        assert out["success"] and prod["soundtrack"] == {"enabled": True, "tags": "anime, piano", "bpm": 100}
+        assert not avvii
+        prod["shots"][1]["status"] = "done"
+        assert tools.video_soundtrack("x")["status"] == "started" and avvii == ["x"]

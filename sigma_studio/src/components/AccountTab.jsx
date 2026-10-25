@@ -6,6 +6,9 @@ import TabHeader from './common/TabHeader';
 
 const PRESET_AVATARS = [
   { id: 'user_default', name: 'Utente Cyber', url: '/images/default.png' },
+  { id: 'user_regista', name: 'Regista', url: '/images/regista_cinematografico.jpg' },
+  { id: 'user_sceneggiatore', name: 'Sceneggiatore', url: '/images/sceneggiatore.jpg' },
+  { id: 'user_dop', name: 'Direttore Fotografia', url: '/images/direttore_fotografia.jpg' },
   { id: 'user_dev', name: 'Developer', url: '/images/programmatoreAi.png' },
   { id: 'user_math', name: 'Researcher', url: '/images/matematicoAi.png' },
   { id: 'user_architect', name: 'Architect', url: '/images/agente0.png' },

@@ -400,6 +400,18 @@ export default function Workspace({
         </React.Suspense>
       );
     }
+    if (tab.type === 'youtube_studio') {
+      const isYtInstalled = modulesState.sigma_youtube_studio === true;
+      const LazyYt = getLazyModule('youtube_studio');
+      if (!isYtInstalled || !LazyYt) {
+        return <ModuleNotInstalled tabType="youtube_studio" openTab={openTab} />;
+      }
+      return (
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento YouTube Studio...</div>}>
+          <LazyYt openTab={openTab} />
+        </React.Suspense>
+      );
+    }
 
 
     if (tab.type === 'skills_hub') {

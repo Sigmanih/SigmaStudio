@@ -24,18 +24,27 @@ const AGENT_IMAGES = {
   sigma_architect: '/images/agente0.png',
   math1: '/images/matematicoAi.png',
   code_architect: '/images/programmatoreAi.png',
+  regista_cinematografico: '/images/regista_cinematografico.jpg',
+  sceneggiatore: '/images/sceneggiatore.jpg',
+  direttore_fotografia: '/images/direttore_fotografia.jpg',
 };
 
 const AGENT_COLORS = {
   sigma_architect: '#7c5bf0',
   math1: '#3fb950',
   code_architect: '#00d2ff',
+  regista_cinematografico: '#ff007a',
+  sceneggiatore: '#f59e0b',
+  direttore_fotografia: '#8b5cf6',
 };
 
 const AGENT_ICONS = {
   sigma_architect: '🏗️',
   math1: '∑',
   code_architect: '⚙️',
+  regista_cinematografico: '🎬',
+  sceneggiatore: '📜',
+  direttore_fotografia: '🎥',
 };
 
 export default function AgentPipelineStatus({ pipeline }) {

@@ -62,6 +62,11 @@ const AGENT_COLORS = {
   copywriter_storyteller: { bg: '#ff79c6', color: '#0e1016', icon: '✍️', short: 'Copy', name: 'Copywriter Creativo', image: '/images/default.png' },
   ingegnere_strutturista: { bg: '#d29922', color: '#0e1016', icon: '🔧', short: 'Eng', name: 'Ingegnere Meccanico', image: '/images/default.png' },
   math1: { bg: '#00d2ff', color: '#0e1016', icon: '∑', short: 'Math', name: 'Sigma Math Researcher', image: '/images/matematicoAi.png' },
+  regista_cinematografico: { bg: '#ff007a', color: '#ffffff', icon: '🎬', short: 'Regia', name: 'Regista Cinematografico', image: '/images/regista_cinematografico.jpg' },
+  sceneggiatore: { bg: '#f59e0b', color: '#0e1016', icon: '📜', short: 'Script', name: 'Sceneggiatore Cinematografico', image: '/images/sceneggiatore.jpg' },
+  direttore_fotografia: { bg: '#8b5cf6', color: '#ffffff', icon: '🎥', short: 'DoP', name: 'Direttore della Fotografia', image: '/images/direttore_fotografia.jpg' },
+  montatore_video: { bg: '#06b6d4', color: '#0e1016', icon: '✂️', short: 'Edit', name: 'Montatore Video', image: '/images/designer_ai.jpg' },
+  sound_designer: { bg: '#10b981', color: '#0e1016', icon: '🎵', short: 'Audio', name: 'Sound Designer', image: '/images/designer_ai.jpg' },
 };
 
 export function getAgentStyle(agentId) {
@@ -769,11 +774,15 @@ export default function AgentMessage({
         <div className="chat-msg-content">
           {isUser && first.attachments?.length > 0 && (
             <div className="chat-message-attachments">
-              {first.attachments.map(p => (
-                <span key={p} className="chat-attachment-chip">
-                  <FileText size={10} /> {p.split('/').pop()}
-                </span>
-              ))}
+              {first.attachments.map((p, idx) => {
+                const name = typeof p === 'string' ? p.replace('__pc__', '').split('/').pop() : (p.name || p.filename || `allegato-${idx + 1}`);
+                const chipKey = typeof p === 'string' ? p : (p.filename || p.name || idx);
+                return (
+                  <span key={chipKey} className="chat-attachment-chip">
+                    <FileText size={10} /> {name}
+                  </span>
+                );
+              })}
             </div>
           )}
 
@@ -877,8 +886,10 @@ export default function AgentMessage({
                     <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                       {m.actions_log && m.actions_log.length > 0 ? (
                         m.actions_log.map((action, actionIdx) => {
-                          const isRollbackable = action.success && action.backup_id;
-                          const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
+                          const backupId = action.backup_id || action.result?.backup_id;
+                          const isActionSuccess = action.success || action.status === 'success' || action.result?.success;
+                          const isRollbackable = Boolean(isActionSuccess && backupId);
+                          const hasBeenRolledBack = Boolean(isRollbackable && (rolledBacks[backupId] || localStorage.getItem(`sigma_rolled_back_${backupId}`) === 'true'));
                           const diffKey = `${mid}-${actionIdx}`;
                           const isDiffExpanded = expandedDiffs[diffKey];
                           return (
@@ -890,7 +901,7 @@ export default function AgentMessage({
                               diffKey={diffKey}
                               isDiffExpanded={isDiffExpanded}
                               onToggleDiff={toggleDiff}
-                              onRollback={handleRollback}
+                              onRollback={() => handleRollback(backupId)}
                               isRollbackable={isRollbackable}
                               hasBeenRolledBack={hasBeenRolledBack}
                               // Questo ramo non disegna la bolla: dire alla scheda
@@ -927,8 +938,10 @@ export default function AgentMessage({
                       {!m.isAction && m.actions_log && m.actions_log.length > 0 && (
                         <div className="chat-actions-log" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
                           {m.actions_log.map((action, actionIdx) => {
-                            const isRollbackable = action.success && action.backup_id;
-                            const hasBeenRolledBack = isRollbackable && (rolledBacks[action.backup_id] || localStorage.getItem(`sigma_rolled_back_${action.backup_id}`) === 'true');
+                            const backupId = action.backup_id || action.result?.backup_id;
+                            const isActionSuccess = action.success || action.status === 'success' || action.result?.success;
+                            const isRollbackable = Boolean(isActionSuccess && backupId);
+                            const hasBeenRolledBack = Boolean(isRollbackable && (rolledBacks[backupId] || localStorage.getItem(`sigma_rolled_back_${backupId}`) === 'true'));
                             const diffKey = `${mid}-${actionIdx}`;
                             const isDiffExpanded = expandedDiffs[diffKey];
                             return (
@@ -940,7 +953,7 @@ export default function AgentMessage({
                                 diffKey={diffKey}
                                 isDiffExpanded={isDiffExpanded}
                                 onToggleDiff={toggleDiff}
-                                onRollback={handleRollback}
+                                onRollback={() => handleRollback(backupId)}
                                 isRollbackable={isRollbackable}
                                 hasBeenRolledBack={hasBeenRolledBack}
                                 riepilogoGoalVisibile={riepilogoGiaVisibile(displayContent, action)}

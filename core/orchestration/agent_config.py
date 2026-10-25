@@ -18,10 +18,13 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 AGENT_COLORS: dict[str, dict] = {
-    "sigma_architect": {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch", "image": "/images/agente0.png"},
-    "math1":           {"bg": "#3fb950", "color": "#ffffff", "icon": "∑",   "short": "Math", "image": "/images/matematicoAi.png"},
-    "code_architect":  {"bg": "#00d2ff", "color": "#0e1016", "icon": "⚙️",  "short": "Code", "image": "/images/programmatoreAi.png"},
-    "default":         {"bg": "#8b8fa3", "color": "#0e1016", "icon": "🤖",  "short": "AI",   "image": "/images/default.png"},
+    "sigma_architect":         {"bg": "#7c5bf0", "color": "#ffffff", "icon": "🏗️", "short": "Arch",   "image": "/images/agente0.png"},
+    "math1":                   {"bg": "#3fb950", "color": "#ffffff", "icon": "∑",   "short": "Math",   "image": "/images/matematicoAi.png"},
+    "code_architect":          {"bg": "#00d2ff", "color": "#0e1016", "icon": "⚙️",  "short": "Code",   "image": "/images/programmatoreAi.png"},
+    "regista_cinematografico": {"bg": "#ff007a", "color": "#ffffff", "icon": "🎬",  "short": "Regia",  "image": "/images/regista_cinematografico.jpg"},
+    "sceneggiatore":           {"bg": "#f59e0b", "color": "#0e1016", "icon": "📜",  "short": "Script", "image": "/images/sceneggiatore.jpg"},
+    "direttore_fotografia":    {"bg": "#8b5cf6", "color": "#ffffff", "icon": "🎥",  "short": "DoP",    "image": "/images/direttore_fotografia.jpg"},
+    "default":                 {"bg": "#8b8fa3", "color": "#0e1016", "icon": "🤖",  "short": "AI",     "image": "/images/default.png"},
 }
 
 

@@ -4,7 +4,7 @@ import {
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, Clapperboard,
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
   Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2,
-  Share2, Plus, Search, HardDrive, Copy, UserCheck, Award, CircuitBoard
+  Share2, Plus, Search, HardDrive, Copy, UserCheck, Award, CircuitBoard, MonitorPlay
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -369,6 +369,7 @@ export default function Sidebar({
   const isSigmaNetworkInstalled = modulesState.sigma_network === true;
   const isEmailInstalled = modulesState.sigma_email_client === true;
   const isMessagingInstalled = modulesState.sigma_messaging_hub === true;
+  const isYouTubeInstalled = modulesState.sigma_youtube_studio === true;
 
   // Moduli opzionali remoti (Catalogo Git)
   const isAudioEngineInstalled = modulesState.audio_engine === true;
@@ -380,7 +381,7 @@ export default function Sidebar({
   const hasMultimodal = isCreativeInstalled || isVoiceInstalled || isDomoticaInstalled || isAudioInstalled || isAudioEngineInstalled || isVisionInstalled;
   const hasStudio = isBenchmarkInstalled || isTrainingInstalled || isResearchInstalled || isRoadmapInstalled || isKnowledgeInstalled || isQuantInstalled;
   const hasInfra = isDevInstalled || isHardwareInstalled || isPcbLabInstalled || isNetworkInstalled || isSigmaNetworkInstalled || isRoboticsInstalled;
-  const hasComms = isEmailInstalled || isMessagingInstalled;
+  const hasComms = isEmailInstalled || isMessagingInstalled || isYouTubeInstalled;
 
   // Poll for counts (chat sessions, manifesti, topics, etc.)
   useEffect(() => {
@@ -1161,6 +1162,17 @@ export default function Sidebar({
                       badgeColor="rgba(188,140,255,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('messaging_hub')}
                       onClick={() => openTab({ name: '💬 Messaging Hub' }, 'messaging_hub')}
+                    />
+                  )}
+
+                  {isYouTubeInstalled && (
+                    <SidebarItem
+                      icon={MonitorPlay}
+                      label="YouTube"
+                      badge="YT"
+                      badgeColor="rgba(255,80,80,0.15)"
+                      active={activeTabId != null && activeTabId.startsWith('youtube_studio')}
+                      onClick={() => openTab({ name: '📺 YouTube' }, 'youtube_studio')}
                     />
                   )}
                 </div>

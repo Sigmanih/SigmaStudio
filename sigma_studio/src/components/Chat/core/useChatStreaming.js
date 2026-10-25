@@ -503,12 +503,16 @@ export function useChatStreaming({
 
               // Aggiorna l'azione in corso in-place per evitare la riga duplicata
               let foundInLog = false;
+              const backupId = res.backup_id || p.backup_id || '';
+              const diffContent = res.diff || p.diff || null;
+
               const updatedActionsLog = streamActionsLog.map(act => {
                 if (!foundInLog && act.type === 'mcp_tool_call' && act.tool === toolName && act.status === 'running') {
                   foundInLog = true;
                   return {
                     ...act,
                     status: isSuccess ? 'success' : 'error',
+                    success: isSuccess,
                     result: res,
                     path: targetPath || act.path,
                     command: cmd || act.command,
@@ -517,6 +521,8 @@ export function useChatStreaming({
                     returncode: returncode,
                     content: content,
                     message: summaryMsg,
+                    backup_id: backupId || act.backup_id,
+                    diff: diffContent || act.diff,
                     error: res.error,
                     completed_at: Date.now()
                   };
@@ -538,7 +544,10 @@ export function useChatStreaming({
                   returncode: returncode,
                   content: content,
                   status: isSuccess ? 'success' : 'error',
+                  success: isSuccess,
                   message: summaryMsg,
+                  backup_id: backupId,
+                  diff: diffContent,
                   error: res.error,
                   completed_at: Date.now()
                 };
@@ -553,18 +562,21 @@ export function useChatStreaming({
                   return {
                     ...c,
                     status: isSuccess ? 'success' : 'error',
+                    success: isSuccess,
                     result: res,
                     path: targetPath || c.path,
                     command: cmd || c.command,
                     stdout: stdout,
                     stderr: stderr,
                     content: content,
-                    message: summaryMsg
+                    message: summaryMsg,
+                    backup_id: backupId || c.backup_id,
+                    diff: diffContent || c.diff
                   };
                 }
                 return c;
               });
-              streamToolCalls = foundInCalls ? updatedToolCalls : [...streamToolCalls, { tool: toolName, result: res, status: isSuccess ? 'success' : 'error', message: summaryMsg }];
+              streamToolCalls = foundInCalls ? updatedToolCalls : [...streamToolCalls, { tool: toolName, result: res, status: isSuccess ? 'success' : 'error', success: isSuccess, backup_id: backupId, diff: diffContent, message: summaryMsg }];
             }
             if (p.type === 'file_created' || p.type === 'file_modified') {
               const fileAct = {
@@ -1115,6 +1127,8 @@ export function useChatStreaming({
       saveSessionsState(sessionRefs.sessions.current.map(s => s.id === currentSessionId ? { ...s, name: newName } : s));
     }
     setInput('');
+    setAttachedFiles([]);
+    setPcFiles([]);
     setLoading(true);
     setActionsLog([]);
     const controller = new AbortController();
@@ -1228,19 +1242,88 @@ export function useChatStreaming({
     }
   }, [input, loading, selectedModel, providerConfigs, quickConfig, loopMaxIterations, webSearch, attachedFiles, pcFiles, activeMode, selectedManifestoPath, externalOpenFiles, refreshConfig, saveSessionsState, setMessagesForSession, saveMessagesImmediately, sessionRefs, setActiveSessionId, devModeEnabled, devRole, workspaceRoot]);
 
-  const removePcFile = useCallback((filename) => { setPcFiles(prev => prev.filter(f => f.filename !== filename)); }, []);
-  const handleDragOver = useCallback((e) => { e.preventDefault(); e.stopPropagation(); setDragOver(true); }, []);
-  const handleDragLeave = useCallback((e) => { e.preventDefault(); e.stopPropagation(); setDragOver(false); }, []);
+  const dragCounterRef = useRef(0);
+
+  const removePcFile = useCallback((fileOrName) => {
+    const name = typeof fileOrName === 'string'
+      ? fileOrName.replace('__pc__', '')
+      : (fileOrName?.filename || fileOrName?.name);
+    setAttachedFiles(prev => prev.filter(f => {
+      if (typeof f === 'string') return f !== fileOrName && f !== name && f !== `__pc__${name}`;
+      return f.filename !== name && f.name !== name;
+    }));
+    setPcFiles(prev => prev.filter(f => f.filename !== name && f.name !== name));
+  }, []);
+
+  const handleDragEnter = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files')) {
+      setDragOver(true);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setDragOver(false);
+    }
+  }, []);
+
   const handleDrop = useCallback((e) => {
-    e.preventDefault(); e.stopPropagation(); setDragOver(false);
-    const files = Array.from(e.dataTransfer.files || []);
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer?.files || []);
     if (!files.length) return;
+
     Promise.all(files.map(f => new Promise(resolve => {
+      const isPdf = (f.name || '').toLowerCase().endsWith('.pdf') || f.type === 'application/pdf';
+      const isImage = (f.type || '').startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(f.name || '');
       const reader = new FileReader();
-      reader.onload = (ev) => resolve({ filename: f.name, content: ev.target.result });
+      reader.onload = (ev) => resolve({
+        filename: f.name,
+        name: f.name,
+        content: ev.target.result,
+        size: f.size,
+        type: f.type,
+        isPdf,
+        isImage
+      });
       reader.onerror = () => resolve(null);
-      reader.readAsText(f);
-    }))).then(results => { const valid = results.filter(Boolean); setPcFiles(prev => [...prev, ...valid].slice(0, 20)); });
+      if (isPdf || isImage) {
+        reader.readAsDataURL(f);
+      } else {
+        reader.readAsText(f);
+      }
+    }))).then(results => {
+      const valid = results.filter(Boolean);
+      if (!valid.length) return;
+      setPcFiles(prev => {
+        const existingNames = new Set(prev.map(p => p.filename));
+        const filteredNew = valid.filter(v => !existingNames.has(v.filename));
+        return [...prev, ...filteredNew].slice(0, 20);
+      });
+      setAttachedFiles(prev => {
+        const existingNames = new Set(prev.map(p => typeof p === 'string' ? p.replace('__pc__', '') : (p.filename || p.name)));
+        const filteredNew = valid.filter(v => !existingNames.has(v.filename));
+        return [...prev, ...filteredNew].slice(0, 20);
+      });
+    });
   }, []);
 
   return {
@@ -1254,8 +1337,8 @@ export function useChatStreaming({
     actionMaxTotalReads, setActionMaxTotalReads, autoApprove, setAutoApprove,
     currentPlan, setCurrentPlan, planExecuting, setPlanExecuting,
     showHistory, setShowHistory, showFilePicker, setShowFilePicker,
-    sendMessage, stopInference, removePcFile,
-    handleDragOver, handleDragLeave, handleDrop,
+    sendMessage, stopInference, removePcFile, removeAttachedFile: removePcFile,
+    handleDragEnter, handleDragOver, handleDragLeave, handleDrop,
     streamingRefs: {
       abort: abortRef, streamingSessionId: streamingSessionIdRef,
       loopActive: loopActiveRef, loopIteration: loopIterationRef,

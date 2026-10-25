@@ -5,7 +5,7 @@ import {
   Palette, FlaskConical, Brain, Zap, Home, Wrench, ArrowRight,
   PlusCircle, AlertCircle, Play, Check, X, Search, Radio, Trash2, Calendar, PieChart, Mic,
   Globe, Mail, Send, Award, Info, Boxes, Server, Code,
-  Share2, CircuitBoard
+  Share2, CircuitBoard, MonitorPlay
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
@@ -468,6 +468,34 @@ const OPTIONAL_MODULES = [
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_messaging_hub',
     branch: 'main',
     tags: ['Telegram', 'Slack', 'Discord', 'Webhooks', 'Messaging MCP'],
+    size: '1 MB',
+    author: 'Sigma Core Team'
+  },
+  {
+    id: 'sigma_youtube_studio',
+    name: 'YouTube Studio',
+    category: 'Comunicazione & Social',
+    domain: 'YouTube Data & Analytics API',
+    icon: MonitorPlay,
+    color: '#ff5050',
+    tabType: 'youtube_studio',
+    version: 'v1.0.0',
+    description: 'Collega il canale YouTube con OAuth: caricamento ripristinabile, titoli e descrizioni in più lingue, sottotitoli, miniature e statistiche.',
+    highlights: [
+      'Caricamento a blocchi che riprende dopo un riavvio o un calo di rete',
+      'Pacchetti di pubblicazione: video, lingue, sottotitoli e miniatura in un solo passo',
+      'Statistiche di permanenza e paesi per migliorare i video successivi'
+    ],
+    detailedDescription: 'Il canale YouTube dell\'operatore gestito da Sigma Studio e dai suoi agenti. Il refresh token resta in config/ e non passa mai dal browser; ogni operazione che cambia il canale chiede conferma.',
+    mcpTools: [
+      { name: 'youtube_publish_package', desc: 'Carica un video con titoli, descrizioni, sottotitoli e miniatura' },
+      { name: 'youtube_update_video', desc: 'Aggiorna metadati, privacy e traduzioni di un video' },
+      { name: 'youtube_analytics', desc: 'Visualizzazioni, minuti guardati e permanenza media' }
+    ],
+    techStack: ['YouTube Data API v3', 'YouTube Analytics API', 'OAuth 2.0 PKCE', 'Resumable Upload'],
+    gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_youtube_studio',
+    branch: 'main',
+    tags: ['YouTube', 'OAuth', 'Upload', 'Analytics', 'YouTube MCP'],
     size: '1 MB',
     author: 'Sigma Core Team'
   },

@@ -321,9 +321,15 @@ def handle_knowledge_db(self):
 
 def _get_fallback_image(filename: str) -> str:
     fn = filename.lower()
+    if any(k in fn for k in ("regis", "director")):
+        return "/images/regista_cinematografico.jpg"
+    if any(k in fn for k in ("scenegg", "screenplay")):
+        return "/images/sceneggiatore.jpg"
+    if any(k in fn for k in ("fotograf", "dop", "camera")):
+        return "/images/direttore_fotografia.jpg"
     if any(k in fn for k in ("medic", "salute", "health", "bio", "doctor")):
         return "/images/medico_ai.jpg"
-    if any(k in fn for k in ("design", "viz", "art", "creat", "ui", "writer", "narrat", "content")):
+    if any(k in fn for k in ("design", "viz", "art", "creat", "ui", "writer", "narrat", "content", "montag", "sound", "audio", "video")):
         return "/images/designer_ai.jpg"
     if any(k in fn for k in ("law", "leg", "avvocat", "diritto", "finan", "quant", "econom", "tradut")):
         return "/images/quant_law_ai.jpg"
@@ -386,6 +392,8 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
             domain_color = line_s.replace("# DomainColor:", "").strip()
         elif line_s.startswith("# Icon:"):
             icon = line_s.replace("# Icon:", "").strip()
+        elif line_s.startswith("# Image:"):
+            img = line_s.replace("# Image:", "").strip()
         elif line_s.startswith("# Capabilities:"):
             caps = line_s.replace("# Capabilities:", "").strip()
             capabilities = [c.strip() for c in caps.split(",") if c.strip()]

@@ -3176,6 +3176,11 @@ def _stream_agent_turn_impl(
             if attachments:
                 att_texts = []
                 for att in attachments:
+                    if isinstance(att, str):
+                        clean_att = str(att).replace("__pc__", "")
+                        att = {"path": str(att), "name": Path(clean_att).name, "filename": Path(clean_att).name}
+                    elif not isinstance(att, dict):
+                        continue
                     att_name = att.get("name") or att.get("filename") or "allegato"
                     att_content = att.get("content") or ""
                     att_path = att.get("path") or ""

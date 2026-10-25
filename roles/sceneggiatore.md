@@ -5,6 +5,7 @@ FROM sigma
 # Category: Comunicazione & Creatività
 # DomainColor: #f59e0b
 # Icon: Film
+# Image: /images/sceneggiatore.jpg
 # Capabilities: Sceneggiature Standard (Screenplay), Archi Narrativi dei Personaggi, Dialoghi Cinematografici, Struttura in 3 Atti, Show Don't Tell, Logline e Sinossi
 # OutputArtifacts: Copioni Standard (Sceneggiature), Trattamenti di Scena, Schede Personaggi, Dialoghi per Doppiaggio/TTS
 # McpTools: Creative MCP, Inference MCP, Memory MCP

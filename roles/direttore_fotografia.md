@@ -5,6 +5,7 @@ FROM sigma
 # Category: Comunicazione & Creatività
 # DomainColor: #8b5cf6
 # Icon: Camera
+# Image: /images/direttore_fotografia.jpg
 # Capabilities: Lighting Design, Scelte Ottiche e Focali, Palette Cromatica & LUT, Composizione dell'Immagine, Prompt Cinematografici per Text-to-Image e Text-to-Video
 # OutputArtifacts: Schemi di Luce, Prompt Ottimizzati per Generatori Video/Immagini (SDXL/ComfyUI/Wan/LTX), Tavole di Stile Visivo, Palette Colori
 # McpTools: Creative MCP, Inference MCP, Memory MCP

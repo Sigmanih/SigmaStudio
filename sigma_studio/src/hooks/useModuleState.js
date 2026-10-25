@@ -43,6 +43,7 @@ const OPTIONAL_MODULE_IDS = [
   'sigma_network_lab',   // Network Explorer & Web Research
   'sigma_email_client',  // Email Hub & Client
   'sigma_messaging_hub', // Messaging & Notification Hub
+  'sigma_youtube_studio', // YouTube Studio
 ];
 
 // Kernel modules — always present and active natively in Sigma Studio core.

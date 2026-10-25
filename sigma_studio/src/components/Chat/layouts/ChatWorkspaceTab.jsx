@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, Upload } from 'lucide-react';
 import { useApp } from '../../../contexts/AppContext';
 import useChatCore from '../core/useChatCore';
 import ChatHeader from '../ui/ChatHeader';
@@ -48,9 +48,24 @@ export default function ChatWorkspaceTab() {
     : 'idle';
 
   return (
-    <div className="chat-workspace-root">
+    <div
+      className={`chat-workspace-root ${core.dragOver ? 'drag-over' : ''}`}
+      onDragEnter={core.handleDragEnter}
+      onDragOver={core.handleDragOver}
+      onDragLeave={core.handleDragLeave}
+      onDrop={core.handleDrop}
+    >
       {/* Animated Translucent Cyber Space Background Canvas (stesso di MCP Tools) */}
       <TechSpaceCanvas isLight={theme === 'light'} />
+
+      {/* Drag & Drop Overlay */}
+      {core.dragOver && (
+        <div className="chat-drop-overlay">
+          <div className="drop-icon"><Upload size={26} /></div>
+          <div>Trascina qui i file per allegarli alla conversazione</div>
+          <div className="chat-drop-overlay-sub">Supporta PDF, immagini, codice e documenti di testo</div>
+        </div>
+      )}
 
       {/* Minimal Chat AI Header */}
       <ChatHeader
@@ -264,6 +279,7 @@ export default function ChatWorkspaceTab() {
         onStop={core.stopInference}
         onOpenFilePicker={() => core.setShowFilePicker(true)}
         attachedFiles={core.attachedFiles}
+        onRemoveAttachment={core.removeAttachedFile}
       />
 
       {/* File Picker Modal */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders, Square, ChevronDown, Cpu } from 'lucide-react';
+import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders, Square, ChevronDown, Cpu, X, FileText, Image } from 'lucide-react';
 import { setVoiceConfig as saveVoiceConfigToSpeechEngine, getVoiceConfig } from '../audioSpeech';
 import ModelSelector from '../ModelSelector';
 
@@ -13,7 +13,7 @@ export default function ChatInput({
   isRecording, onToggleRecording,
   smartMicState = 'off', onToggleSmartMic,
   loopMaxIterations, setLoopMaxIterations, loopActive,
-  onSend, onStop, onOpenFilePicker, attachedFiles,
+  onSend, onStop, onOpenFilePicker, attachedFiles, onRemoveAttachment,
   // Model Selector props
   selectedModel, availableModels, loadingModels,
   showModelDropdown, onToggleModelDropdown, onSelectModel,
@@ -424,6 +424,55 @@ export default function ChatInput({
         )}
         </div>
       </div>
+
+      {/* Barra Chip Allegati Correnti */}
+      {attachedFiles && attachedFiles.length > 0 && (
+        <div className="chat-attachments-bar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.68rem', color: '#8b8fa3', marginRight: '4px', fontWeight: 600 }}>
+            <Paperclip size={12} style={{ color: '#00d2ff' }} />
+            <span>Allegati ({attachedFiles.length}):</span>
+          </div>
+          {attachedFiles.map((f, idx) => {
+            const name = typeof f === 'string' ? f.replace('__pc__', '').split('/').pop() : (f.name || f.filename || `allegato-${idx + 1}`);
+            const sizeStr = f && f.size ? (f.size > 1024 * 1024 ? `${(f.size / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(f.size / 1024)} KB`) : '';
+            const isPdf = name.toLowerCase().endsWith('.pdf') || (f && f.isPdf);
+            const isImg = /\.(png|jpe?g|gif|webp|svg)$/i.test(name) || (f && f.isImage);
+            return (
+              <span
+                key={typeof f === 'string' ? f : (f.filename || idx)}
+                className="chat-attachment-chip attached"
+                title={typeof f === 'string' ? f : `${name} ${sizeStr ? `(${sizeStr})` : ''}`}
+              >
+                {isPdf ? (
+                  <FileText size={11} style={{ color: '#ef4444' }} />
+                ) : isImg ? (
+                  <Image size={11} style={{ color: '#ec4899' }} />
+                ) : (
+                  <FileText size={11} style={{ color: '#00d2ff' }} />
+                )}
+                <span style={{ maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {name}
+                </span>
+                {sizeStr && <span style={{ opacity: 0.65, fontSize: '0.6rem' }}>({sizeStr})</span>}
+                {onRemoveAttachment && (
+                  <button
+                    type="button"
+                    className="chat-attachment-remove"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveAttachment(f);
+                    }}
+                    title={`Rimuovi ${name}`}
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       <div className="chat-input-row">
         <textarea
           ref={refs.input}

@@ -44,7 +44,8 @@ export default function ChatToolActionItem({
   const stderr = action.stderr !== undefined ? action.stderr : (action.result?.stderr || '');
   const returncode = action.returncode !== undefined ? action.returncode : action.result?.returncode;
   const content = action.content !== undefined ? action.content : (action.result?.content || '');
-  const diff = action.diff;
+  const diff = action.diff || action.result?.diff;
+  const backupId = action.backup_id || action.result?.backup_id;
   const error = action.error || action.result?.error || '';
   const isSuccess = action.status === 'success' || (action.status !== 'error' && action.success !== false && !error);
   const isRunning = action.status === 'running';
@@ -348,9 +349,9 @@ export default function ChatToolActionItem({
           )}
 
           {/* Rollback button */}
-          {isRollbackable && onRollback && (
+          {(isRollbackable || Boolean(backupId && (isSuccess || action.status === 'success') && !isRunning)) && onRollback && (
             <button
-              onClick={() => onRollback(action.backup_id)}
+              onClick={() => onRollback(backupId)}
               disabled={hasBeenRolledBack}
               style={{
                 background: hasBeenRolledBack ? 'transparent' : 'rgba(255, 85, 85, 0.15)',

@@ -43,10 +43,19 @@ const getRoleImage = (role) => {
   
   const text = `${role.id || ''} ${role.filename || ''} ${role.name || ''} ${role.role || ''} ${role.category || ''}`.toLowerCase();
   
+  if (text.includes('regis')) {
+    return '/images/regista_cinematografico.jpg';
+  }
+  if (text.includes('scenegg')) {
+    return '/images/sceneggiatore.jpg';
+  }
+  if (text.includes('fotograf') || text.includes('dop') || text.includes('direttore_fotografia')) {
+    return '/images/direttore_fotografia.jpg';
+  }
   if (text.includes('medic') || text.includes('clin') || text.includes('salut') || text.includes('biol') || text.includes('genet')) {
     return '/images/medico_ai.jpg';
   }
-  if (text.includes('design') || text.includes('grafic') || text.includes('creativ') || text.includes('visual') || text.includes('art') || text.includes('ui/ux') || text.includes('film') || text.includes('cinem') || text.includes('regis') || text.includes('scenegg') || text.includes('video') || text.includes('montagg') || text.includes('sound') || text.includes('audio')) {
+  if (text.includes('design') || text.includes('grafic') || text.includes('creativ') || text.includes('visual') || text.includes('art') || text.includes('ui/ux') || text.includes('film') || text.includes('cinem') || text.includes('video') || text.includes('montagg') || text.includes('sound') || text.includes('audio')) {
     return '/images/designer_ai.jpg';
   }
   if (text.includes('avvocat') || text.includes('leg') || text.includes('giur') || text.includes('finanz') || text.includes('quant') || text.includes('econom') || text.includes('mercati')) {
@@ -991,6 +1000,9 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
     { label: 'Architect (Agente 0)', path: '/images/agente0.png' },
     { label: 'Programmatore AI', path: '/images/programmatoreAi.png' },
     { label: 'Matematico AI', path: '/images/matematicoAi.png' },
+    { label: 'Regista Cinematografico AI', path: '/images/regista_cinematografico.jpg' },
+    { label: 'Sceneggiatore AI', path: '/images/sceneggiatore.jpg' },
+    { label: 'Direttore Fotografia AI', path: '/images/direttore_fotografia.jpg' },
     { label: 'Scienze Mediche AI', path: '/images/medico_ai.jpg' },
     { label: 'Visual Designer AI', path: '/images/designer_ai.jpg' },
     { label: 'Quant & Legale AI', path: '/images/quant_law_ai.jpg' },

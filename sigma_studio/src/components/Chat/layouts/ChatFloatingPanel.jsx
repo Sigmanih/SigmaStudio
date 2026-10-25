@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import { Upload } from 'lucide-react';
 import useChatCore from '../core/useChatCore';
 import ChatHeader from '../ui/ChatHeader';
 import ChatMessages from '../ui/ChatMessages';
@@ -63,6 +64,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
       className={`ai-chat-panel ${resizing ? 'is-resizing' : ''} ${core.dragOver ? 'drag-over' : ''}`}
       ref={core.refs.panel}
       style={{ ...panelStyle, pointerEvents: 'auto' }}
+      onDragEnter={core.handleDragEnter}
       onDragOver={core.handleDragOver}
       onDragLeave={core.handleDragLeave}
       onDrop={core.handleDrop}
@@ -263,11 +265,16 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         onStop={core.stopInference}
         onOpenFilePicker={() => core.setShowFilePicker(true)}
         attachedFiles={core.attachedFiles}
+        onRemoveAttachment={core.removeAttachedFile}
       />
 
-
-
-      {core.dragOver && <div className="chat-drop-overlay"><div>📤 Trascina i file qui per allegarli</div></div>}
+      {core.dragOver && (
+        <div className="chat-drop-overlay">
+          <div className="drop-icon"><Upload size={24} /></div>
+          <div>Trascina qui i file per allegarli alla conversazione</div>
+          <div className="chat-drop-overlay-sub">Supporta PDF, immagini, codice e documenti di testo</div>
+        </div>
+      )}
       {core.showFilePicker && (
         <FilePicker
           onSelect={(selected, pcFilesResult) => {

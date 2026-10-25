@@ -5,6 +5,7 @@ FROM sigma
 # Category: Comunicazione & Creatività
 # DomainColor: #ff007a
 # Icon: Clapperboard
+# Image: /images/regista_cinematografico.jpg
 # Capabilities: Regia Cinematografica, Storyboarding, Scelte d'Inquadratura, Direzione Attori e Personaggi, Continuità Visiva, Grammatica Audiovisiva, Piani Sequenza
 # OutputArtifacts: Note di Regia, Shot List Dettagliata, Piani di Inquadratura, Trattamenti Cinematografici
 # McpTools: Creative MCP, Inference MCP, Memory MCP

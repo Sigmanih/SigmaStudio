@@ -38,6 +38,7 @@ const TITOLI_DA_URL = {
   voice_studio: 'Voice Studio',
   email_client: 'Email Hub',
   messaging_hub: 'Messaging Hub',
+  youtube_studio: 'YouTube',
 };
 
 export function useTabs() {
@@ -77,7 +78,7 @@ export function useTabs() {
       'theme', 'palette', 'domotica', 'home_assistant',
       'music', 'music_lounge', 'audio_studio',
       'creative_studio', 'video_studio', 'voice_studio', 'developer_studio', 'developer_lab',
-      'network_lab', 'sigma_network', 'email_client', 'messaging_hub'
+      'network_lab', 'sigma_network', 'email_client', 'messaging_hub', 'youtube_studio'
     ];
     const tabId = SINGLETON_TYPES.includes(normType)
       ? `${normType}-singleton`

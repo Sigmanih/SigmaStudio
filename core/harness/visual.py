@@ -163,6 +163,20 @@ def capture(
     output_path = str(Path(output_path).resolve())
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
+    # Normalizzazione URL: se e' un percorso locale su disco (relativo o assoluto),
+    # Chromium headless deve riceverlo come URI `file:///` altrimenti fallisce con net::ERR_FILE_NOT_FOUND.
+    target_url = str(url or "").strip()
+    if target_url and not (
+        target_url.startswith("http://")
+        or target_url.startswith("https://")
+        or target_url.startswith("file://")
+    ):
+        try:
+            local_p = Path(target_url).resolve()
+            target_url = local_p.as_uri()
+        except Exception:
+            pass
+
     comando = [
         browser,
         "--headless=new",
@@ -176,7 +190,7 @@ def capture(
         f"--window-size={int(width)},{int(height)}",
         f"--virtual-time-budget={int(wait_ms)}",
         f"--screenshot={output_path}",
-        url,
+        target_url,
     ]
 
     try:

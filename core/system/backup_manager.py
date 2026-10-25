@@ -80,6 +80,47 @@ def rollback_backup(backup_id: str) -> tuple[bool, str]:
     try:
         registry = _load_registry()
         if backup_id not in registry:
+            # Prova a cercare nei backup dell'harness di sviluppo (backups/development)
+            from pathlib import Path
+            from core import paths
+            dev_backup_dir = Path(paths.project_root()) / "backups" / "development"
+            candidate_file = dev_backup_dir / backup_id
+            if not candidate_file.exists() and not backup_id.endswith(".bak"):
+                candidate_file = dev_backup_dir / f"{backup_id}.bak"
+
+            index_file = dev_backup_dir / "backups_index.jsonl"
+            target_original_path = None
+            if index_file.is_file():
+                try:
+                    for line in index_file.read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        entry_data = json.loads(line)
+                        b_id = entry_data.get("backup_id") or ""
+                        b_filename = Path(entry_data.get("backup_file", "")).name
+                        if backup_id in (b_id, b_filename, b_filename.replace(".bak", "")):
+                            target_original_path = entry_data.get("original_path")
+                            candidate_file = Path(entry_data.get("backup_file", ""))
+                            break
+                except Exception as ex_idx:
+                    log.warning("[BackupManager] Lettura indice development fallita: %s", ex_idx)
+
+            if candidate_file.exists():
+                if not target_original_path:
+                    # Deduce dal nome file (es. data__cv.html.20261020_155159_805.bak)
+                    fname = candidate_file.name
+                    parts = fname.split(".")
+                    if len(parts) >= 3:
+                        rel = parts[0].replace("__", "/") + "." + parts[1]
+                        target_original_path = str(Path(paths.project_root()) / rel)
+
+                if target_original_path:
+                    dest = Path(target_original_path)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(candidate_file, dest)
+                    log.info("Rollback dev backup: ripristinato %s da %s", dest, candidate_file)
+                    return True, f"Ripristinato con successo: {dest.name}"
+
             return False, f"ID backup '{backup_id}' non trovato nel registro."
             
         entry = registry[backup_id]
@@ -118,3 +159,4 @@ def rollback_backup(backup_id: str) -> tuple[bool, str]:
     except Exception as e:
         log.error("Rollback failed for backup %s: %s", backup_id, e)
         return False, str(e)
+

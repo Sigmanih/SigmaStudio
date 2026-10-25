@@ -30,6 +30,7 @@ const MODULE_META = {
   roadmap:         { id: 'sigma_roadmap',        icon: '📅', name: 'Pianificazione & Task Audit',    color: '#faa03c', desc: 'Tabellone Kanban interattivo, calendario milestone e audit trail.' },
   email_client:    { id: 'sigma_email_client',   icon: '✉️', name: 'Email Hub & Client',             color: '#38bdf8', desc: 'Client di posta elettronica IMAP/SMTP integrato con analisi AI dei messaggi.' },
   messaging_hub:   { id: 'sigma_messaging_hub',  icon: '💬', name: 'Messaging & Notification Hub',   color: '#bc8cff', desc: 'Invio notifiche push broadcast su Telegram, Discord e Slack via MCP.' },
+  youtube_studio:  { id: 'sigma_youtube_studio', icon: '📺', name: 'YouTube Studio',                 color: '#ff5050', desc: 'Canale YouTube collegato: caricamenti, lingue, sottotitoli, miniature e statistiche.' },
   domotica:        { id: 'sigma_domotica',       icon: '🏠', name: 'Domotica & Home Assistant IoT',  color: '#10b981', desc: 'Controllo completo della smart home: luci, clima, sensori e scene via MCP.' },
   home_assistant:  { id: 'sigma_domotica',       icon: '🏠', name: 'Domotica & Home Assistant IoT',  color: '#10b981', desc: 'Controllo completo della smart home: luci, clima, sensori e scene via MCP.' },
   sigma_network:   { id: 'sigma_network',        icon: '🌐', name: 'Sigma Network P2P Mesh',         color: '#5865f2', desc: 'Rete peer-to-peer per inferenza distribuita, scoperta nodi UDP e ledger AiloCoin.' },

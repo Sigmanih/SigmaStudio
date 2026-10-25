@@ -215,7 +215,11 @@ export default function useChatCore(extraProps = {}) {
   // Context Gauge calculation
   const numCtx = configHook.quickConfig.num_ctx || 32768;
   const messagesText = (messages || []).map(m => m.content || '').join('\n');
-  const attachedText = (streamingHook.attachedFiles || []).map(f => f.content || '').join('\n');
+  const attachedText = (streamingHook.attachedFiles || []).map(f => {
+    if (!f) return '';
+    if (typeof f === 'string') return f;
+    return f.content || f.filename || f.name || '';
+  }).join('\n');
   const messagesTokens = Math.ceil(messagesText.length / 3.8);
   const attachedTokens = Math.ceil(attachedText.length / 3.8);
   const systemTokens = 1500;
@@ -494,6 +498,8 @@ export default function useChatCore(extraProps = {}) {
       configHook.setShowModelDropdown(prev => !prev);
     },
     removePcFile: streamingHook.removePcFile,
+    removeAttachedFile: streamingHook.removeAttachedFile,
+    handleDragEnter: streamingHook.handleDragEnter,
     handleDragOver: streamingHook.handleDragOver,
     handleDragLeave: streamingHook.handleDragLeave,
     handleDrop: streamingHook.handleDrop,

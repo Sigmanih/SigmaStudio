@@ -63,6 +63,7 @@ const TAB_TO_FOLDER = {
   // Messaging & Email
   email_client:    'sigma_email_client',
   messaging_hub:   'sigma_messaging_hub',
+  youtube_studio:  'sigma_youtube_studio',
 
   // IoT & Domotica
   domotica:        'sigma_domotica',
