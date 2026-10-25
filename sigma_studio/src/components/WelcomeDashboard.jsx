@@ -4,19 +4,70 @@ import {
   CircuitBoard, Zap, DownloadCloud, Sparkles,
   ArrowRight, CheckCircle2, RefreshCw, AlertCircle, Download, 
   ExternalLink, Heart, ChevronRight, Layers,
-  Brain, ShieldCheck, HardDrive, Cpu, X, Film, Camera
+  Brain, ShieldCheck, HardDrive, Cpu, X, Film, Camera, Activity
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
+import TechSpaceCanvas from './common/TechSpaceCanvas';
+import ThinkingOrb from './common/ThinkingOrb';
+
+const INSPIRATION_PILLS = [
+  {
+    label: '⚡ PCB KiCad',
+    role: 'code_architect',
+    prompt: 'Progetta uno schematico KiCad per un controller ESP32 con alimentazione switching a 5V e filtri EMC.'
+  },
+  {
+    label: '🎬 Regia Cinema',
+    role: 'regista_cinematografico',
+    prompt: 'Imposta la direzione visiva e la lista inquadrature per una sequenza notturna cyberpunk con neon e pioggia.'
+  },
+  {
+    label: '📜 Sceneggiatura',
+    role: 'sceneggiatore',
+    prompt: 'Scrivi la struttura in 3 atti e il dialogo di apertura per una storia thriller noir tra un ingegnere e un androide.'
+  },
+  {
+    label: '🎥 DoP Luci & LUT',
+    role: 'direttore_fotografia',
+    prompt: 'Crea una color palette teal & orange anamorfica con lighting ratio 4:1 e note ottiche 35mm T1.5.'
+  },
+  {
+    label: '⚙️ Code Refactor',
+    role: 'code_architect',
+    prompt: 'Scrivi un modulo ad alte prestazioni in Rust con architettura a zero-allocazioni ed esegui i test unitari.'
+  },
+  {
+    label: '∑ Math & KaTeX',
+    role: 'math1',
+    prompt: 'Deriva la formulazione analitica per un filtro di Kalman esteso con matrici formattate in KaTeX e note operative.'
+  }
+];
 
 export default function WelcomeDashboard({ modules = [], openTab }) {
   const { theme } = useApp();
   const isLight = theme === 'light';
 
-  // Stato per l'input rapido del prompt
+  // Stato per l'input rapido del prompt e rotazione suggerimenti
   const [quickPrompt, setQuickPrompt] = useState('');
   const [selectedRole, setSelectedRole] = useState('sigma_architect');
+  const [suggestionIdx, setSuggestionIdx] = useState(0);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+
+  // Rotazione dinamica dei suggerimenti se l'utente non ha scritto nulla
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSuggestionIdx(prev => (prev + 1) % INSPIRATION_PILLS.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Gestore per il riflesso spotlight dinamico al movimento del cursore
+  const handleCardMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
+    e.currentTarget.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
+  };
 
   // GitHub & Roles Update Check State
   const [updateState, setUpdateState] = useState({
@@ -215,6 +266,9 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
 
   return (
     <div className="home-dashboard-wrapper">
+      {/* ── 0. Canvas Dinamico Cyber-Space / Rete Neurale Reattiva ── */}
+      <TechSpaceCanvas isLight={isLight} />
+
       {/* ── 1. Top Bar Futuristica & Telemetria Live ── */}
       <header className="home-topbar">
         <div className="home-topbar-left">
@@ -274,61 +328,89 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       {/* ── 2. Scrollable Body ── */}
       <div className="home-main-scrollable">
 
-        {/* ── 3. Futuristic Hero Section ── */}
+        {/* ── 3. Futuristic Hero Section con Thinking Orb Olografico ── */}
         <section className="home-hero-section">
+          <div className="home-hero-spotlight" />
           <div className="home-hero-glow-back" />
           
-          <div className="home-hero-badge">
-            <span className="badge-glow" />
-            <Cpu size={12} color="#00d2ff" />
-            <span>AMBIENTE DI SVILUPPO COGNITIVO SOVRANO</span>
+          {/* Holographic Cognitive Core / Reactor Pod */}
+          <div className="home-hero-orb-cluster" title="Sigma Cognitive Core — In ascolto e attivo">
+            <div className="orb-radar-ring ring-outer" />
+            <div className="orb-radar-ring ring-middle" />
+            <div className="orb-radar-ring ring-inner" />
+            <ThinkingOrb size={50} state="thinking" />
+            <div className="orb-status-capsule">
+              <span className="orb-pulse-led" />
+              <span>SIGMA COGNITIVE CORE • ONLINE</span>
+            </div>
           </div>
 
           <h1 className="home-hero-title">
-            Crea, Progetta ed Esegui con <span className="gradient-text">Agenti Intelligenti</span>
+            Crea, Progetta ed Esegui con <span className="gradient-shimmer-text">Agenti Intelligenti</span>
           </h1>
 
           <p className="home-hero-sub">
             Studio modulare ad alte prestazioni: reasoning multi-agente, editing di codice,
-            generazione audiovisiva e progettazione hardware, tutto confinato sulla tua macchina.
+            generazione audiovisiva e progettazione hardware, tutto confinato e sovrano sulla tua macchina.
           </p>
 
-          {/* Quick Prompt Bar — Inizia subito ad operare */}
-          <form className="home-quick-prompt-bar" onSubmit={handleQuickPromptSubmit}>
-            <div className="prompt-role-selector">
-              <span className="role-dot" />
-              <select
-                value={selectedRole}
-                onChange={e => setSelectedRole(e.target.value)}
-                className="home-role-select"
-                title="Seleziona il ruolo dell'agente con cui iniziare"
-              >
-                {FEATURED_ROLES.map(r => (
-                  <option key={r.id} value={r.id}>{r.icon} {r.name}</option>
-                ))}
-              </select>
+          {/* Quick Prompt Superwrap con Idee Rapide in 1-Click */}
+          <div className="home-prompt-superwrap">
+            <form className="home-quick-prompt-bar cyber-beam-border" onSubmit={handleQuickPromptSubmit}>
+              <div className="prompt-role-selector">
+                <span className="role-dot pulse" />
+                <select
+                  value={selectedRole}
+                  onChange={e => setSelectedRole(e.target.value)}
+                  className="home-role-select"
+                  title="Seleziona il ruolo dell'agente con cui iniziare"
+                >
+                  {FEATURED_ROLES.map(r => (
+                    <option key={r.id} value={r.id}>{r.icon} {r.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <input
+                type="text"
+                className="home-prompt-input"
+                placeholder={quickPrompt ? '' : `Es: ${INSPIRATION_PILLS[suggestionIdx].prompt}`}
+                value={quickPrompt}
+                onChange={e => setQuickPrompt(e.target.value)}
+              />
+
+              <button type="submit" className="home-prompt-submit-btn" title="Invia prompt e apri Chat">
+                <span>Avvia Missione</span>
+                <ArrowRight size={14} className="arrow-pulse" />
+              </button>
+            </form>
+
+            {/* Quick Inspiration Pills */}
+            <div className="home-prompt-chips">
+              <span className="chips-label"><Sparkles size={11} color="#00d2ff" /> Idee Rapide:</span>
+              {INSPIRATION_PILLS.map((chip, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={`prompt-chip-btn ${selectedRole === chip.role && quickPrompt === chip.prompt ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedRole(chip.role);
+                    setQuickPrompt(chip.prompt);
+                  }}
+                  title="Clicca per caricare questo obiettivo e ruolo"
+                >
+                  <span>{chip.label}</span>
+                </button>
+              ))}
             </div>
-
-            <input
-              type="text"
-              className="home-prompt-input"
-              placeholder="Chiedi all'agente o descrivi un obiettivo (es: Progetta un circuito per servomotori, scrivi una sceneggiatura...)"
-              value={quickPrompt}
-              onChange={e => setQuickPrompt(e.target.value)}
-            />
-
-            <button type="submit" className="home-prompt-submit-btn" title="Invia prompt e apri Chat">
-              <span>Avvia</span>
-              <ArrowRight size={14} />
-            </button>
-          </form>
+          </div>
         </section>
 
-        {/* ── 4. The Bento Launchpad ── */}
+        {/* ── 4. The Bento Launchpad con Dynamic Mouse Spotlight ── */}
         <section className="home-bento-grid">
 
           {/* Card 1: Sciame Agenti & Ruoli Specializzati (Area Grande) */}
-          <div className="bento-card bento-agents">
+          <div className="bento-card bento-agents card-beam-highlight" onMouseMove={handleCardMouseMove}>
             <div className="bento-header">
               <div className="bento-tag" style={{ color: '#00d2ff', borderColor: 'rgba(0, 210, 255, 0.3)' }}>
                 <Brain size={12} />
@@ -380,7 +462,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           </div>
 
           {/* Card 2: Developer Studio Core (Kernel Nativo) */}
-          <div className="bento-card bento-dev">
+          <div className="bento-card bento-dev" onMouseMove={handleCardMouseMove}>
             <div className="bento-header">
               <div className="bento-tag" style={{ color: '#eab308', borderColor: 'rgba(234, 179, 8, 0.3)' }}>
                 <Terminal size={12} />
@@ -419,7 +501,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           </div>
 
           {/* Card 3: Creazione Multimediale & Audiovisiva */}
-          <div className="bento-card bento-creative">
+          <div className="bento-card bento-creative" onMouseMove={handleCardMouseMove}>
             <div className="bento-header">
               <div className="bento-tag" style={{ color: '#ff5064', borderColor: 'rgba(255, 80, 100, 0.3)' }}>
                 <Palette size={12} />
@@ -475,7 +557,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           </div>
 
           {/* Card 4: Ingegneria, Hardware & Modelli */}
-          <div className="bento-card bento-engineering">
+          <div className="bento-card bento-engineering" onMouseMove={handleCardMouseMove}>
             <div className="bento-header">
               <div className="bento-tag" style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
                 <CircuitBoard size={12} />
@@ -534,13 +616,24 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
 
         {/* ── 5. HUD Telemetry Strip: I Valori Fondamentali di Sigma Studio ── */}
         <section className="home-hud-strip">
-          <div className="hud-metric-card">
-            <div className="hud-metric-icon" style={{ color: '#00d2ff', background: 'rgba(0, 210, 255, 0.1)' }}>
-              <ShieldCheck size={18} />
+          <div className="hud-metric-card hud-waveform-card">
+            <div className="hud-metric-icon pulse-cyan" style={{ color: '#00d2ff', background: 'rgba(0, 210, 255, 0.1)' }}>
+              <Activity size={18} />
             </div>
             <div className="hud-metric-info">
-              <span className="hud-metric-val">100% Locale</span>
-              <span className="hud-metric-lbl">Nessuna telemetria esterna né dipendenza cloud</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <span className="hud-metric-val">100% Locale • Zero Cloud</span>
+                <span className="hud-live-tag">LIVE</span>
+              </div>
+              <span className="hud-metric-lbl">Nessuna telemetria esterna né costi per token</span>
+              <div className="hud-wave-container">
+                <svg className="hud-wave-svg" viewBox="0 0 160 16" preserveAspectRatio="none">
+                  <path
+                    className="hud-wave-path"
+                    d="M0,8 L20,8 L30,2 L40,14 L50,8 L70,8 L80,3 L90,13 L100,8 L130,8 L140,4 L150,12 L160,8"
+                  />
+                </svg>
+              </div>
             </div>
           </div>
 
@@ -574,6 +667,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
             </div>
           </div>
         </section>
+
 
         {/* ── 6. Minimal Footer ── */}
         <footer className="home-footer">
