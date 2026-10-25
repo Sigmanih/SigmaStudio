@@ -1,0 +1,30 @@
+{
+  "id": "sigma_developer_lab",
+  "name": "Developer Studio & Admin IDE",
+  "version": "v1.0.0",
+  "category": "Sviluppo & Sandbox",
+  "tabType": "developer_studio",
+  "sidebarLabel": "Developer Studio",
+  "sidebarIcon": "Terminal",
+  "sidebarBadge": "ADMIN",
+  "sidebarBadgeColor": "rgba(0,242,254,0.25)",
+  "sidebarCategory": "Infrastruttura & Sistema",
+  "description": "IDE amministrativo per sviluppare Sigma Studio dall'interno: albero del workspace, editor, terminale, orchestrazione a cinque fasi e server MCP per Git, Lint e Pytest. Il runtime dell'agente arriva da core.harness.",
+  "author": "Sigma Core Team",
+  "repository": "https://github.com/Sigmanih/SigmaStudio-Moduli",
+  "branch": "main",
+  "path": "modules/sigma_developer_lab",
+  "tags": [
+    "IDE",
+    "Terminal",
+    "Admin Agent",
+    "Monaco Editor",
+    "Git MCP",
+    "Lint MCP",
+    "Test MCP"
+  ],
+  "size": "~2 MB",
+  "icon": "Terminal",
+  "color": "#00f2fe",
+  "requirements": "requirements.txt"
+}

@@ -63,6 +63,11 @@ config.local.json
 !/core/modules/sigma_network/**
 /core/modules/sigma_network/**/__pycache__/
 /core/modules/sigma_network/**/*.pyc
+# Developer Studio: modulo Kernel nativo per gestione workspace data/, progetti e sandbox
+!/core/modules/sigma_developer_lab/
+!/core/modules/sigma_developer_lab/**
+/core/modules/sigma_developer_lab/**/__pycache__/
+/core/modules/sigma_developer_lab/**/*.pyc
 /sigma_studio/src/modules/*
 !/sigma_studio/src/modules/registry.js
 !/sigma_studio/src/modules/ModuleNotInstalled.jsx
@@ -72,6 +77,8 @@ config.local.json
 !/sigma_studio/src/modules/sigma_hardware_lab/**
 !/sigma_studio/src/modules/sigma_network/
 !/sigma_studio/src/modules/sigma_network/**
+!/sigma_studio/src/modules/sigma_developer_lab/
+!/sigma_studio/src/modules/sigma_developer_lab/**
 data/marketplace_installed.json
 
 # Tests & Coverage

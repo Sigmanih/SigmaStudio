@@ -768,6 +768,16 @@ export default function Sidebar({
           )}
 
           <SidebarItem
+            icon={Terminal}
+            label="Developer Sigma"
+            isKernel={true}
+            badge="ADMIN IDE"
+            badgeColor="rgba(0,210,255,0.2)"
+            active={activeTabId != null && (activeTabId.startsWith('developer_studio') || activeTabId.startsWith('developer_lab'))}
+            onClick={() => handleNavClick(() => openTab({ name: 'Developer Sigma' }, 'developer_studio'))}
+          />
+
+          <SidebarItem
             icon={Settings}
             label="Impostazioni"
             isKernel={true}
@@ -989,17 +999,6 @@ export default function Sidebar({
                     />
                   )}
 
-                  {isKnowledgeInstalled && (
-                    <SidebarItem
-                      icon={PieChart}
-                      label="Argomenti"
-                      badge={localTopicsCount > 0 || topicsCount > 0 ? Math.max(localTopicsCount, topicsCount) : 0}
-                      badgeColor="rgba(0,210,255,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('knowledge')}
-                      onClick={() => openTab({ name: 'Argomenti' }, 'knowledge')}
-                    />
-                  )}
-
                   {isQuantInstalled && (
                     <SidebarItem
                       icon={Sparkles}
@@ -1044,17 +1043,6 @@ export default function Sidebar({
 
               {!collapsedSections.infra && (
                 <div style={{ paddingLeft: '4px', marginTop: '2px' }}>
-                  {isDevInstalled && (
-                    <SidebarItem
-                      icon={Terminal}
-                      label="Developer Sigma"
-                      badge="ADMIN IDE"
-                      badgeColor="rgba(0,242,254,0.18)"
-                      active={activeTabId != null && (activeTabId.startsWith('developer_studio') || activeTabId.startsWith('developer_lab'))}
-                      onClick={() => openTab({ name: 'Developer Sigma' }, 'developer_studio')}
-                    />
-                  )}
-
                   {isHardwareInstalled && (
                     <SidebarItem
                       icon={Zap}

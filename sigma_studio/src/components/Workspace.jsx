@@ -154,14 +154,11 @@ export default function Workspace({
       );
     }
     if (tab.type === 'mappa_argomenti' || tab.type === 'knowledge') {
-      const isKnowledgeInstalled = modulesState.sigma_knowledge === true;
-      const LazyKnowledge = getLazyModule('knowledge');
-      if (!isKnowledgeInstalled || !LazyKnowledge) {
-        return <ModuleNotInstalled tabType="knowledge" openTab={openTab} />;
-      }
+      // La tab Argomenti e' assorbita dal Grafo D3 della Developer Tab nel Kernel
+      const LazyDev = getLazyModule('developer_studio') || getLazyModule('developer_lab') || getLazyModule('developer');
       return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Argomenti & Memoria...</div>}>
-          <LazyKnowledge onOpenFile={openTabFromMappa} openTab={openTab} />
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Grafo Relazionale...</div>}>
+          <LazyDev openTab={openTab} defaultOpenGraph={true} />
         </React.Suspense>
       );
     }
@@ -340,13 +337,9 @@ export default function Workspace({
       );
     }
     if (tab.type === 'developer_studio' || tab.type === 'developer_lab' || tab.type === 'developer' || tab.type === 'dev') {
-      const isDevInstalled = modulesState.sigma_developer_lab === true;
       const LazyDev = getLazyModule('developer_studio') || getLazyModule('developer_lab') || getLazyModule('developer');
-      if (!isDevInstalled || !LazyDev) {
-        return <ModuleNotInstalled tabType="developer_studio" openTab={openTab} />;
-      }
       return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Developer Studio...</div>}>
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Developer Sigma (Kernel)...</div>}>
           <LazyDev openTab={openTab} />
         </React.Suspense>
       );

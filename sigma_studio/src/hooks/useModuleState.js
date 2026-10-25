@@ -27,14 +27,12 @@ const OPTIONAL_MODULE_IDS = [
   'sigma_audio_studio',  // Hi-Fi Sound & FM Radio Studio Alias
   'sigma_voice_studio',  // Voice Studio & Neural Speech Lab
   // Sviluppo & Sandbox
-  'sigma_developer_lab', // Developer Lab & Docker Sandbox
   // Infrastruttura Lab
   'sigma_benchmark_lab', // Benchmark Lab & Model Evaluation
   'sigma_training_lab',  // Training Lab & SLM Forge
   'sigma_hardware_lab',  // Hardware Lab & VRAM
   'sigma_research_lab',  // Pipelines Lab & Dynamic Swarm
   // Knowledge & Pianificazione
-  'sigma_knowledge',     // Knowledge Explorer
   'sigma_roadmap',       // Pianificazione & Task Audit
   'sigma_mcp_hub',       // MCP Tools Hub
   // IoT
@@ -47,7 +45,7 @@ const OPTIONAL_MODULE_IDS = [
 ];
 
 // Kernel modules — always present and active natively in Sigma Studio core.
-const KERNEL_MODULE_IDS = ['sigma_model_hub'];
+const KERNEL_MODULE_IDS = ['sigma_model_hub', 'sigma_developer_lab'];
 
 
 /**

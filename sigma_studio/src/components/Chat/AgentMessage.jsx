@@ -343,7 +343,8 @@ export default function AgentMessage({
     if (isImagePath(clean)) {
       openTab({ path: clean, filename: clean.split('/').pop() || clean }, 'image_viewer');
     } else {
-      openTab({ path: clean, filename: clean.split('/').pop() || clean }, 'docs');
+      // Reindirizzamento diretto a Developer Studio (Kernel)
+      handleOpenInDevStudio(clean);
     }
   };
 

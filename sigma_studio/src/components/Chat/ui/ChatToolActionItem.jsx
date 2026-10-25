@@ -248,40 +248,25 @@ export default function ChatToolActionItem({
                 </button>
               )}
 
-              {onFileClick && (
+              {(onOpenInDevStudio || onFileClick) && (
                 <button
-                  onClick={() => onFileClick(path)}
-                  title="Apri file nel visualizzatore"
+                  onClick={() => (onOpenInDevStudio || onFileClick)(path)}
+                  title="Apri file nell'editor di Developer Studio"
                   style={{
-                    background: 'rgba(0, 210, 255, 0.08)',
-                    border: '1px solid rgba(0, 210, 255, 0.25)',
-                    color: 'var(--primary, #00d2ff)',
-                    fontSize: '0.65rem',
-                    padding: '2px 7px',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Visualizza 📄
-                </button>
-              )}
-
-              {onOpenInDevStudio && (
-                <button
-                  onClick={() => onOpenInDevStudio(path)}
-                  title="Apri nell'editor del Developer Studio"
-                  style={{
-                    background: 'rgba(0, 210, 255, 0.08)',
-                    border: '1px solid rgba(0, 210, 255, 0.25)',
+                    background: 'rgba(0, 210, 255, 0.10)',
+                    border: '1px solid rgba(0, 210, 255, 0.3)',
                     color: '#00d2ff',
                     fontSize: '0.65rem',
-                    padding: '2px 7px',
+                    padding: '2px 8px',
                     borderRadius: '4px',
                     cursor: 'pointer',
-                    fontWeight: 600
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
                   }}
                 >
-                  Dev Studio 🛠️
+                  Visualizza in Dev Studio 📄
                 </button>
               )}
             </>
