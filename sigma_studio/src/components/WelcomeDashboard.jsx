@@ -1,22 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  ExternalLink, 
-  CheckCircle2, 
-  RefreshCw, 
-  AlertCircle, 
-  Download, 
-  GitBranch, 
-  Check, 
-  Bell, 
-  Heart
+  Terminal, MessageSquare, Palette, Clapperboard, Mic,
+  CircuitBoard, Zap, DownloadCloud, Sparkles,
+  ArrowRight, CheckCircle2, RefreshCw, AlertCircle, Download, 
+  ExternalLink, Heart, ChevronRight, Layers,
+  Brain, ShieldCheck, HardDrive, Cpu, X, Film, Camera
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
-import SkillsShowcaseSlider from './SkillsShowcaseSlider';
 
-export default function WelcomeDashboard({ modules, openTab }) {
+export default function WelcomeDashboard({ modules = [], openTab }) {
   const { theme } = useApp();
   const isLight = theme === 'light';
+
+  // Stato per l'input rapido del prompt
+  const [quickPrompt, setQuickPrompt] = useState('');
+  const [selectedRole, setSelectedRole] = useState('sigma_architect');
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   // GitHub & Roles Update Check State
   const [updateState, setUpdateState] = useState({
@@ -26,7 +26,7 @@ export default function WelcomeDashboard({ modules, openTab }) {
     latestVersion: '0.9.0',
     currentVersion: '0.9.0',
     phase: 'Beta Open Release',
-    releaseTitle: 'Sigma AI Studio v0.9.0 (Beta)',
+    releaseTitle: 'Sigma AI Studio v0.9.0',
     releaseNotes: '',
     publishedAt: '',
     htmlUrl: 'https://github.com/Sigmanih/SigmaStudio/releases',
@@ -46,9 +46,8 @@ export default function WelcomeDashboard({ modules, openTab }) {
     applying: false,
     applyResult: null
   });
-  const [showCommits, setShowCommits] = useState(false);
 
-  // Check for updates
+  // Check for updates via API
   const checkForUpdates = useCallback(async (isManual = false) => {
     if (isManual) {
       setUpdateState(p => ({ ...p, checking: true, error: null, applyResult: null }));
@@ -87,7 +86,6 @@ export default function WelcomeDashboard({ modules, openTab }) {
         setUpdateState(p => ({ ...p, loading: false, checking: false }));
       }
     } catch (e) {
-      console.debug("Update check fallback:", e);
       setUpdateState(p => ({
         ...p,
         loading: false,
@@ -133,301 +131,558 @@ export default function WelcomeDashboard({ modules, openTab }) {
     checkForUpdates(false);
   }, [checkForUpdates]);
 
+  // Avvia chat con ruolo e/o prompt rapido
+  const handleStartChatWithRole = (roleId, customText = '') => {
+    try {
+      if (roleId) {
+        localStorage.setItem('sigma_active_role', roleId);
+        window.dispatchEvent(new CustomEvent('sigma-chat-select-role', { detail: roleId }));
+      }
+      if (customText && customText.trim()) {
+        localStorage.setItem('sigma_pending_chat_prompt', customText.trim());
+        window.dispatchEvent(new CustomEvent('sigma-chat-set-prompt', { detail: customText.trim() }));
+      }
+    } catch (e) { }
+    if (openTab) {
+      openTab({ name: 'Chat', path: 'chat-tab' }, 'chat');
+    }
+  };
+
+  const handleQuickPromptSubmit = (e) => {
+    e.preventDefault();
+    if (!quickPrompt.trim()) return;
+    handleStartChatWithRole(selectedRole, quickPrompt);
+    setQuickPrompt('');
+  };
+
+  // Elenco dei ruoli card in evidenza
+  const FEATURED_ROLES = [
+    {
+      id: 'sigma_architect',
+      name: 'Sigma Architect',
+      title: 'Architetto & Core Swarm',
+      icon: '🏗️',
+      image: '/images/agente0.png',
+      color: '#7c5bf0',
+      desc: 'Pianificazione di sistema, orchestrazione e sintesi.'
+    },
+    {
+      id: 'regista_cinematografico',
+      name: 'Regista',
+      title: 'Direzione & Visione Visiva',
+      icon: '🎬',
+      image: '/images/regista_cinematografico.jpg',
+      color: '#ff007a',
+      desc: 'Grammatica visiva, note di regia e inquadrature.'
+    },
+    {
+      id: 'sceneggiatore',
+      name: 'Sceneggiatore',
+      title: 'Screenplay & Dialoghi',
+      icon: '📜',
+      image: '/images/sceneggiatore.jpg',
+      color: '#f59e0b',
+      desc: 'Scrittura in 3 atti, dialoghi e schede personaggi.'
+    },
+    {
+      id: 'direttore_fotografia',
+      name: 'DoP Fotografia',
+      title: 'Luci, LUT & Prompt Visivi',
+      icon: '🎥',
+      image: '/images/direttore_fotografia.jpg',
+      color: '#8b5cf6',
+      desc: 'Lighting design, palette e prompt di generazione.'
+    },
+    {
+      id: 'code_architect',
+      name: 'Code Architect',
+      title: 'Ingegneria & Refactor',
+      icon: '⚙️',
+      image: '/images/programmatoreAi.png',
+      color: '#00d2ff',
+      desc: 'Scrittura codice pulito, algoritmi e test unitari.'
+    },
+    {
+      id: 'math1',
+      name: 'Math Researcher',
+      title: 'Scienza & Formule LaTeX',
+      icon: '∑',
+      image: '/images/matematicoAi.png',
+      color: '#3fb950',
+      desc: 'Formulari KaTeX, modelli computazionali e calcolo.'
+    }
+  ];
+
   return (
     <div className="home-dashboard-wrapper">
-      {/* ── Top Bar Minimale e Fluida ── */}
-      <div className="home-topbar">
+      {/* ── 1. Top Bar Futuristica & Telemetria Live ── */}
+      <header className="home-topbar">
         <div className="home-topbar-left">
-          <div className="home-status-dot" />
+          <div className="home-status-dot-pulse" title="Micro-kernel locale attivo" />
           <span className="home-kernel-badge">KERNEL v{updateState.currentVersion}</span>
           <span className="home-topbar-divider">•</span>
-          <span className="home-topbar-roles">{updateState.activeRolesCount} Ruoli Attivi</span>
+          <span className="home-topbar-pill">{updateState.activeRolesCount} Ruoli Attivi</span>
           <span className="home-topbar-divider">•</span>
-          <span className="home-topbar-status">Pronto & Operativo</span>
+          <span className="home-topbar-pill">Workspace: <code className="home-topbar-code">data/</code></span>
         </div>
 
         <div className="home-topbar-right">
+          {updateState.updateAvailable ? (
+            <button
+              onClick={() => setShowUpdateModal(true)}
+              className="home-update-pill alert"
+              title="Ci sono nuovi aggiornamenti da GitHub"
+            >
+              <Sparkles size={11} className="pulse" />
+              <span>{updateState.commitsBehind > 0 ? `${updateState.commitsBehind} Nuovi Commit` : 'Nuova Versione'}</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => checkForUpdates(true)}
+              disabled={updateState.checking}
+              className="home-update-pill synced"
+              title="Verifica stato aggiornamenti GitHub"
+            >
+              <RefreshCw size={10} className={updateState.checking ? 'spin' : ''} />
+              <span>{updateState.checking ? 'Controllo...' : 'Sistema Sincronizzato'}</span>
+            </button>
+          )}
+
           <a
             href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC"
             target="_blank"
             rel="noreferrer"
-            className="home-topbar-donate-link"
-            title="Sostieni lo sviluppo indipendente di Sigma Studio con PayPal"
+            className="home-topbar-donate"
+            title="Sostieni la ricerca e lo sviluppo di Sigma Studio"
           >
             <Heart size={11} fill="#f43f5e" color="#f43f5e" />
             <span>Sostieni</span>
           </a>
 
-          <button
-            onClick={() => checkForUpdates(true)}
-            disabled={updateState.checking || updateState.applying}
-            className="home-check-btn"
-            title="Verifica se ci sono novità o nuovi manifesti su GitHub"
-          >
-            <RefreshCw size={11} className={updateState.checking ? "spin" : ""} />
-            <span>{updateState.checking ? 'Controllo...' : 'Verifica Aggiornamenti'}</span>
-          </button>
-
-          {updateState.updateAvailable && (
-            <button
-              onClick={applyUpdate}
-              disabled={updateState.applying}
-              className="home-update-btn-alert"
-            >
-              <Download size={11} />
-              <span>{updateState.applying ? 'Download...' : 'Aggiorna Ora'}</span>
-            </button>
-          )}
-
           <a
-            href={updateState.htmlUrl || "https://github.com/Sigmanih/SigmaStudio/releases"}
+            href={updateState.htmlUrl || 'https://github.com/Sigmanih/SigmaStudio'}
             target="_blank"
             rel="noreferrer"
-            className="home-github-link"
+            className="home-topbar-github"
           >
             <ExternalLink size={11} />
             <span>GitHub</span>
           </a>
         </div>
-      </div>
+      </header>
 
+      {/* ── 2. Scrollable Body ── */}
       <div className="home-main-scrollable">
 
-        {/* ── Bacheca di Sistema: Aggiornamenti Git & Ruoli ── */}
-        <div className={`home-bacheca-card ${updateState.updateAvailable ? 'has-update' : ''}`}>
-          <div className="home-bacheca-main">
-            {/* Sinistra: Icona + Info Stato Git/Sistema */}
-            <div className="home-bacheca-left">
-              <div className="home-bacheca-icon-box">
-                {updateState.checking ? (
-                  <RefreshCw size={20} className="spin" color="#00d2ff" />
-                ) : updateState.updateAvailable ? (
-                  <Bell size={20} color="#faa03c" />
-                ) : (
-                  <CheckCircle2 size={20} color="#3fb950" />
-                )}
-              </div>
-
-              <div className="home-bacheca-info">
-                <div className="home-bacheca-title-row">
-                  <span className="home-bacheca-title">
-                    {updateState.updateAvailable
-                      ? (updateState.commitsBehind > 0
-                          ? `⚡ ${updateState.commitsBehind} ${updateState.commitsBehind === 1 ? 'nuovo commit disponibile' : 'nuovi commit disponibili'} su GitHub`
-                          : `⚡ Nuova Versione Rilasciata: v${updateState.latestVersion}`)
-                      : `🟢 Sigma AI Studio v${updateState.currentVersion} • Sistema & Ruoli Sincronizzati`}
-                  </span>
-                  <span className={`home-bacheca-badge ${updateState.updateAvailable ? 'update' : 'synced'}`}>
-                    {updateState.updateAvailable ? 'Aggiornamento Disponibile' : 'Sistema Sincronizzato'}
-                  </span>
-                </div>
-
-                <p className="home-bacheca-desc-text">
-                  Sigma Studio è un IDE intelligente e modulare per la ricerca e lo sviluppo con intelligenza artificiale locale e sovrana.
-                  Integra agenti cognitivi specializzati, elaborazione hardware trasparente e automazione guidata da protocollo MCP.
-                </p>
-
-                <div className="home-bacheca-sub">
-                  {updateState.updateAvailable ? (
-                    <span>{updateState.releaseNotes || updateState.releaseTitle || 'Disponibile nuova versione con miglioramenti kernel e nuovi manifesti.'}</span>
-                  ) : updateState.gitAvailable && updateState.localCommit ? (
-                    <span>
-                      Allineato al commit <code className="home-bacheca-mono">{updateState.localCommit}</code>
-                      {updateState.localBranch ? ` · ramo ${updateState.localBranch}` : ''}
-                      <span> • Catalogo ruoli verificato ({updateState.activeRolesCount} ruoli attivi)</span>
-                    </span>
-                  ) : (
-                    <span>Versione open per la community. Repository GitHub sincronizzato con il catalogo dei ruoli attivi ({updateState.activeRolesCount} ruoli).</span>
-                  )}
-                  {updateState.lastChecked && (
-                    <span className="home-bacheca-time">• Verificato alle {updateState.lastChecked}</span>
-                  )}
-
-                  {/* Dettaglio delta commit locale -> remoto */}
-                  {updateState.updateAvailable && updateState.commitsBehind > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', marginTop: '2px' }}>
-                      <span className="home-bacheca-mono">
-                        {updateState.localCommit} → {updateState.remoteCommit}
-                      </span>
-                      <span style={{ opacity: 0.8 }}>· ramo {updateState.remoteBranch}</span>
-                      {updateState.newCommits.length > 0 && (
-                        <button
-                          type="button"
-                          className="home-bacheca-toggle-commits"
-                          onClick={() => setShowCommits(v => !v)}
-                        >
-                          {showCommits ? 'Nascondi novità' : 'Vedi cosa cambia'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Destra: Azioni Bacheca */}
-            <div className="home-bacheca-actions">
-              {/* Verifica Manuale */}
-              <button
-                type="button"
-                className="home-bacheca-btn check"
-                onClick={() => checkForUpdates(true)}
-                disabled={updateState.checking || updateState.applying}
-                title="Verifica se ci sono novità o nuovi manifesti su GitHub"
-              >
-                <RefreshCw size={12} className={updateState.checking ? "spin" : ""} />
-                <span>{updateState.checking ? 'Controllo...' : 'Verifica Aggiornamenti'}</span>
-              </button>
-
-              {/* Aggiorna Ora o Sincronizza Ruoli */}
-              {updateState.updateAvailable ? (
-                <button
-                  type="button"
-                  className="home-bacheca-btn apply"
-                  onClick={applyUpdate}
-                  disabled={updateState.applying}
-                  title="Scarica e applica i commit da GitHub"
-                >
-                  {updateState.applying ? <RefreshCw size={13} className="spin" /> : <Download size={13} />}
-                  <span>{updateState.applying ? 'Download...' : 'Scarica & Aggiorna Ora'}</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="home-bacheca-btn sync"
-                  onClick={applyUpdate}
-                  disabled={updateState.applying}
-                  title="Sincronizza i manifesti e ruoli dal repository ufficiale"
-                >
-                  {updateState.applying ? <RefreshCw size={12} className="spin" /> : <GitBranch size={12} />}
-                  <span>{updateState.applying ? 'Sincronizzazione...' : 'Sincronizza Ruoli'}</span>
-                </button>
-              )}
-
-              {/* Link Release GitHub */}
-              <a
-                href={updateState.htmlUrl || "https://github.com/Sigmanih/SigmaStudio/releases"}
-                target="_blank"
-                rel="noreferrer"
-                className="home-bacheca-link"
-                title="Apri le release o il repository su GitHub"
-              >
-                <ExternalLink size={12} />
-                <span>{updateState.commitsBehind > 0 ? 'Vedi su GitHub' : 'Release GitHub'}</span>
-              </a>
-            </div>
+        {/* ── 3. Futuristic Hero Section ── */}
+        <section className="home-hero-section">
+          <div className="home-hero-glow-back" />
+          
+          <div className="home-hero-badge">
+            <span className="badge-glow" />
+            <Cpu size={12} color="#00d2ff" />
+            <span>AMBIENTE DI SVILUPPO COGNITIVO SOVRANO</span>
           </div>
 
-          {/* Drawer Novità Commit */}
-          {showCommits && updateState.newCommits.length > 0 && (
-            <div className="home-bacheca-commits">
-              <div className="home-bacheca-commits-header">
-                Nuovi commit da integrare da GitHub ({updateState.newCommits.length}):
+          <h1 className="home-hero-title">
+            Crea, Progetta ed Esegui con <span className="gradient-text">Agenti Intelligenti</span>
+          </h1>
+
+          <p className="home-hero-sub">
+            Studio modulare ad alte prestazioni: reasoning multi-agente, editing di codice,
+            generazione audiovisiva e progettazione hardware, tutto confinato sulla tua macchina.
+          </p>
+
+          {/* Quick Prompt Bar — Inizia subito ad operare */}
+          <form className="home-quick-prompt-bar" onSubmit={handleQuickPromptSubmit}>
+            <div className="prompt-role-selector">
+              <span className="role-dot" />
+              <select
+                value={selectedRole}
+                onChange={e => setSelectedRole(e.target.value)}
+                className="home-role-select"
+                title="Seleziona il ruolo dell'agente con cui iniziare"
+              >
+                {FEATURED_ROLES.map(r => (
+                  <option key={r.id} value={r.id}>{r.icon} {r.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <input
+              type="text"
+              className="home-prompt-input"
+              placeholder="Chiedi all'agente o descrivi un obiettivo (es: Progetta un circuito per servomotori, scrivi una sceneggiatura...)"
+              value={quickPrompt}
+              onChange={e => setQuickPrompt(e.target.value)}
+            />
+
+            <button type="submit" className="home-prompt-submit-btn" title="Invia prompt e apri Chat">
+              <span>Avvia</span>
+              <ArrowRight size={14} />
+            </button>
+          </form>
+        </section>
+
+        {/* ── 4. The Bento Launchpad ── */}
+        <section className="home-bento-grid">
+
+          {/* Card 1: Sciame Agenti & Ruoli Specializzati (Area Grande) */}
+          <div className="bento-card bento-agents">
+            <div className="bento-header">
+              <div className="bento-tag" style={{ color: '#00d2ff', borderColor: 'rgba(0, 210, 255, 0.3)' }}>
+                <Brain size={12} />
+                <span>TEAM COGNITIVO SPECIALIZZATO</span>
               </div>
-              {updateState.newCommits.map(c => (
-                <div key={c.sha} className="home-bacheca-commit-row">
-                  <code className="home-bacheca-commit-sha">{c.sha}</code>
-                  <span className="home-bacheca-commit-msg">{c.message}</span>
-                  <span className="home-bacheca-commit-date">{c.date}</span>
+              <button
+                type="button"
+                className="bento-action-link"
+                onClick={() => openTab?.({ name: 'Ruoli AI' }, 'whitepapers_lib')}
+              >
+                <span>Vedi tutti i 20 ruoli</span>
+                <ChevronRight size={13} />
+              </button>
+            </div>
+
+            <h3 className="bento-title">Scegli un Agente ed Inizia a Lavorare</h3>
+            <p className="bento-desc">
+              Ogni agente possiede una specializzazione verticale, strumenti MCP dedicati e prompt ottimizzati.
+            </p>
+
+            <div className="bento-roles-cards">
+              {FEATURED_ROLES.map(role => (
+                <div
+                  key={role.id}
+                  className="role-mini-card"
+                  onClick={() => handleStartChatWithRole(role.id)}
+                  title={`Avvia una sessione con ${role.name}`}
+                >
+                  <div className="role-avatar-wrap" style={{ borderColor: role.color }}>
+                    <img
+                      src={role.image}
+                      alt={role.name}
+                      className="role-avatar-img"
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                    <span className="role-fallback-icon">{role.icon}</span>
+                  </div>
+                  <div className="role-details">
+                    <div className="role-name" style={{ color: role.color }}>{role.name}</div>
+                    <div className="role-title">{role.title}</div>
+                    <div className="role-subdesc">{role.desc}</div>
+                  </div>
+                  <div className="role-open-btn">
+                    <MessageSquare size={13} />
+                  </div>
                 </div>
               ))}
             </div>
-          )}
+          </div>
 
-          {/* Feedback Applicazione Aggiornamento */}
-          {updateState.applyResult && (
-            <div className={`home-bacheca-feedback ${updateState.applyResult.success ? 'success' : 'error'}`}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {updateState.applyResult.success ? <Check size={14} /> : <AlertCircle size={14} />}
-                <span>{updateState.applyResult.message}</span>
-                {updateState.applyResult.restartRequired && (
-                  <span style={{ fontSize: '0.70rem', opacity: 0.9 }}>
-                    (Riavvio del kernel consigliato)
-                  </span>
-                )}
+          {/* Card 2: Developer Studio Core (Kernel Nativo) */}
+          <div className="bento-card bento-dev">
+            <div className="bento-header">
+              <div className="bento-tag" style={{ color: '#eab308', borderColor: 'rgba(234, 179, 8, 0.3)' }}>
+                <Terminal size={12} />
+                <span>KERNEL CORE IDE</span>
               </div>
+              <span className="bento-status-badge">Default: data/</span>
+            </div>
+
+            <h3 className="bento-title">Developer Studio</h3>
+            <p className="bento-desc">
+              Editor di codice avanzato, terminale, ispezione filesystem protetta in <code>data/</code> e gestione cartelle PC personalizzate.
+            </p>
+
+            <div className="bento-quick-buttons">
               <button
                 type="button"
-                className="home-toast-close"
-                onClick={() => setUpdateState(p => ({ ...p, applyResult: null }))}
+                className="bento-btn-primary"
+                onClick={() => openTab?.({ name: 'Developer Sigma' }, 'developer_studio')}
               >
-                ✕
+                <Terminal size={14} />
+                <span>Apri Workspace IDE</span>
+              </button>
+
+              <button
+                type="button"
+                className="bento-btn-secondary"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('sigma_dev_open_graph'));
+                  openTab?.({ name: 'Developer Sigma' }, 'developer_studio');
+                }}
+              >
+                <Layers size={14} color="#00d2ff" />
+                <span>Grafo Relazionale D3</span>
               </button>
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* ── Banner Sostegno Indipendente & Community (posizionato in evidenza in alto) ── */}
-        <section className="home-community-banner">
-          <div className="home-community-left">
-            <div className="home-community-icon">
-              <Heart size={18} color="#f43f5e" fill="rgba(244, 63, 94, 0.35)" />
+          {/* Card 3: Creazione Multimediale & Audiovisiva */}
+          <div className="bento-card bento-creative">
+            <div className="bento-header">
+              <div className="bento-tag" style={{ color: '#ff5064', borderColor: 'rgba(255, 80, 100, 0.3)' }}>
+                <Palette size={12} />
+                <span>LABORATORI CREATIVI</span>
+              </div>
             </div>
-            <div>
-              <div className="home-community-title">
-                Sviluppo Indipendente & Sovranità Cognitiva Locale
-              </div>
-              <div className="home-community-desc">
-                Sigma Studio è libero, open source e rigorosamente locale. Se trovi utile il progetto, sostieni la ricerca e lo sviluppo di nuovi moduli con una libera donazione.
-              </div>
+
+            <h3 className="bento-title">Studio Audiovisivo & 3D</h3>
+            <p className="bento-desc">
+              Grafica 8K FLUX, Blender headless, storyboard da manga e sintetizzatore neurale.
+            </p>
+
+            <div className="bento-features-list">
+              <button
+                type="button"
+                className="bento-feature-item"
+                onClick={() => openTab?.({ name: 'Creative Studio' }, 'creative_studio')}
+              >
+                <Palette size={15} color="#ff5064" />
+                <div className="feat-text">
+                  <span className="feat-title">Creative Lab 3D/2D</span>
+                  <span className="feat-sub">FLUX 8K & Render Blender 3D</span>
+                </div>
+                <ChevronRight size={13} className="feat-arrow" />
+              </button>
+
+              <button
+                type="button"
+                className="bento-feature-item"
+                onClick={() => openTab?.({ name: 'Video Studio' }, 'video_studio')}
+              >
+                <Clapperboard size={15} color="#ff007a" />
+                <div className="feat-text">
+                  <span className="feat-title">Video Studio & Manga</span>
+                  <span className="feat-sub">Regia, montaggio scene e soundtrack</span>
+                </div>
+                <ChevronRight size={13} className="feat-arrow" />
+              </button>
+
+              <button
+                type="button"
+                className="bento-feature-item"
+                onClick={() => openTab?.({ name: 'Audio Studio' }, 'audio_studio')}
+              >
+                <Mic size={15} color="#bc8cff" />
+                <div className="feat-text">
+                  <span className="feat-title">Voice & Audio Studio</span>
+                  <span className="feat-sub">TTS neurale e radio FM procedurale</span>
+                </div>
+                <ChevronRight size={13} className="feat-arrow" />
+              </button>
             </div>
           </div>
-          <div className="home-community-actions">
-            <a
-              href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC"
-              target="_blank"
-              rel="noreferrer"
-              className="home-community-btn-donate"
-              title="Fai una libera donazione con PayPal a supporto del progetto"
-            >
-              <Heart size={12} fill="#ffffff" />
-              <span>Supporta su PayPal</span>
-              <ExternalLink size={11} />
-            </a>
+
+          {/* Card 4: Ingegneria, Hardware & Modelli */}
+          <div className="bento-card bento-engineering">
+            <div className="bento-header">
+              <div className="bento-tag" style={{ color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
+                <CircuitBoard size={12} />
+                <span>HARDWARE & MODELLI</span>
+              </div>
+            </div>
+
+            <h3 className="bento-title">Ingegneria Elettronica & SLM</h3>
+            <p className="bento-desc">
+              Progettazione PCB KiCad, telemetria micro-kernel Rust e gestione modelli GGUF locali.
+            </p>
+
+            <div className="bento-features-list">
+              <button
+                type="button"
+                className="bento-feature-item"
+                onClick={() => openTab?.({ name: 'KiCad Lab' }, 'kicad_lab')}
+              >
+                <CircuitBoard size={15} color="#10b981" />
+                <div className="feat-text">
+                  <span className="feat-title">KiCad PCB Designer</span>
+                  <span className="feat-sub">Schematici, routing 2D e viewer 3D</span>
+                </div>
+                <ChevronRight size={13} className="feat-arrow" />
+              </button>
+
+              <button
+                type="button"
+                className="bento-feature-item"
+                onClick={() => openTab?.({ name: 'Monitor Hardware' }, 'hardware_lab')}
+              >
+                <Zap size={15} color="#eab308" />
+                <div className="feat-text">
+                  <span className="feat-title">Hardware Monitor & Rust</span>
+                  <span className="feat-sub">VRAM, KV-cache ed engine telemetrico</span>
+                </div>
+                <ChevronRight size={13} className="feat-arrow" />
+              </button>
+
+              <button
+                type="button"
+                className="bento-feature-item"
+                onClick={() => openTab?.({ name: 'Modelli' }, 'model_hub')}
+              >
+                <DownloadCloud size={15} color="#00d2ff" />
+                <div className="feat-text">
+                  <span className="feat-title">Model Hub Hugging Face</span>
+                  <span className="feat-sub">Catalogo GGUF e quantizzazione locale</span>
+                </div>
+                <ChevronRight size={13} className="feat-arrow" />
+              </button>
+            </div>
+          </div>
+
+        </section>
+
+        {/* ── 5. HUD Telemetry Strip: I Valori Fondamentali di Sigma Studio ── */}
+        <section className="home-hud-strip">
+          <div className="hud-metric-card">
+            <div className="hud-metric-icon" style={{ color: '#00d2ff', background: 'rgba(0, 210, 255, 0.1)' }}>
+              <ShieldCheck size={18} />
+            </div>
+            <div className="hud-metric-info">
+              <span className="hud-metric-val">100% Locale</span>
+              <span className="hud-metric-lbl">Nessuna telemetria esterna né dipendenza cloud</span>
+            </div>
+          </div>
+
+          <div className="hud-metric-card">
+            <div className="hud-metric-icon" style={{ color: '#3fb950', background: 'rgba(63, 185, 80, 0.1)' }}>
+              <Cpu size={18} />
+            </div>
+            <div className="hud-metric-info">
+              <span className="hud-metric-val">Pi 5 & PC Ready</span>
+              <span className="hud-metric-lbl">Micro-kernel ottimizzato per CPU pura e GPU dedicata</span>
+            </div>
+          </div>
+
+          <div className="hud-metric-card">
+            <div className="hud-metric-icon" style={{ color: '#bc8cff', background: 'rgba(188, 140, 255, 0.1)' }}>
+              <Brain size={18} />
+            </div>
+            <div className="hud-metric-info">
+              <span className="hud-metric-val">20 Ruoli Specializzati</span>
+              <span className="hud-metric-lbl">Dalla regia cinematografica all'ingegneria software</span>
+            </div>
+          </div>
+
+          <div className="hud-metric-card">
+            <div className="hud-metric-icon" style={{ color: '#f59e0b', background: 'rgba(245, 158, 11, 0.1)' }}>
+              <HardDrive size={18} />
+            </div>
+            <div className="hud-metric-info">
+              <span className="hud-metric-val">Protocollo MCP Nativo</span>
+              <span className="hud-metric-lbl">14 tool server: git, lint, test, docker, filesystem</span>
+            </div>
           </div>
         </section>
 
-        {/* ── Catalogo Skills Showcase Slider ── */}
-        <section className="home-skills-showcase">
-          <SkillsShowcaseSlider openTab={openTab} />
-        </section>
-
-        {/* ── Footer Minimale ── */}
+        {/* ── 6. Minimal Footer ── */}
         <footer className="home-footer">
           <div className="home-footer-left">
             <button
-              onClick={() => openTab({ path: 'README.md', filename: 'README.md' }, 'editor')}
+              onClick={() => openTab?.({ path: 'README.md', filename: 'README.md' }, 'editor')}
               className="home-footer-link"
             >
-              📖 Documentation (README)
+              📖 Guida Utente (README)
             </button>
-            <span className="home-footer-bullet">•</span>
+            <span className="home-footer-dot">•</span>
             <button
-              onClick={() => openTab({ path: 'ARCHITECTURE.md', filename: 'ARCHITECTURE.md' }, 'editor')}
+              onClick={() => openTab?.({ path: 'ARCHITECTURE.md', filename: 'ARCHITECTURE.md' }, 'editor')}
               className="home-footer-link"
             >
-              🏛️ Architecture
+              🏛️ Architettura di Sistema
             </button>
-            <span className="home-footer-bullet">•</span>
+            <span className="home-footer-dot">•</span>
             <a
               href="https://www.paypal.com/ncp/payment/RP2DYUXVJ8FRC"
               target="_blank"
               rel="noreferrer"
-              className="home-footer-link"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#fb7185', textDecoration: 'none' }}
-              title="Supporta lo sviluppo indipendente con PayPal"
+              className="home-footer-link donate"
             >
-              <Heart size={10} fill="#fb7185" />
-              <span>Sostieni la Ricerca</span>
+              <Heart size={10} fill="#f43f5e" color="#f43f5e" />
+              <span>Sostieni lo sviluppo</span>
             </a>
           </div>
 
           <div className="home-footer-right">
-            <span className="home-footer-dot">●</span>
-            <span>Sigma AI Studio v{updateState.currentVersion} • Open Community Release</span>
+            <span>Sigma AI Studio v{updateState.currentVersion} • Sovranità Cognitiva Locale</span>
           </div>
         </footer>
+
       </div>
+
+      {/* ── 7. Modale Aggiornamenti Elegante & Non Invasivo ── */}
+      {showUpdateModal && (
+        <div className="home-modal-backdrop" onClick={() => setShowUpdateModal(false)}>
+          <div className="home-modal-card" onClick={e => e.stopPropagation()}>
+            <div className="home-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={16} color="#00d2ff" />
+                <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>Aggiornamenti di Sistema & Ruoli</h4>
+              </div>
+              <button
+                type="button"
+                className="home-modal-close"
+                onClick={() => setShowUpdateModal(false)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="home-modal-body">
+              <div className="modal-commit-summary">
+                <span className="commit-badge">
+                  {updateState.commitsBehind > 0 ? `${updateState.commitsBehind} commit dietro a origin/main` : 'Nuova release disponibile'}
+                </span>
+                <span className="commit-sha">
+                  {updateState.localCommit} → {updateState.remoteCommit}
+                </span>
+              </div>
+
+              {updateState.newCommits.length > 0 ? (
+                <div className="modal-commits-list">
+                  {updateState.newCommits.map(c => (
+                    <div key={c.sha} className="modal-commit-item">
+                      <code>{c.sha}</code>
+                      <span className="modal-commit-msg">{c.message}</span>
+                      <span className="modal-commit-date">{c.date}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                  {updateState.releaseNotes || 'Nuovi miglioramenti kernel e definizioni dei ruoli disponibili nel repository ufficiale.'}
+                </p>
+              )}
+
+              {updateState.applyResult && (
+                <div className={`modal-apply-alert ${updateState.applyResult.success ? 'success' : 'error'}`}>
+                  {updateState.applyResult.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+                  <span>{updateState.applyResult.message}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="home-modal-footer">
+              <button
+                type="button"
+                className="btn-modal-cancel"
+                onClick={() => setShowUpdateModal(false)}
+              >
+                Chiudi
+              </button>
+              <button
+                type="button"
+                className="btn-modal-apply"
+                onClick={applyUpdate}
+                disabled={updateState.applying}
+              >
+                {updateState.applying ? <RefreshCw size={12} className="spin" /> : <Download size={12} />}
+                <span>{updateState.applying ? 'Download in corso...' : 'Scarica & Aggiorna Ora'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
