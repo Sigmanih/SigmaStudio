@@ -265,7 +265,9 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         category,
         prompt: resolveRolePrompt({ ...r, id }),
         // Busto 3D installato con il ruolo: senza, la plancia usa l'ufficiale procedurale
-        model3d: r.model3d || null
+        model3d: r.model3d || null,
+        // Figura intera con scheletro: in qualita' alta cammina nella plancia
+        character3d: r.character3d || null
       };
       return enriched;
     });

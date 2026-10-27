@@ -41,6 +41,21 @@ const prefersReducedMotion = () => {
   }
 };
 
+// Clip degli agenti a figura intera: Universal Animation Library di Quaternius
+// (CC0), scaricate una volta per tutti. Delle tracce si tengono le rotazioni e
+// la posizione del bacino: le altre posizioni e le scale imporrebbero al
+// personaggio le proporzioni del manichino.
+let agentClipsPromise = null;
+const loadAgentClips = (loader) => {
+  if (!agentClipsPromise) {
+    agentClipsPromise = loader.loadAsync('/models/animazioni_agenti.glb').then(g => g.animations.map(c =>
+      new THREE.AnimationClip(c.name, c.duration,
+        c.tracks.filter(t => t.name.endsWith('.quaternion') || t.name === 'DEF-hips.position'))));
+    agentClipsPromise.catch(() => { agentClipsPromise = null; });
+  }
+  return agentClipsPromise;
+};
+
 // Animazione senza scheletro: i modelli generati non hanno rig, quindi la testa
 // gira nel vertex shader. I vertici sopra il collo (altezza misurata in Blender)
 // ruotano attorno al collo, con una fascia di raccordo per non strappare la mesh;
@@ -128,7 +143,8 @@ export default function CyberSpace3DCanvas({
 
   // Chiave reattiva dei ruoli per ricostruire dinamicamente la plancia quando i ruoli vengono caricati dal backend
   // Conta anche il modello 3D: arriva con l'installazione del ruolo, che puo' avvenire a plancia aperta
-  const rolesKey = (roles || []).map(r => `${r.id}:${(r.model3d && r.model3d.url) || ''}`).join('|');
+  const rolesKey = (roles || []).map(r =>
+    `${r.id}:${(r.model3d && r.model3d.url) || ''}:${(r.character3d && r.character3d.url) || ''}`).join('|');
 
   useEffect(() => {
     const container = mountRef.current;
@@ -2040,13 +2056,191 @@ export default function CyberSpace3DCanvas({
       st.figureGroup.visible = lite;
     };
 
+    // =========================================================================
+    // 7c. Agenti a figura intera: lavorano seduti, passeggiano, vengono incontro
+    // =========================================================================
+    // Scheletro e clip sono quelli della Universal Animation Library (CC0):
+    // il personaggio ha le stesse ossa, quindi le clip valgono per nome d'osso.
+    const agentCharacters = [];
+    const CHARACTER_SCALE = 0.92; // 1,83 del manichino -> ~1,7 unita' di plancia
+    const WALK_SPEED = 1.1; // unita'/s: a questa scala i piedi non scivolano
+    const DECK_Y = -2.0;
+    const POD_TOP = 0.22;
+    const POD_RADIUS = 2.55;
+    const SEAT_Z = 0.36; // piedi davanti alla seduta: da seduto il bacino arretra
+    const STAND_Z = 1.7; // davanti alla poltrona, verso il centro della plancia
+    const HOLO_RADIUS = 5.4; // bordo della piattaforma centrale (4,5) piu' un passo
+
+    const stationWorld = (st, x, z) => {
+      const p = st.stationGroup.localToWorld(new THREE.Vector3(x, 0, z));
+      // Sulla pedana si sta 0,22 piu' in alto che sul ponte
+      p.y = DECK_Y + (Math.hypot(p.x - st.posX, p.z - st.posZ) < POD_RADIUS ? POD_TOP : 0);
+      return p;
+    };
+    const consoleYaw = (st) => st.stationGroup.rotation.y + Math.PI;
+    const randomBetween = (a, b) => a + Math.random() * (b - a);
+
+    const playClip = (ch, name, fade = 0.35, once = false) => {
+      const next = ch.actions[name];
+      if (!next || ch.current === name) return;
+      next.reset();
+      next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+      next.clampWhenFinished = once;
+      next.fadeIn(fade).play();
+      if (ch.current && ch.actions[ch.current]) ch.actions[ch.current].fadeOut(fade);
+      ch.current = name;
+    };
+
+    const walkTo = (ch, points, then) => {
+      ch.path = points;
+      ch.after = then;
+      ch.state = 'cammina';
+      playClip(ch, 'Walk_Loop', 0.3);
+    };
+
+    const sitDown = (ch) => {
+      const p = stationWorld(ch.st, 0, SEAT_Z);
+      ch.root.position.copy(p);
+      ch.yawTarget = consoleYaw(ch.st);
+      ch.state = 'seduto';
+      ch.timer = randomBetween(14, 30);
+      playClip(ch, 'Sitting_Idle_Loop', 0.45);
+    };
+
+    const goVisitHolo = (ch) => {
+      // Un punto del bordo del tavolo olografico dalla propria parte della plancia
+      const a = Math.atan2(ch.st.posZ, ch.st.posX) + randomBetween(-0.35, 0.35);
+      const holo = new THREE.Vector3(Math.cos(a) * HOLO_RADIUS, DECK_Y, Math.sin(a) * HOLO_RADIUS);
+      walkTo(ch, [stationWorld(ch.st, 0, STAND_Z), holo], () => {
+        ch.state = 'sosta';
+        ch.timer = randomBetween(6, 11);
+        // Rivolto al tavolo: consulta la mappa olografica
+        ch.yawTarget = Math.atan2(-holo.x, -holo.z);
+        playClip(ch, Math.random() < 0.5 ? 'Interact' : 'Idle_Loop', 0.35, false);
+      });
+    };
+
+    const goBackToSeat = (ch) => {
+      walkTo(ch, [stationWorld(ch.st, 0, STAND_Z), stationWorld(ch.st, 0, SEAT_Z + 0.4)], () => sitDown(ch));
+    };
+
+    const attachAgentCharacter = (st, gltf, clips) => {
+      const root = new THREE.Group();
+      const body = gltf.scene;
+      body.scale.setScalar(CHARACTER_SCALE);
+      body.traverse(o => {
+        if (!o.isMesh) return;
+        // I personaggi camminano: senza, a meta' strada il frustum culling li
+        // spegneva usando il riquadro della posa di riposo
+        o.frustumCulled = false;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach(m => {
+          if (m.map) {
+            m.emissive = new THREE.Color(0xffffff);
+            m.emissiveMap = m.map;
+            m.emissiveIntensity = isLight ? 0.12 : 0.4;
+          }
+        });
+      });
+      root.add(body);
+      shipGroup.add(root);
+
+      const mixer = new THREE.AnimationMixer(body);
+      const actions = {};
+      clips.forEach(c => { actions[c.name] = mixer.clipAction(c); });
+      const ch = { st, root, mixer, actions, current: null, state: 'seduto', timer: 0, path: [], after: null,
+        yaw: consoleYaw(st), yawTarget: consoleYaw(st), focused: false };
+      root.rotation.y = ch.yaw;
+      sitDown(ch);
+      // Le postazioni partono sfasate, non tutti si alzano insieme
+      ch.timer = randomBetween(4, 40);
+      mixer.update(randomBetween(0, 1.5));
+
+      st.figureGroup.visible = false;
+      st.agentCharacter = ch;
+      agentCharacters.push(ch);
+    };
+
+    const setAgentCharactersVisible = (show) => {
+      agentCharacters.forEach(ch => {
+        ch.root.visible = show;
+        ch.st.figureGroup.visible = !show;
+      });
+    };
+
+    const updateAgentCharacter = (ch, dt, isFocused) => {
+      if (isFocused && !ch.focused) {
+        // Chiamato dall'utente: si alza e gli va incontro
+        ch.focused = true;
+        walkTo(ch, [stationWorld(ch.st, 0, STAND_Z)], () => {
+          ch.state = 'parla';
+          playClip(ch, 'Idle_Talking_Loop', 0.4);
+        });
+      } else if (!isFocused && ch.focused) {
+        ch.focused = false;
+        goBackToSeat(ch);
+      }
+
+      if (ch.state === 'cammina' && ch.path.length) {
+        const target = ch.path[0];
+        const dx = target.x - ch.root.position.x;
+        const dz = target.z - ch.root.position.z;
+        const dist = Math.hypot(dx, dz);
+        const step = WALK_SPEED * dt;
+        if (dist <= step) {
+          ch.root.position.x = target.x;
+          ch.root.position.z = target.z;
+          ch.path.shift();
+          if (!ch.path.length && ch.after) ch.after();
+        } else {
+          ch.root.position.x += (dx / dist) * step;
+          ch.root.position.z += (dz / dist) * step;
+          ch.yawTarget = Math.atan2(dx, dz);
+        }
+        // Scende dalla pedana o ci sale senza galleggiare
+        const onPod = Math.hypot(ch.root.position.x - ch.st.posX, ch.root.position.z - ch.st.posZ) < POD_RADIUS;
+        ch.root.position.y += ((DECK_Y + (onPod ? POD_TOP : 0)) - ch.root.position.y) * (1 - Math.exp(-dt * 12));
+      } else if (ch.state === 'parla') {
+        ch.yawTarget = Math.atan2(camera.position.x - ch.root.position.x, camera.position.z - ch.root.position.z);
+      } else if (ch.state === 'seduto' || ch.state === 'sosta') {
+        ch.timer -= dt;
+        if (ch.timer <= 0) {
+          if (ch.state === 'seduto') goVisitHolo(ch);
+          else goBackToSeat(ch);
+        }
+      }
+
+      ch.yaw += wrapAngle(ch.yawTarget - ch.yaw) * (1 - Math.exp(-dt * 6));
+      ch.root.rotation.y = ch.yaw;
+      ch.mixer.update(dt);
+    };
+
     // Il busto arriva con il pacchetto del ruolo (roles/<id>/modello.glb):
     // un ruolo disinstallato non lo ha piu', e la postazione non esiste nemmeno.
+    // La figura intera, se c'e', lo sostituisce.
     if (!lite) {
       const gltfLoader = new GLTFLoader();
       stationDataList.forEach(st => {
+        const character = st.role.character3d;
+        if (!character || !character.url) return;
+        Promise.all([loadAgentClips(gltfLoader), gltfLoader.loadAsync(character.url)])
+          .then(([clips, gltf]) => {
+            if (disposed) {
+              gltf.scene.traverse(o => {
+                if (o.geometry) o.geometry.dispose();
+                const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+                mats.forEach(m => { m.map?.dispose(); m.dispose(); });
+              });
+              return;
+            }
+            attachAgentCharacter(st, gltf, clips);
+            if (lite) setAgentCharactersVisible(false);
+          })
+          .catch(err => console.warn(`Personaggio di ${st.role.id} non caricato:`, err));
+      });
+      stationDataList.forEach(st => {
         const entry = st.role.model3d;
-        if (!entry || !entry.url) return;
+        if (!entry || !entry.url || (st.role.character3d && st.role.character3d.url)) return;
         gltfLoader.load(
           entry.url,
           gltf => {
@@ -2095,8 +2289,10 @@ export default function CyberSpace3DCanvas({
       // Con il modello ricostruito si scende: il volto che si gira verso
       // l'utente finiva sotto il pannello, la scheda resta comunque leggibile.
       const hasModel = Boolean(station.agentModel && station.agentModel.group.visible);
-      targetCamPos.set(camX, hasModel ? 0.75 : 1.3, camZ);
-      targetLookAt.set(station.posX, hasModel ? 0.45 : 1.1, station.posZ);
+      // La figura intera viene incontro e sta in piedi: si inquadra tutta
+      const hasCharacter = Boolean(station.agentCharacter && station.agentCharacter.root.visible);
+      targetCamPos.set(camX, hasCharacter ? 0.2 : hasModel ? 0.75 : 1.3, camZ);
+      targetLookAt.set(station.posX, hasCharacter ? -0.75 : hasModel ? 0.45 : 1.1, station.posZ);
 
       if (!silent && onSelectAgentRef.current) {
         onSelectAgentRef.current(station.role);
@@ -2256,6 +2452,7 @@ export default function CyberSpace3DCanvas({
       if (lite) return;
       lite = true;
       setAgentModelsVisible(false);
+      setAgentCharactersVisible(false);
       renderer.setPixelRatio(litePixelRatio);
       renderer.setSize(width, height);
       if (onQualityResolvedRef.current) onQualityResolvedRef.current('lite', reason);
@@ -2391,6 +2588,9 @@ export default function CyberSpace3DCanvas({
         const isFocused = focusedId && st.role.id === focusedId;
         if (!reducedMotion && st.agentModel && st.agentModel.group.visible) {
           animateAgentModel(st, idx, elapsedTime, dt, isFocused);
+        }
+        if (!reducedMotion && st.agentCharacter && st.agentCharacter.root.visible) {
+          updateAgentCharacter(st.agentCharacter, dt, isFocused);
         }
 
         st.badgeMesh.position.y = -2.0 + 3.8 + Math.sin(elapsedTime * 1.8 + idx) * 0.05;

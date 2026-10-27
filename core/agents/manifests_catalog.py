@@ -37,7 +37,7 @@ GITHUB_INDEX_URL = f"{GITHUB_RAW_BASE_URL}/manifests_index.json"
 
 #: Nomi ammessi per le risorse di un ruolo: arrivano dalla rete e finiscono su
 #: disco, quindi niente percorsi liberi.
-RISORSE_AMMESSE = {"immagine.jpg", "immagine.png", "modello.glb", "modello.json"}
+RISORSE_AMMESSE = {"immagine.jpg", "immagine.png", "modello.glb", "modello.json", "personaggio.glb"}
 
 #: L'indice viaggia con il kernel: e' cio' che deve poter essere mostrato
 #: anche senza rete e senza nulla installato. Il modulo sta in core/agents/:

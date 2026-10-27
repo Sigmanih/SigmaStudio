@@ -3,7 +3,8 @@
 Un ruolo del repository SigmaStudio-Ruoli e' il suo manifesto `<id>.md` in
 radice (cosi' lo trovano anche le installazioni che conoscono solo quello) piu'
 una cartella `<id>/` con cio' che gli compete: `immagine.jpg`, `modello.glb`
-e `modello.json` con i dettagli del modello. L'indice `manifests_index.json`
+(busto), `modello.json` con i dettagli e, se c'e', `personaggio.glb` (figura
+intera con scheletro, animata con le clip di public/models/animazioni_agenti.glb). L'indice `manifests_index.json`
 elenca le risorse di ogni ruolo, ed e' da li' che l'installazione le scarica.
 
     python tools/agenti_3d/pacchetti.py --repo <clone di SigmaStudio-Ruoli> \
@@ -94,6 +95,8 @@ def main() -> int:
     p.add_argument("--repo", type=Path, required=True)
     p.add_argument("--glb", type=Path, required=True, help="cartella con i GLB e indice.json di blender_ottimizza")
     p.add_argument("--ruoli-locali", type=Path, default=ROOT / "roles")
+    p.add_argument("--personaggi", type=Path, default=None,
+                   help="cartella con <ruolo>_intero/personaggio.glb di blender_rig (figure intere animate)")
     p.add_argument("--installa", action="store_true")
     args = p.parse_args()
 
@@ -129,6 +132,10 @@ def main() -> int:
             "modello3d": f"{ruolo}/modello.glb",
             "dettagli": f"{ruolo}/modello.json",
         }
+        intero = args.personaggi / f"{ruolo}_intero" / "personaggio.glb" if args.personaggi else None
+        if intero and intero.exists():
+            shutil.copy2(intero, cartella / "personaggio.glb")
+            voci[ruolo]["risorse"]["personaggio"] = f"{ruolo}/personaggio.glb"
         if args.installa:
             dest = args.ruoli_locali / ruolo
             shutil.copytree(cartella, dest, dirs_exist_ok=True)

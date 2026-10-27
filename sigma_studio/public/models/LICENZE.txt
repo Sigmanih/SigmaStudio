@@ -1,0 +1,5 @@
+animazioni_agenti.glb
+  Clip della Universal Animation Library [Standard] di Quaternius
+  https://quaternius.com/packs/universalanimationlibrary.html
+  Licenza CC0 1.0 Universal (pubblico dominio): https://creativecommons.org/publicdomain/zero/1.0/
+  Estratte con tools/agenti_3d/blender_rig.py (--animazioni).

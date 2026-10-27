@@ -524,7 +524,8 @@
     "risorse": {
       "dettagli": "sceneggiatore/modello.json",
       "immagine": "sceneggiatore/immagine.jpg",
-      "modello3d": "sceneggiatore/modello.glb"
+      "modello3d": "sceneggiatore/modello.glb",
+      "personaggio": "sceneggiatore/personaggio.glb"
     },
     "role": "Cinematic Screenwriter & Storyteller",
     "target": "Sceneggiatori, Scrittori, Autori e Creator",

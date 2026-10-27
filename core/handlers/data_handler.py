@@ -376,6 +376,11 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
         except (OSError, ValueError) as exc:
             log.warning("modello.json illeggibile per %s: %s", stem, exc)
 
+    # Figura intera con scheletro: cammina nella plancia; il busto resta per la modalita' leggera
+    character3d = None
+    if (risorse_dir / "personaggio.glb").is_file():
+        character3d = {"url": f"/ruoli/{stem}/personaggio.glb"}
+
     # Un ruolo con l'agente sospeso non deve comparire nella Home. In
     # agents_meta.json il manifesto e' relativo ("roles/x.md") mentre qui il
     # percorso e' assoluto: si confronta il nome del file.
@@ -491,6 +496,7 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
         "image": img,
         "active": active,
         "model3d": model3d,
+        "character3d": character3d,
         "rawContent": raw_text
     }
 

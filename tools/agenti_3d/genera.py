@@ -44,6 +44,9 @@ SH_C0 = 0.28209479177387814
 
 
 def trova_foto(ruolo: str) -> Path:
+    # "nome=percorso" usa un'immagine qualsiasi, es. la figura intera di figura_intera.py
+    if "=" in ruolo:
+        return Path(ruolo.split("=", 1)[1])
     for est in (".png", ".jpg", ".jpeg", ".webp"):
         p = IMMAGINI / f"{ruolo}{est}"
         if p.exists():
@@ -89,7 +92,7 @@ def salva_ply(percorso: Path, vertici, facce, colori) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--ruoli", required=True, help="nomi delle foto senza estensione, separati da virgola")
+    parser.add_argument("--ruoli", required=True, help="nomi delle foto senza estensione, o nome=percorso, separati da virgola")
     parser.add_argument("--uscita", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--passi", type=int, default=25, help="passi di campionamento di ciascuna fase")
@@ -110,7 +113,7 @@ def main() -> int:
     falliti = 0
     for ruolo in [r.strip() for r in args.ruoli.split(",") if r.strip()]:
         try:
-            cartella = args.uscita / ruolo
+            cartella = args.uscita / ruolo.split("=", 1)[0]
             cartella.mkdir(parents=True, exist_ok=True)
             ritaglio = ritaglia(trova_foto(ruolo), sessione)
             ritaglio.save(cartella / "ritaglio.png")
