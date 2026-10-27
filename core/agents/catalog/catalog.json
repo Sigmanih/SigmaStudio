@@ -64,7 +64,8 @@
     "risorse": {
       "dettagli": "sigma_architect/modello.json",
       "immagine": "sigma_architect/immagine.jpg",
-      "modello3d": "sigma_architect/modello.glb"
+      "modello3d": "sigma_architect/modello.glb",
+      "personaggio": "sigma_architect/personaggio.glb"
     },
     "role": "System Architect & Swarm Coordinator",
     "target": "Architetti Software & Project Manager",
@@ -91,7 +92,8 @@
     "risorse": {
       "dettagli": "code_architect/modello.json",
       "immagine": "code_architect/immagine.jpg",
-      "modello3d": "code_architect/modello.glb"
+      "modello3d": "code_architect/modello.glb",
+      "personaggio": "code_architect/personaggio.glb"
     },
     "role": "Full-Stack Software Engineer & Algorithm Designer",
     "target": "Sviluppatori Python, JavaScript, React e Full-Stack",
@@ -140,7 +142,8 @@
     "risorse": {
       "dettagli": "test_engineer/modello.json",
       "immagine": "test_engineer/immagine.jpg",
-      "modello3d": "test_engineer/modello.glb"
+      "modello3d": "test_engineer/modello.glb",
+      "personaggio": "test_engineer/personaggio.glb"
     },
     "role": "Test Automation & Numerical Verification Specialist",
     "target": "QA Engineers, Sviluppatori e Ricercatori",
@@ -167,7 +170,8 @@
     "risorse": {
       "dettagli": "viz_designer/modello.json",
       "immagine": "viz_designer/immagine.jpg",
-      "modello3d": "viz_designer/modello.glb"
+      "modello3d": "viz_designer/modello.glb",
+      "personaggio": "viz_designer/personaggio.glb"
     },
     "role": "Interactive Data Visualizer & Scientific UI Designer",
     "target": "Data Scientist, Designer UI e Divulgatori",
@@ -194,7 +198,8 @@
     "risorse": {
       "dettagli": "proof_reviewer/modello.json",
       "immagine": "proof_reviewer/immagine.jpg",
-      "modello3d": "proof_reviewer/modello.glb"
+      "modello3d": "proof_reviewer/modello.glb",
+      "personaggio": "proof_reviewer/personaggio.glb"
     },
     "role": "Critical Reviewer & Scientific Verification Auditor",
     "target": "Ricercatori, Autori e Docenti Universitari",
@@ -221,7 +226,8 @@
     "risorse": {
       "dettagli": "physics_professor/modello.json",
       "immagine": "physics_professor/immagine.jpg",
-      "modello3d": "physics_professor/modello.glb"
+      "modello3d": "physics_professor/modello.glb",
+      "personaggio": "physics_professor/personaggio.glb"
     },
     "role": "Theoretical & Experimental Physics Professor",
     "target": "Studenti di Fisica, Ingegneria e Ricercatori",
@@ -380,7 +386,8 @@
     "risorse": {
       "dettagli": "medico_divulgatore/modello.json",
       "immagine": "medico_divulgatore/immagine.jpg",
-      "modello3d": "medico_divulgatore/modello.glb"
+      "modello3d": "medico_divulgatore/modello.glb",
+      "personaggio": "medico_divulgatore/personaggio.glb"
     },
     "role": "Medical Researcher & Health Science Communicator",
     "target": "Studenti di Medicina, Professionisti Sanitari e Cittadini",
@@ -496,7 +503,8 @@
     "risorse": {
       "dettagli": "regista_cinematografico/modello.json",
       "immagine": "regista_cinematografico/immagine.jpg",
-      "modello3d": "regista_cinematografico/modello.glb"
+      "modello3d": "regista_cinematografico/modello.glb",
+      "personaggio": "regista_cinematografico/personaggio.glb"
     },
     "role": "Film Director & Creative Vision Lead",
     "target": "Registi, Filmmaker, Creator Video e Storyteller",
@@ -553,7 +561,8 @@
     "risorse": {
       "dettagli": "direttore_fotografia/modello.json",
       "immagine": "direttore_fotografia/immagine.jpg",
-      "modello3d": "direttore_fotografia/modello.glb"
+      "modello3d": "direttore_fotografia/modello.glb",
+      "personaggio": "direttore_fotografia/personaggio.glb"
     },
     "role": "Director of Photography & Prompt Artist",
     "target": "Direttori della Fotografia, Fotografi e Prompt Designer",
@@ -580,7 +589,8 @@
     "risorse": {
       "dettagli": "montatore_video/modello.json",
       "immagine": "montatore_video/immagine.jpg",
-      "modello3d": "montatore_video/modello.glb"
+      "modello3d": "montatore_video/modello.glb",
+      "personaggio": "montatore_video/personaggio.glb"
     },
     "role": "Film Editor & Post-Production Specialist",
     "target": "Video Editor, Montatori e Content Creator",
@@ -607,7 +617,8 @@
     "risorse": {
       "dettagli": "sound_designer/modello.json",
       "immagine": "sound_designer/immagine.jpg",
-      "modello3d": "sound_designer/modello.glb"
+      "modello3d": "sound_designer/modello.glb",
+      "personaggio": "sound_designer/personaggio.glb"
     },
     "role": "Sound Designer & Audio Composer",
     "target": "Sound Designer, Musicisti, Fonici e Produttori Audio",

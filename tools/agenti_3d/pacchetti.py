@@ -132,7 +132,7 @@ def main() -> int:
             "modello3d": f"{ruolo}/modello.glb",
             "dettagli": f"{ruolo}/modello.json",
         }
-        intero = args.personaggi / f"{ruolo}_intero" / "personaggio.glb" if args.personaggi else None
+        intero = args.personaggi / f"{chiave}_intero" / "personaggio.glb" if args.personaggi else None
         if intero and intero.exists():
             shutil.copy2(intero, cartella / "personaggio.glb")
             voci[ruolo]["risorse"]["personaggio"] = f"{ruolo}/personaggio.glb"

@@ -155,7 +155,7 @@ def main() -> int:
                 "gpu": torch.cuda.get_device_name(0),
             }
             (cartella / "metriche.json").write_text(json.dumps(metriche, indent=2), encoding="utf-8")
-            log.info("%s: %.1f s, %.2f GB, %d triangoli", ruolo, durata, picco, len(facce))
+            log.info("%s: %.1f s, %.2f GB, %d triangoli", cartella.name, durata, picco, len(facce))
         except Exception:
             falliti += 1
             log.exception("generazione fallita per %s", ruolo)
