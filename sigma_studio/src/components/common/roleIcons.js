@@ -40,3 +40,12 @@ export const resolveRoleLucide = (role = {}) => {
   }
   return Bot;
 };
+
+// Iniziali come ripiego dell'avatar: le emoji cambiano disegno tra Windows e Pi
+// e non seguono il tema, mentre le iniziali restano leggibili ovunque.
+export const roleInitials = (name = '') => {
+  const words = String(name).replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 'Σ';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+};

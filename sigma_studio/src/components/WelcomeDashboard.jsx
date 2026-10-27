@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Terminal, Palette, Clapperboard, CircuitBoard, Zap, CloudDownload, Sparkles,
-  ArrowRight, RefreshCw, ExternalLink, Heart, Layers, X, Cpu, MemoryStick,
-  Gauge, History, MessageSquare, Orbit
+  Terminal, Palette, Clapperboard, CircuitBoard, CloudDownload, Sparkles,
+  RefreshCw, ExternalLink, Heart, Layers, X, Cpu, MemoryStick,
+  Gauge, History, MessageSquare, Orbit, Calendar, Settings, Trash2, Music, Send
 } from 'lucide-react';
 
 import { useApp } from '../contexts/AppContext';
-import CyberSpace3DCanvas, { roleInitials } from './common/CyberSpace3DCanvas';
-import { resolveRoleLucide } from './common/roleIcons';
-import { loadSessions, formatSessionTime } from './Chat/chatStorage';
+import { useModuleState } from '../hooks/useModuleState';
+import CyberSpace3DCanvas from './common/CyberSpace3DCanvas';
+import { resolveRoleLucide, roleInitials } from './common/roleIcons';
+import { loadSessions, formatSessionTime, saveActiveSessionId } from './Chat/chatStorage';
+import { useAgentActivity, activityText } from './common/agentActivity';
 
 // ==============================================================================
 // Helper di risoluzione visiva per i ruoli caricati dinamicamente
@@ -19,14 +21,21 @@ const QUALITY_KEY = 'sigma_home_3d_quality';
 const QUALITY_CYCLE = ['auto', 'high', 'lite', 'off'];
 const QUALITY_LABEL = { auto: 'Auto', high: 'Alta', lite: 'Leggera', off: 'Spenta' };
 
-const DOCK_ITEMS = [
-  { id: 'developer_studio', name: 'Developer Sigma', label: 'Developer Studio', Icon: Terminal, color: '#eab308' },
-  { id: 'kicad_lab', name: 'KiCad Lab', label: 'KiCad Lab', Icon: CircuitBoard, color: '#10b981' },
-  { id: 'creative_studio', name: 'Creative Studio', label: 'Creative Studio', Icon: Palette, color: '#ff5064' },
-  { id: 'video_studio', name: 'Video Studio', label: 'Video Studio', Icon: Clapperboard, color: '#ff007a' },
-  { id: 'hardware_lab', name: 'Monitor Hardware', label: 'Monitor Hardware', Icon: Zap, color: '#00d2ff' },
-  { id: 'model_hub', name: 'Modelli', label: 'Modelli', Icon: CloudDownload, color: '#bc8cff' },
-  { id: 'developer_studio', name: 'Developer Sigma', label: 'Grafo delle dipendenze', Icon: Layers, color: '#38bdf8', event: 'sigma_dev_open_graph' }
+// Footer della Home: laboratori (aprono una scheda) e strumenti flottanti (si resta
+// sulla plancia). Le immagini rendono riconoscibile ogni voce a colpo d'occhio.
+const FOOTER_TILES = [
+  { key: 'chat', label: 'Chat AI', hint: 'Chat flottante', image: '/images/chat_swarm_banner.jpg', Icon: MessageSquare, color: '#bc8cff', tool: 'chat' },
+  { key: 'developer', label: 'Developer', hint: 'Studio di sviluppo', image: '/images/kernel_graphic.jpg', Icon: Terminal, color: '#eab308', tab: { id: 'developer_studio', name: 'Developer Sigma' } },
+  { key: 'creative', label: 'Creative', hint: 'Immagini e 3D', image: '/images/creative_lab_banner.jpg', Icon: Palette, color: '#ff5064', tab: { id: 'creative_studio', name: 'Creative Studio' } },
+  { key: 'video', label: 'Video', hint: 'Film e manga', image: '/images/regista_cinematografico.jpg', Icon: Clapperboard, color: '#ff007a', tab: { id: 'video_studio', name: 'Video Studio' } },
+  { key: 'kicad', label: 'KiCad', hint: 'Schemi e PCB', image: '/images/hardware_cluster_lab.jpg', Icon: CircuitBoard, color: '#10b981', tab: { id: 'kicad_lab', name: 'KiCad Lab' } },
+  { key: 'models', label: 'Modelli', hint: 'Model Hub', image: '/images/training_lab_hero.jpg', Icon: CloudDownload, color: '#38bdf8', tab: { id: 'model_hub', name: 'Modelli' } },
+  { key: 'graph', label: 'Grafo', hint: 'Dipendenze del codice', image: '/images/knowledge_graph_banner.jpg', Icon: Layers, color: '#06b6d4', tab: { id: 'developer_studio', name: 'Developer Sigma' }, event: 'sigma_dev_open_graph' },
+  { key: 'hardware', label: 'Hardware', hint: 'GPU e VRAM', image: '/images/hardware_nodes_cooling.jpg', Icon: Cpu, color: '#3fb950', tool: 'hardware' },
+  { key: 'roadmap', label: 'Pianificazione', hint: 'Task e calendario', image: '/images/roadmap_plan_banner.jpg', Icon: Calendar, color: '#00f2fe', tool: 'roadmap', module: 'sigma_roadmap' },
+  { key: 'music', label: 'Musica', hint: 'Focus lounge', image: '/images/account_voice_banner.jpg', Icon: Music, color: '#f472b6', tool: 'music', module: 'audio_studio' },
+  { key: 'providers', label: 'Providers', hint: 'Modelli e API', image: '/images/mcp_protocol_hub.jpg', Icon: Settings, color: '#ffb86c', tool: 'providers' },
+  { key: 'cleanup', label: 'Pulisci', hint: 'RAM e cronologia', image: '/images/swarm_graphic.jpg', Icon: Trash2, color: '#94a3b8', tool: 'cleanup' }
 ];
 
 const readQualityPref = () => {
@@ -99,12 +108,14 @@ const RoleAvatar = ({ role, className }) => (
 );
 
 const loadRecentChats = () => loadSessions()
-  .filter(s => (s.messageCount || (Array.isArray(s.messages) ? s.messages.length : 0)) > 0)
+  // Il messaggio di benvenuto conta come uno: una chat vera ne ha almeno due
+  .filter(s => (s.messageCount || (Array.isArray(s.messages) ? s.messages.length : 0)) > 1)
   .sort((a, b) => new Date(b.updatedAt || b.lastMessageAt || 0) - new Date(a.updatedAt || a.lastMessageAt || 0))
   .slice(0, 3);
 
 export default function WelcomeDashboard({ modules = [], openTab }) {
-  const { theme, manifesti: contextManifesti } = useApp();
+  const { theme, manifesti: contextManifesti, aiChatOpen, setAiChatOpen } = useApp();
+  const { modulesState } = useModuleState();
   // Anche "cream" e' un tema chiaro: prima la plancia restava scura sotto un'interfaccia chiara
   const isLight = theme === 'light' || theme === 'cream';
 
@@ -118,6 +129,10 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   const [resolvedQuality, setResolvedQuality] = useState(null);
   const [systemStats, setSystemStats] = useState(null);
   const [recentChats, setRecentChats] = useState(loadRecentChats);
+
+  // Lo stato reale dell'agente, pubblicato dalla chat (anche dal pannello flottante)
+  const agentActivity = useAgentActivity();
+  const agentBusy = ['thinking', 'tool', 'browsing', 'writing'].includes(agentActivity.state);
 
   // Caricamento Ruoli
   useEffect(() => {
@@ -352,28 +367,38 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
 
   const handleQualityResolved = useCallback((level) => setResolvedQuality(level), []);
 
-  // Avvio Chat istantaneo
-  const handleStartChatWithRole = (roleId, customText = '') => {
+  // Scrivere a un agente apre la chat flottante e invia subito: si resta sulla
+  // plancia e si vede l'agente lavorare. La chat sceglie da se' se continuare la
+  // conversazione di quell'agente o aprirne una nuova.
+  const handleStartChatWithRole = (roleId, customText = '', send = true) => {
     try {
-      if (roleId) {
-        localStorage.setItem('sigma_active_role', roleId);
-      }
+      if (roleId) localStorage.setItem('sigma_active_role', roleId);
       if (customText && customText.trim()) {
         localStorage.setItem('sigma_pending_chat_prompt', customText.trim());
+        if (send) localStorage.setItem('sigma_pending_chat_send', '1');
       }
     } catch (e) {}
-    if (openTab) {
-      openTab({ name: 'Chat', path: 'chat-tab' }, 'chat');
-    }
-    // Evento dopo openTab: se la chat e' gia' montata legge subito i valori,
-    // altrimenti li trova in localStorage al primo montaggio.
-    window.dispatchEvent(new CustomEvent('sigma-chat-select-role', { detail: roleId }));
+    // Se la chat e' gia' aperta riceve l'evento, altrimenti legge i valori al montaggio
+    if (aiChatOpen) window.dispatchEvent(new CustomEvent('sigma-chat-select-role', { detail: roleId }));
+    else setAiChatOpen(true);
   };
 
   const handleOpenRecentChat = (sessionId) => {
-    if (openTab) openTab({ name: 'Chat', path: 'chat-tab' }, 'chat');
-    window.dispatchEvent(new CustomEvent('sigma-chat-switch-session', { detail: sessionId }));
+    saveActiveSessionId(sessionId);
+    if (aiChatOpen) window.dispatchEvent(new CustomEvent('sigma-chat-switch-session', { detail: sessionId }));
+    else setAiChatOpen(true);
   };
+
+  const handleFooterTile = (tile) => {
+    if (tile.tool) {
+      window.dispatchEvent(new CustomEvent('sigma-quick-tool', { detail: { id: tile.tool } }));
+      return;
+    }
+    if (tile.event) window.dispatchEvent(new CustomEvent(tile.event));
+    openTab?.({ name: tile.tab.name }, tile.tab.id);
+  };
+
+  const footerTiles = FOOTER_TILES.filter(t => !t.module || modulesState?.[t.module] === true);
 
   const handleQuickPromptSubmit = (e) => {
     e.preventDefault();
@@ -424,6 +449,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           roles={enrichedRoles}
           selectedAgentId={focusedAgent ? focusedAgent.id : ''}
           quality={qualityPref}
+          throttled={agentBusy}
           onQualityResolved={handleQualityResolved}
           onSelectAgent={(agent) => {
             if (agent) focusRole(agent);
@@ -444,6 +470,22 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
             <span className="holodeck-hud-sep" aria-hidden="true" />
             <span className="holodeck-hud-meta">{enrichedRoles.length} agenti</span>
           </div>
+
+          {agentActivity.state !== 'idle' && (
+            <button
+              type="button"
+              className={`holodeck-activity-chip state-${agentActivity.state}`}
+              style={agentActivity.color ? { '--activity-color': agentActivity.color } : undefined}
+              onClick={() => setAiChatOpen(true)}
+              title={[agentActivity.roleName, activityText(agentActivity), agentActivity.detail].filter(Boolean).join(' · ')}
+            >
+              <RoleAvatar role={{ name: agentActivity.roleName, image: agentActivity.image }} className="activity-avatar" />
+              <span className="activity-name">{agentActivity.roleName}</span>
+              <span className="activity-label">
+                {activityText(agentActivity)}
+              </span>
+            </button>
+          )}
 
           {systemStats && (
             <div className="holodeck-sysbar" aria-label="Stato del sistema">
@@ -530,7 +572,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         </header>
 
         {/* Riprendi da dove eri: le ultime chat con messaggi */}
-        {recentChats.length > 0 && !focusedAgent && (
+        {recentChats.length > 0 && !focusedAgent && !aiChatOpen && (
           <aside className="holodeck-recent" aria-label="Chat recenti">
             <div className="holodeck-recent-title">
               <History size={13} aria-hidden="true" />
@@ -605,33 +647,14 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
                 autoFocus
               />
               <button type="submit" className="dialogue-submit-btn">
-                <span>Avvia chat</span>
-                <ArrowRight size={15} aria-hidden="true" />
+                <span>Invia</span>
+                <Send size={15} aria-hidden="true" />
               </button>
             </form>
           </div>
         ) : (
           /* Barra inferiore: dock dei laboratori + barra dei comandi */
           <footer className="holodeck-bottom-deck">
-
-            <nav className="holodeck-module-dock" aria-label="Laboratori">
-              {DOCK_ITEMS.map(item => (
-                <button
-                  key={item.label}
-                  type="button"
-                  className="holodeck-dock-btn"
-                  style={{ '--dock-glow': item.color }}
-                  data-label={item.label}
-                  aria-label={item.label}
-                  onClick={() => {
-                    if (item.event) window.dispatchEvent(new CustomEvent(item.event));
-                    openTab?.({ name: item.name }, item.id);
-                  }}
-                >
-                  <item.Icon size={18} color={item.color} aria-hidden="true" />
-                </button>
-              ))}
-            </nav>
 
             <div className="holodeck-omnibar-cluster">
               {inspirationRoles.length > 0 && (
@@ -688,14 +711,30 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
                 />
 
                 <button type="submit" className="holodeck-submit-btn" disabled={!quickPrompt.trim()}>
-                  <span>Avvia chat</span>
-                  <ArrowRight size={15} aria-hidden="true" />
+                  <span>Invia</span>
+                  <Send size={15} aria-hidden="true" />
                 </button>
               </form>
             </div>
 
-            {/* Spazio speculare al dock: tiene la barra dei comandi al centro */}
-            <div className="holodeck-deck-spacer" aria-hidden="true" />
+            <nav className="holodeck-footer" aria-label="Laboratori e strumenti">
+              {footerTiles.map(tile => (
+                <button
+                  key={tile.key}
+                  type="button"
+                  className={`holodeck-tile ${tile.tool === 'chat' && aiChatOpen ? 'is-active' : ''}`}
+                  style={{ '--tile-color': tile.color, '--tile-image': `url('${tile.image}')` }}
+                  onClick={() => handleFooterTile(tile)}
+                  title={`${tile.label} · ${tile.hint}${tile.tool ? ' (resta sulla Home)' : ''}`}
+                >
+                  <span className="tile-image" aria-hidden="true" />
+                  <span className="tile-body">
+                    <tile.Icon size={14} aria-hidden="true" />
+                    <span className="tile-label">{tile.label}</span>
+                  </span>
+                </button>
+              ))}
+            </nav>
           </footer>
         )}
 

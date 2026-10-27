@@ -336,6 +336,72 @@
   background: color-mix(in srgb, var(--sigma-warning) 14%, var(--holo-surface));
 }
 
+/* ── Agente al lavoro: la Home sa cosa sta facendo la chat ── */
+.holodeck-activity-chip {
+  --activity-color: var(--holo-accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  flex-shrink: 0;
+  max-width: 320px;
+  padding: 0 12px 0 4px;
+  border-radius: var(--sigma-radius-full);
+  background: color-mix(in srgb, var(--activity-color) 14%, var(--holo-surface));
+  border: 1px solid color-mix(in srgb, var(--activity-color) 60%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: var(--holo-text);
+  font-family: var(--holo-font);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  cursor: pointer;
+  animation: activity-glow 1.8s ease-in-out infinite;
+}
+
+.holodeck-activity-chip.state-done { --activity-color: var(--sigma-success); animation: none; }
+.holodeck-activity-chip.state-error { --activity-color: var(--sigma-error); animation: none; }
+
+@keyframes activity-glow {
+  0%, 100% { box-shadow: 0 0 0 transparent; }
+  50% { box-shadow: 0 0 16px color-mix(in srgb, var(--activity-color) 45%, transparent); }
+}
+
+.activity-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--activity-color);
+  background: var(--sigma-surface-bright);
+  color: var(--activity-color);
+  font-size: 0.6875rem;
+  font-weight: 800;
+}
+
+.activity-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.activity-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-label {
+  color: var(--activity-color);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Riprendi da dove eri ── */
 .holodeck-recent {
   position: absolute;
@@ -504,28 +570,42 @@
   color: var(--sigma-text-secondary);
 }
 
-/* ── Barra inferiore ── */
+/* ── Barra inferiore: barra dei comandi e, sotto, il footer di laboratori e strumenti ── */
 .holodeck-bottom-deck {
-  display: grid;
-  grid-template-columns: 1fr minmax(0, 760px) 1fr;
-  align-items: end;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
   width: 100%;
   pointer-events: none;
 }
 
-.holodeck-module-dock,
+.holodeck-footer,
 .holodeck-omnibar-cluster {
   pointer-events: auto;
 }
 
-.holodeck-module-dock {
-  justify-self: start;
+.holodeck-omnibar-cluster {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 5px;
-  border-radius: var(--sigma-radius-full);
+  gap: 10px;
+  width: 100%;
+  max-width: 760px;
+  min-width: 0;
+}
+
+/* Riquadri con immagine: si riconoscono a colpo d'occhio, a differenza delle
+   sette icone colorate del vecchio dock. Scorrono in orizzontale se non stanno. */
+.holodeck-footer {
+  display: flex;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  border-radius: var(--sigma-radius-lg);
   background: var(--holo-surface);
   border: 1px solid var(--holo-border);
   backdrop-filter: blur(16px);
@@ -533,67 +613,87 @@
   box-shadow: var(--holo-shadow);
 }
 
-.holodeck-dock-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: transparent;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s ease, border-color 0.2s ease;
+.holodeck-footer::-webkit-scrollbar {
+  display: none;
 }
 
-.holodeck-dock-btn:hover,
-.holodeck-dock-btn:focus-visible {
+.holodeck-tile {
+  --tile-color: var(--holo-accent);
+  position: relative;
+  flex: 0 0 104px;
+  height: 58px;
+  padding: 0;
+  overflow: hidden;
+  scroll-snap-align: start;
+  border-radius: var(--sigma-radius-md);
+  border: 1px solid var(--holo-border);
+  background: var(--sigma-surface-bright);
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tile-image {
+  position: absolute;
+  inset: 0;
+  background: var(--tile-image) center / cover no-repeat;
+  opacity: 0.55;
+  transform: scale(1.02);
+  transition: opacity 0.25s ease, transform 0.4s ease;
+}
+
+/* Sfumatura dal basso: l'etichetta resta leggibile su qualsiasi immagine */
+.tile-image::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 15%, rgba(4, 7, 16, 0.92) 100%);
+}
+
+.tile-body {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #f8fafc;
+  font-family: var(--holo-font);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.tile-body svg {
+  color: var(--tile-color);
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.8));
+}
+
+.tile-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.holodeck-tile:hover,
+.holodeck-tile:focus-visible {
   transform: translateY(-3px);
-  background: color-mix(in srgb, var(--dock-glow) 14%, transparent);
-  border-color: color-mix(in srgb, var(--dock-glow) 55%, transparent);
+  border-color: var(--tile-color);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4), 0 0 14px color-mix(in srgb, var(--tile-color) 35%, transparent);
   outline: none;
 }
 
-/* Etichetta del dock: senza, le sette icone si capivano solo provando */
-.holodeck-dock-btn::after {
-  content: attr(data-label);
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 50%;
-  transform: translate(-50%, 4px);
-  padding: 5px 10px;
-  border-radius: var(--sigma-radius-sm);
-  background: var(--holo-surface-strong);
-  border: 1px solid color-mix(in srgb, var(--dock-glow) 50%, transparent);
-  color: var(--holo-text);
-  font-family: var(--holo-font);
-  font-size: 0.75rem;
-  font-weight: 600;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+.holodeck-tile:hover .tile-image,
+.holodeck-tile:focus-visible .tile-image {
+  opacity: 0.85;
+  transform: scale(1.08);
 }
 
-.holodeck-dock-btn:hover::after,
-.holodeck-dock-btn:focus-visible::after {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-
-.holodeck-omnibar-cluster {
-  grid-column: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-width: 0;
-}
-
-.holodeck-deck-spacer {
-  grid-column: 3;
+.holodeck-tile.is-active {
+  border-color: var(--tile-color);
+  box-shadow: inset 0 -3px 0 var(--tile-color);
 }
 
 .holodeck-floating-chips {
@@ -960,23 +1060,12 @@
   .holodeck-recent {
     display: none;
   }
-  .holodeck-bottom-deck {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
-  .holodeck-omnibar-cluster {
-    grid-column: 1;
-  }
-  .holodeck-module-dock {
-    justify-self: center;
-    order: 2;
-  }
-  .holodeck-deck-spacer {
-    display: none;
-  }
 }
 
 @media (max-width: 720px) {
+  .activity-name {
+    display: none;
+  }
   .holodeck-hud-overlay {
     padding: 10px 12px 14px;
   }
@@ -993,6 +1082,10 @@
   }
   .holodeck-floating-chips {
     display: none;
+  }
+  .holodeck-tile {
+    flex-basis: 84px;
+    height: 50px;
   }
   .holodeck-submit-btn span,
   .dialogue-submit-btn span {

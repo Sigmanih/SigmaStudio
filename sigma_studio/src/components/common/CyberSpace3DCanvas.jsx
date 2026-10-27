@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { roleInitials } from './roleIcons';
 
 /**
  * CyberSpace3DCanvas — Spaceship Bridge & Command Deck 3D
@@ -15,15 +15,6 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
  * - Schede degli agenti essenziali (avatar, nome, ruolo) che scalano con la distanza
  * - Volo cinematico fluido della camera alla postazione dell'agente con lerp
  */
-// Iniziali come ripiego dell'avatar: le emoji cambiano disegno tra Windows e Pi
-// e non seguono il tema, mentre le iniziali restano leggibili ovunque.
-export const roleInitials = (name = '') => {
-  const words = String(name).replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return 'Σ';
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
-};
-
 // Le GPU del Raspberry Pi (VideoCore/V3D) e i renderer software non reggono
 // la plancia completa: lo si scopre prima di creare il renderer, perche'
 // l'antialias non si puo' cambiare dopo.
@@ -49,64 +40,6 @@ const prefersReducedMotion = () => {
   }
 };
 
-// Modelli 3D degli agenti ricostruiti dalle foto (tools/agenti_3d). L'indice
-// dice quali ruoli ne hanno uno: senza, ogni postazione chiederebbe al server
-// un file che quasi sempre non esiste.
-const AGENT_MODELS_BASE = '/models/agenti/';
-let agentModelIndexPromise = null;
-const loadAgentModelIndex = () => {
-  if (!agentModelIndexPromise) {
-    agentModelIndexPromise = fetch(`${AGENT_MODELS_BASE}indice.json`)
-      .then(r => (r.ok ? r.json() : null))
-      .then(j => (j && j.modelli) || {})
-      .catch(() => ({}));
-  }
-  return agentModelIndexPromise;
-};
-
-// Il modello si chiama come la foto del ruolo: e' da li' che e' stato ricostruito
-const agentModelKey = (imageSrc = '') => {
-  const m = /([^/?#]+)\.(png|jpe?g|webp)(?:[?#].*)?$/i.exec(imageSrc);
-  return m ? decodeURIComponent(m[1]) : '';
-};
-
-// Animazione senza scheletro: i modelli generati non hanno rig, quindi la testa
-// gira nel vertex shader. I vertici sopra il collo (altezza misurata in Blender)
-// ruotano attorno al collo, con una fascia di raccordo per non strappare la mesh;
-// sotto, il torace si allarga e si alza appena per il respiro.
-const applyRiglessMotion = (material, uniforms) => {
-  material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>
-uniform float uNeckY;
-uniform float uHeadYaw;
-uniform float uHeadPitch;
-uniform float uBreath;
-float sigmaHeadWeight(float y) { return smoothstep(uNeckY - 0.03, uNeckY + 0.06, y); }
-vec3 sigmaRotate(vec3 v, float w) {
-  float a = uHeadYaw * w;
-  float c = cos(a), s = sin(a);
-  v.xz = vec2(c * v.x + s * v.z, -s * v.x + c * v.z);
-  float b = uHeadPitch * w;
-  c = cos(b); s = sin(b);
-  v.yz = vec2(c * v.y - s * v.z, s * v.y + c * v.z);
-  return v;
-}`)
-      .replace('#include <beginnormal_vertex>', `vec3 objectNormal = sigmaRotate(vec3(normal), sigmaHeadWeight(position.y));
-#ifdef USE_TANGENT
-  vec3 objectTangent = vec3(tangent.xyz);
-#endif`)
-      .replace('#include <begin_vertex>', `float sigmaW = sigmaHeadWeight(position.y);
-vec3 transformed = sigmaRotate(position - vec3(0.0, uNeckY, 0.0), sigmaW) + vec3(0.0, uNeckY, 0.0);
-float sigmaChest = (1.0 - sigmaW) * smoothstep(0.15 * uNeckY, uNeckY, position.y);
-transformed.xz *= 1.0 + uBreath * sigmaChest;
-transformed.y += uBreath * 0.5 * min(position.y, uNeckY);`);
-  };
-  // Stesso programma per tutti gli agenti: cambiano solo le uniform
-  material.customProgramCacheKey = () => 'sigma-rigless-officer';
-};
-
 // Testo che si restringe fino a stare nella larghezza della scheda invece di
 // uscire dai bordi con i nomi lunghi dei ruoli.
 const fitText = (ctx, text, maxWidth, startPx, minPx, weight, family) => {
@@ -129,6 +62,7 @@ export default function CyberSpace3DCanvas({
   onSelectAgent,
   interactive = true,
   quality = 'auto',
+  throttled = false,
   onQualityResolved,
   className = '',
   style = {}
@@ -149,6 +83,10 @@ export default function CyberSpace3DCanvas({
 
   const onQualityResolvedRef = useRef(onQualityResolved);
   onQualityResolvedRef.current = onQualityResolved;
+
+  // Letto dal loop senza ricostruire la scena: cambia a ogni risposta dell'LLM
+  const throttledRef = useRef(throttled);
+  throttledRef.current = throttled;
 
   // Chiave reattiva dei ruoli per ricostruire dinamicamente la plancia quando i ruoli vengono caricati dal backend
   const rolesKey = (roles || []).map(r => r.id).join('|');
@@ -2042,10 +1980,6 @@ export default function CyberSpace3DCanvas({
 
       stationDataList.push({
         stationGroup,
-        figureGroup: agentFigureGroup,
-        chairGroup,
-        // Riempito dal GLB ricostruito dalla foto, se esiste (vedi sezione 7b)
-        agentModel: null,
         headGroup,
         coreReactor,
         leftHand,
@@ -2057,88 +1991,6 @@ export default function CyberSpace3DCanvas({
         posX,
         posZ,
         angle
-      });
-    }
-
-    // =========================================================================
-    // 7b. Agenti ricostruiti dalle foto (GLB) al posto degli ufficiali procedurali
-    // =========================================================================
-    // Solo in qualita' alta: sul Pi in modalita' leggera restano le primitive,
-    // che non costano download, decodifica JPEG e memoria per le texture.
-    let disposed = false;
-    const AGENT_MODEL_HEIGHT = 1.4;
-    // Rivolto alla console: il modello guarda verso +Z, la console sta a -Z
-    const CONSOLE_YAW = Math.PI;
-
-    const setAgentModelsVisible = (show) => {
-      stationDataList.forEach(st => {
-        if (!st.agentModel) return;
-        st.agentModel.group.visible = show;
-        st.figureGroup.visible = !show;
-        // L'ufficiale procedurale siede sempre rivolto alla console
-        if (!show) st.chairGroup.rotation.y = 0;
-      });
-    };
-
-    const attachAgentModel = (st, gltf, entry) => {
-      const group = new THREE.Group();
-      // Seduto sulla poltrona come l'ufficiale procedurale, con il busto alto uguale
-      group.position.set(0, 0.78, 0.5);
-      group.rotation.y = CONSOLE_YAW;
-      group.scale.setScalar(AGENT_MODEL_HEIGHT);
-
-      const uniforms = {
-        uNeckY: { value: Number(entry.collo) || 0.66 },
-        uHeadYaw: { value: 0 },
-        uHeadPitch: { value: 0 },
-        uBreath: { value: 0 }
-      };
-      gltf.scene.traverse(o => {
-        if (!o.isMesh) return;
-        const mats = Array.isArray(o.material) ? o.material : [o.material];
-        mats.forEach(m => {
-          // La texture ha gia' la luce della foto: un po' di emissione la tiene
-          // leggibile nella plancia scura senza farla sembrare un adesivo.
-          if (m.map) {
-            m.emissive = new THREE.Color(0xffffff);
-            m.emissiveMap = m.map;
-            m.emissiveIntensity = isLight ? 0.12 : 0.4;
-          }
-          applyRiglessMotion(m, uniforms);
-        });
-      });
-      group.add(gltf.scene);
-      st.stationGroup.add(group);
-      st.agentModel = { group, uniforms, bodyYaw: CONSOLE_YAW, headYaw: 0, headPitch: 0 };
-      st.agentModel.group.visible = !lite;
-      st.figureGroup.visible = lite;
-    };
-
-    if (!lite) {
-      const gltfLoader = new GLTFLoader();
-      loadAgentModelIndex().then(index => {
-        if (disposed) return;
-        stationDataList.forEach(st => {
-          const key = agentModelKey(st.role.image);
-          const entry = key && index[key];
-          if (!entry || !entry.file) return;
-          gltfLoader.load(
-            `${AGENT_MODELS_BASE}${entry.file}`,
-            gltf => {
-              if (disposed) {
-                gltf.scene.traverse(o => {
-                  if (o.geometry) o.geometry.dispose();
-                  const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
-                  mats.forEach(m => { m.map?.dispose(); m.dispose(); });
-                });
-                return;
-              }
-              attachAgentModel(st, gltf, entry);
-            },
-            undefined,
-            err => console.warn(`Modello 3D di ${st.role.id} non caricato, resta l'ufficiale procedurale:`, err)
-          );
-        });
       });
     }
 
@@ -2167,12 +2019,9 @@ export default function CyberSpace3DCanvas({
       const camX = station.posX - Math.cos(station.angle) * offsetDist;
       const camZ = station.posZ - Math.sin(station.angle) * offsetDist;
 
-      // Camera un po' piu' alta del busto: scheda e ufficiale restano sopra il pannello di dialogo.
-      // Con il modello ricostruito si scende: il volto che si gira verso
-      // l'utente finiva sotto il pannello, la scheda resta comunque leggibile.
-      const hasModel = Boolean(station.agentModel && station.agentModel.group.visible);
-      targetCamPos.set(camX, hasModel ? 0.75 : 1.3, camZ);
-      targetLookAt.set(station.posX, hasModel ? 0.45 : 1.1, station.posZ);
+      // Camera un po' piu' alta del busto: scheda e ufficiale restano sopra il pannello di dialogo
+      targetCamPos.set(camX, 1.3, camZ);
+      targetLookAt.set(station.posX, 1.1, station.posZ);
 
       if (!silent && onSelectAgentRef.current) {
         onSelectAgentRef.current(station.role);
@@ -2331,7 +2180,6 @@ export default function CyberSpace3DCanvas({
     const switchToLite = (reason) => {
       if (lite) return;
       lite = true;
-      setAgentModelsVisible(false);
       renderer.setPixelRatio(litePixelRatio);
       renderer.setSize(width, height);
       if (onQualityResolvedRef.current) onQualityResolvedRef.current('lite', reason);
@@ -2346,58 +2194,24 @@ export default function CyberSpace3DCanvas({
       return t * t * (3 - 2 * t);
     };
 
-    const camLocal = new THREE.Vector3();
-    // Differenza d'angolo riportata in (-PI, PI]: senza, girarsi da 170 a -170
-    // gradi farebbe fare al busto il giro lungo
-    const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-
-    const animateAgentModel = (st, idx, elapsedTime, dt, isFocused) => {
-      const m = st.agentModel;
-      const g = m.group;
-      camLocal.copy(camera.position);
-      st.stationGroup.worldToLocal(camLocal);
-      camLocal.sub(g.position);
-      const yawToCam = Math.atan2(camLocal.x, camLocal.z);
-
-      // Selezionato si volta verso chi lo chiama, altrimenti torna alla console
-      const bodyTarget = isFocused ? yawToCam : CONSOLE_YAW;
-      m.bodyYaw += wrapAngle(bodyTarget - m.bodyYaw) * (1 - Math.exp(-dt * 2.2));
-      g.rotation.y = m.bodyYaw;
-      // Poltrona girevole: ruota con l'agente, altrimenti voltandosi verso
-      // l'utente resterebbe con lo schienale davanti al busto
-      st.chairGroup.rotation.y = m.bodyYaw - CONSOLE_YAW;
-
-      // La testa segue la camera solo se e' davanti a lui: oltre la spalla
-      // il collo si spezzerebbe, quindi torna a guardare gli schermi.
-      const rel = wrapAngle(yawToCam - m.bodyYaw);
-      const facing = Math.abs(rel) < 1.7;
-      const idleYaw = Math.sin(elapsedTime * 0.37 + idx * 1.7) * 0.18;
-      const headYawTarget = facing ? Math.max(-0.65, Math.min(0.65, rel)) : idleYaw;
-      const headY = (m.uniforms.uNeckY.value + 0.15) * AGENT_MODEL_HEIGHT;
-      const horiz = Math.hypot(camLocal.x, camLocal.z) || 1;
-      const pitchToCam = -Math.atan2(camLocal.y - headY, horiz);
-      const headPitchTarget = facing ? Math.max(-0.35, Math.min(0.3, pitchToCam)) : 0.12;
-      const headEase = 1 - Math.exp(-dt * (isFocused ? 4.0 : 1.6));
-      m.headYaw += (headYawTarget - m.headYaw) * headEase;
-      m.headPitch += (headPitchTarget - m.headPitch) * headEase;
-
-      m.uniforms.uHeadYaw.value = m.headYaw;
-      m.uniforms.uHeadPitch.value = m.headPitch;
-      m.uniforms.uBreath.value = Math.sin(elapsedTime * 1.6 + idx) * 0.012;
-    };
-
     const animate = (now = 0) => {
       animationFrameId = requestAnimationFrame(animate);
 
       // In modalita' leggera si disegna a 30 fps: sul Pi meta' dei frame bastano
       if (lite && now - lastFrameAt < 32) return;
+      // Mentre l'LLM genera la GPU serve a lui: la plancia scende a ~12 fps
+      if (throttledRef.current && now - lastFrameAt < 80) return;
       lastFrameAt = now;
 
       const dt = Math.min(clock.getDelta(), 0.1);
       // Con prefers-reduced-motion la scena resta ferma; si muove solo la camera richiesta dall'utente
       const elapsedTime = reducedMotion ? 0 : motionClock.getElapsedTime();
 
-      if (!probeDone) {
+      // Il rallentamento voluto non va scambiato per una GPU debole: la misura riparte
+      if (!probeDone && throttledRef.current) {
+        probeStart = 0;
+        probeFrames = 0;
+      } else if (!probeDone) {
         if (probeStart === 0) probeStart = now;
         probeFrames++;
         const span = now - probeStart;
@@ -2460,17 +2274,13 @@ export default function CyberSpace3DCanvas({
           st.propGroup.position.y = 5.8 + Math.sin(elapsedTime * 2.0 + idx) * 0.1;
         }
 
-        const isFocused = focusedId && st.role.id === focusedId;
-        if (!reducedMotion && st.agentModel && st.agentModel.group.visible) {
-          animateAgentModel(st, idx, elapsedTime, dt, isFocused);
-        }
-
         st.badgeMesh.position.y = -2.0 + 3.8 + Math.sin(elapsedTime * 1.8 + idx) * 0.05;
         st.badgeMesh.quaternion.copy(camera.quaternion);
 
         // Le schede lontane crescono per restare leggibili, quelle troppo vicine
         // svaniscono: in vista generale coprivano dock e barra dei comandi.
         const dist = camera.position.distanceTo(badgeTmp.copy(st.badgeMesh.position));
+        const isFocused = focusedId && st.role.id === focusedId;
         // Con un agente in primo piano niente ingrandimento: i vicini, piu' lontani,
         // sarebbero risultati piu' grandi della scheda selezionata.
         const scale = focusedId ? 1 : Math.max(0.9, Math.min(1.75, dist / 10));
@@ -2491,7 +2301,6 @@ export default function CyberSpace3DCanvas({
     // 11. Pulizia Risorse WebGL
     // =========================================================================
     return () => {
-      disposed = true;
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('mousemove', onMouseMove);
       container.removeEventListener('mousedown', onMouseDown);
