@@ -1985,56 +1985,6 @@ export default function CyberSpace3DCanvas({
       stationGroup.add(hitBox);
       interactiveMeshes.push(hitBox);
 
-      // Prop 3D Tematico Fluttuante sopra la Scheda
-      const propGroup = new THREE.Group();
-      propGroup.position.set(0, 5.8, -0.4);
-      stationGroup.add(propGroup);
-
-      const idLower = (role.id || '').toLowerCase();
-      if (idLower.includes('regis') || idLower.includes('dop')) {
-        const cam = new THREE.Mesh(
-          new THREE.BoxGeometry(0.5, 0.4, 0.35),
-          new THREE.MeshStandardMaterial({ color: 0xff007a, metalness: 0.8, roughness: 0.2 })
-        );
-        const lens = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.14, 0.14, 0.3, 16),
-          new THREE.MeshBasicMaterial({ color: 0x00f0ff })
-        );
-        lens.rotation.x = Math.PI / 2;
-        lens.position.z = -0.3;
-        cam.add(lens);
-        propGroup.add(cam);
-      } else if (idLower.includes('medic')) {
-        const dnaGroup = new THREE.Group();
-        for (let j = 0; j < 10; j++) {
-          const dy = (j - 5) * 0.11;
-          const da = j * 0.65;
-          const sA = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), new THREE.MeshBasicMaterial({ color: 0x10b981 }));
-          sA.position.set(Math.cos(da) * 0.24, dy, Math.sin(da) * 0.24);
-          const sB = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), new THREE.MeshBasicMaterial({ color: 0x00d2ff }));
-          sB.position.set(-Math.cos(da) * 0.24, dy, -Math.sin(da) * 0.24);
-          dnaGroup.add(sA);
-          dnaGroup.add(sB);
-        }
-        propGroup.add(dnaGroup);
-      } else if (idLower.includes('math') || idLower.includes('professor')) {
-        const gyroGroup = new THREE.Group();
-        gyroGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), new THREE.MeshBasicMaterial({ color: 0x10b981 })));
-        gyroGroup.add(new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.02, 12, 32), new THREE.MeshBasicMaterial({ color: 0x00f0ff })));
-        propGroup.add(gyroGroup);
-      } else if (idLower.includes('hardware') || idLower.includes('kicad')) {
-        const chip = new THREE.Mesh(
-          new THREE.BoxGeometry(0.48, 0.1, 0.48),
-          new THREE.MeshStandardMaterial({ color: 0x064e3b, metalness: 0.6, roughness: 0.3 })
-        );
-        propGroup.add(chip);
-      } else {
-        const tesseractGroup = new THREE.Group();
-        tesseractGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), new THREE.MeshBasicMaterial({ color: roleThreeColor, wireframe: true })));
-        tesseractGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.24), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true })));
-        propGroup.add(tesseractGroup);
-      }
-
       shipGroup.add(stationGroup);
 
       stationDataList.push({
@@ -2047,7 +1997,6 @@ export default function CyberSpace3DCanvas({
         coreReactor,
         leftHand,
         rightHand,
-        propGroup,
         badgeMesh,
         hitBox,
         role,
@@ -2459,8 +2408,6 @@ export default function CyberSpace3DCanvas({
           st.leftHand.position.y = 0.44 + Math.sin(elapsedTime * 8 + idx) * 0.015;
           st.rightHand.position.y = 0.44 + Math.cos(elapsedTime * 8 + idx) * 0.015;
 
-          st.propGroup.rotation.y = elapsedTime * 1.3 + idx;
-          st.propGroup.position.y = 5.8 + Math.sin(elapsedTime * 2.0 + idx) * 0.1;
         }
 
         const isFocused = focusedId && st.role.id === focusedId;
