@@ -357,6 +357,15 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
     if not img:
         img = _get_fallback_image(fname)
 
+    # Un ruolo con l'agente sospeso non deve comparire nella Home. In
+    # agents_meta.json il manifesto e' relativo ("roles/x.md") mentre qui il
+    # percorso e' assoluto: si confronta il nome del file.
+    active = True
+    for agent_data in meta.get("agents", {}).values():
+        if os.path.basename(str(agent_data.get("manifesto", ""))).lower() == fname.lower():
+            active = agent_data.get("status", "active") == "active"
+            break
+
     raw_text = ""
     try:
         with open(fpath, "r", encoding="utf-8") as fh:
@@ -461,6 +470,7 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
         "systemPrompt": system_prompt,
         "size": os.path.getsize(fpath) if os.path.exists(fpath) else 0,
         "image": img,
+        "active": active,
         "rawContent": raw_text
     }
 

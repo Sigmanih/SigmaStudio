@@ -107,6 +107,16 @@ const RoleAvatar = ({ role, className }) => (
   </span>
 );
 
+// Disinstallato (fuori da list_manifesti, o "installed: false" nel catalogo
+// dell'hub) o sospeso in agents_meta: in entrambi i casi il ruolo sparisce
+// da plancia, chip e menu.
+const isRoleAvailable = (r) => Boolean(r) && r.active !== false && r.installed !== false;
+
+const sessionRoleFile = (s) => {
+  const p = s && s.manifestoPath;
+  return p && p !== 'auto' ? String(p).split(/[\\/]/).pop().toLowerCase() : '';
+};
+
 const loadRecentChats = () => loadSessions()
   // Il messaggio di benvenuto conta come uno: una chat vera ne ha almeno due
   .filter(s => (s.messageCount || (Array.isArray(s.messages) ? s.messages.length : 0)) > 1)
@@ -139,7 +149,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     let cancel = false;
     const loadDynamicRoles = async () => {
       if (Array.isArray(contextManifesti) && contextManifesti.length > 0) {
-        if (!cancel) setLoadedRoles(contextManifesti);
+        if (!cancel) setLoadedRoles(contextManifesti.filter(isRoleAvailable));
         return;
       }
 
@@ -149,7 +159,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           const data = await res.json();
           const items = data.manifesti || data.ruoli || data.files || [];
           if (!cancel && Array.isArray(items) && items.length > 0) {
-            setLoadedRoles(items);
+            setLoadedRoles(items.filter(isRoleAvailable));
             return;
           }
         }
@@ -159,8 +169,10 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         const resHub = await fetch('/api/ruoli/hub');
         if (resHub.ok) {
           const dataHub = await resHub.json();
-          if (!cancel && Array.isArray(dataHub.catalog) && dataHub.catalog.length > 0) {
-            setLoadedRoles(dataHub.catalog);
+          // Il catalogo elenca anche i ruoli mai installati: solo quelli presenti
+          const installed = Array.isArray(dataHub.catalog) ? dataHub.catalog.filter(r => r.installed && isRoleAvailable(r)) : [];
+          if (!cancel && installed.length > 0) {
+            setLoadedRoles(installed);
           }
         }
       } catch (e) {}
@@ -262,6 +274,17 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       setSelectedRole(enrichedRoles[0].id);
     }
   }, [enrichedRoles, selectedRole]);
+
+  // Le chat di un ruolo disinstallato non si riaprono piu' con quel ruolo:
+  // in "Riprendi" restano solo quelle generiche o di ruoli ancora presenti.
+  const visibleRecentChats = useMemo(() => {
+    if (!loadedRoles || loadedRoles.length === 0) return recentChats;
+    const files = new Set(loadedRoles.map(r => String(r.filename || '').toLowerCase()).filter(Boolean));
+    return recentChats.filter(s => {
+      const f = sessionRoleFile(s);
+      return !f || files.has(f);
+    });
+  }, [recentChats, loadedRoles]);
 
   const inspirationRoles = useMemo(() => enrichedRoles.slice(0, 5), [enrichedRoles]);
 
@@ -572,13 +595,13 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         </header>
 
         {/* Riprendi da dove eri: le ultime chat con messaggi */}
-        {recentChats.length > 0 && !focusedAgent && !aiChatOpen && (
+        {visibleRecentChats.length > 0 && !focusedAgent && !aiChatOpen && (
           <aside className="holodeck-recent" aria-label="Chat recenti">
             <div className="holodeck-recent-title">
               <History size={13} aria-hidden="true" />
               <span>Riprendi</span>
             </div>
-            {recentChats.map(s => (
+            {visibleRecentChats.map(s => (
               <button
                 key={s.id}
                 type="button"
