@@ -46,6 +46,8 @@ def argomenti() -> argparse.Namespace:
     p.add_argument("--qualita-jpeg", type=int, default=85)
     p.add_argument("--anteprima", type=Path, default=None)
     p.add_argument("--ruota", type=float, default=0.0, help="gradi attorno a Y per portare il viso verso +Z")
+    p.add_argument("--collo", type=float, default=None,
+                   help="altezza del collo (0-1) quando la stima sbaglia, es. con un colletto alto")
     return p.parse_args(argv)
 
 
@@ -54,7 +56,9 @@ def scena_vuota() -> None:
 
 
 def importa(percorso: Path) -> bpy.types.Object:
-    bpy.ops.wm.ply_import(filepath=str(percorso))
+    # genera.py scrive il PLY con Y in alto come glTF: lo si dichiara invece
+    # di affidarsi ai default dell'importatore, che cambiano tra versioni
+    bpy.ops.wm.ply_import(filepath=str(percorso), forward_axis="NEGATIVE_Z", up_axis="Y")
     obj = bpy.context.selected_objects[0]
     bpy.context.view_layer.objects.active = obj
     return obj
@@ -118,21 +122,39 @@ def normalizza(obj: bpy.types.Object, gradi: float) -> None:
 
 
 def misura_collo(obj: bpy.types.Object) -> dict:
-    """Altezza del collo come sezione piu' stretta tra il 45% e l'88% dell'altezza.
+    """Altezza del collo: la sezione piu' stretta tra la testa e le spalle.
 
     Serve alla plancia per ruotare solo la testa senza scheletro: i vertici
-    sopra il collo girano, quelli sotto restano fermi.
+    sopra il collo girano, quelli sotto restano fermi. Il minimo assoluto
+    non basta: la cima del cranio e' ancora piu' stretta del collo. Si scende
+    dalla cima fino alla testa piena, poi si cerca il minimo prima che le
+    spalle allarghino la sezione. La larghezza e' un percentile e non
+    l'estremo, perche' una mano portata al viso allargherebbe la fascia.
     """
-    fasce = 48
-    larghezze = [[math.inf, -math.inf] for _ in range(fasce)]
+    fasce = 64
+    xs: list[list[float]] = [[] for _ in range(fasce)]
     for v in obj.data.vertices:
-        i = min(fasce - 1, int(v.co.z / ALTEZZA * fasce))
-        larghezze[i][0] = min(larghezze[i][0], v.co.x)
-        larghezze[i][1] = max(larghezze[i][1], v.co.x)
-    misure = [(b - a) if b > a else math.inf for a, b in larghezze]
-    da, a = int(fasce * 0.45), int(fasce * 0.88)
-    i_collo = min(range(da, a), key=lambda i: misure[i])
-    spalle = max(m for m in misure[:i_collo] if m != math.inf)
+        xs[min(fasce - 1, int(v.co.z / ALTEZZA * fasce))].append(abs(v.co.x))
+
+    def larghezza(valori: list[float]) -> float:
+        if len(valori) < 8:
+            return 0.0
+        valori = sorted(valori)
+        return 2 * valori[int(len(valori) * 0.9)]
+
+    grezze = [larghezza(x) for x in xs]
+    # Media su tre fasce: la decimazione lascia buchi che sembrano strozzature
+    misure = [sum(grezze[max(0, i - 1):i + 2]) / len(grezze[max(0, i - 1):i + 2]) for i in range(fasce)]
+
+    # Testa piena: la fascia piu' larga nel quarto superiore
+    i_testa = max(range(int(fasce * 0.7), fasce), key=lambda i: misure[i])
+    i_collo = i_testa
+    for i in range(i_testa - 1, int(fasce * 0.3), -1):
+        if misure[i] > misure[i_testa] * 1.35:
+            break  # le spalle: il collo e' sopra
+        if misure[i] < misure[i_collo]:
+            i_collo = i
+    spalle = max(misure[:i_collo] or [0.0])
     return {
         "collo": round((i_collo + 0.5) / fasce * ALTEZZA, 3),
         "larghezza_spalle": round(spalle, 3),
@@ -286,6 +308,8 @@ def main() -> int:
     tieni_parte_maggiore(alto)
     normalizza(alto, args.ruota)
     collo = misura_collo(alto)
+    if args.collo is not None:
+        collo["collo"] = args.collo
     basso = decima(alto, args.triangoli)
     uv_automatiche(basso)
     materiale_colore_vertici(alto)

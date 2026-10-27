@@ -96,7 +96,6 @@ def main() -> int:
     parser.add_argument("--ritaglio", default="birefnet-portrait", help="modello rembg per lo sfondo")
     args = parser.parse_args()
 
-    import numpy as np
     import rembg
     import torch
     from trellis.pipelines import TrellisImageTo3DPipeline
@@ -132,13 +131,12 @@ def main() -> int:
 
             mesh = out["mesh"][0]
             gauss = out["gaussian"][0]
+            # La mesh esce gia' con Y in alto e il viso verso +Z: la rotazione
+            # del to_glb di TRELLIS qui la faceva arrivare sdraiata in Blender
             vertici = mesh.vertices.detach().float().cpu().numpy()
             facce = mesh.faces.detach().cpu().numpy()
-            # TRELLIS e' Z-in-alto, glTF e three.js Y-in-alto
-            vertici = vertici @ np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=np.float32)
             colori_mesh = mesh.vertex_attrs[:, :3].detach().float().cpu().numpy()
-            gauss_vert = mesh.vertices.detach().float().cpu().numpy()
-            colori_gauss = colori_da_gaussiane(gauss_vert, gauss)
+            colori_gauss = colori_da_gaussiane(vertici, gauss)
 
             salva_ply(cartella / "alto_mesh.ply", vertici, facce, colori_mesh)
             salva_ply(cartella / "alto_gauss.ply", vertici, facce, colori_gauss)
