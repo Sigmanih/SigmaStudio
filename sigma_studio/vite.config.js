@@ -47,6 +47,11 @@ export default defineConfig({
         target: API_TARGET,
         changeOrigin: true,
       },
+      // Foto e modelli 3D installati con i ruoli (roles/<id>/), serviti dal backend.
+      '/ruoli/': {
+        target: API_TARGET,
+        changeOrigin: true,
+      },
     },
   },
 })

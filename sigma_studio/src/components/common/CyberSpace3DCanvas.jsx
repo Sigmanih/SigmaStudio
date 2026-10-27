@@ -41,27 +41,6 @@ const prefersReducedMotion = () => {
   }
 };
 
-// Modelli 3D degli agenti ricostruiti dalle foto (tools/agenti_3d). L'indice
-// dice quali ruoli ne hanno uno: senza, ogni postazione chiederebbe al server
-// un file che quasi sempre non esiste.
-const AGENT_MODELS_BASE = '/models/agenti/';
-let agentModelIndexPromise = null;
-const loadAgentModelIndex = () => {
-  if (!agentModelIndexPromise) {
-    agentModelIndexPromise = fetch(`${AGENT_MODELS_BASE}indice.json`)
-      .then(r => (r.ok ? r.json() : null))
-      .then(j => (j && j.modelli) || {})
-      .catch(() => ({}));
-  }
-  return agentModelIndexPromise;
-};
-
-// Il modello si chiama come la foto del ruolo: e' da li' che e' stato ricostruito
-const agentModelKey = (imageSrc = '') => {
-  const m = /([^/?#]+)\.(png|jpe?g|webp)(?:[?#].*)?$/i.exec(imageSrc);
-  return m ? decodeURIComponent(m[1]) : '';
-};
-
 // Animazione senza scheletro: i modelli generati non hanno rig, quindi la testa
 // gira nel vertex shader. I vertici sopra il collo (altezza misurata in Blender)
 // ruotano attorno al collo, con una fascia di raccordo per non strappare la mesh;
@@ -148,7 +127,8 @@ export default function CyberSpace3DCanvas({
   throttledRef.current = throttled;
 
   // Chiave reattiva dei ruoli per ricostruire dinamicamente la plancia quando i ruoli vengono caricati dal backend
-  const rolesKey = (roles || []).map(r => r.id).join('|');
+  // Conta anche il modello 3D: arriva con l'installazione del ruolo, che puo' avvenire a plancia aperta
+  const rolesKey = (roles || []).map(r => `${r.id}:${(r.model3d && r.model3d.url) || ''}`).join('|');
 
   useEffect(() => {
     const container = mountRef.current;
@@ -2060,31 +2040,29 @@ export default function CyberSpace3DCanvas({
       st.figureGroup.visible = lite;
     };
 
+    // Il busto arriva con il pacchetto del ruolo (roles/<id>/modello.glb):
+    // un ruolo disinstallato non lo ha piu', e la postazione non esiste nemmeno.
     if (!lite) {
       const gltfLoader = new GLTFLoader();
-      loadAgentModelIndex().then(index => {
-        if (disposed) return;
-        stationDataList.forEach(st => {
-          const key = agentModelKey(st.role.image);
-          const entry = key && index[key];
-          if (!entry || !entry.file) return;
-          gltfLoader.load(
-            `${AGENT_MODELS_BASE}${entry.file}`,
-            gltf => {
-              if (disposed) {
-                gltf.scene.traverse(o => {
-                  if (o.geometry) o.geometry.dispose();
-                  const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
-                  mats.forEach(m => { m.map?.dispose(); m.dispose(); });
-                });
-                return;
-              }
-              attachAgentModel(st, gltf, entry);
-            },
-            undefined,
-            err => console.warn(`Modello 3D di ${st.role.id} non caricato, resta l'ufficiale procedurale:`, err)
-          );
-        });
+      stationDataList.forEach(st => {
+        const entry = st.role.model3d;
+        if (!entry || !entry.url) return;
+        gltfLoader.load(
+          entry.url,
+          gltf => {
+            if (disposed) {
+              gltf.scene.traverse(o => {
+                if (o.geometry) o.geometry.dispose();
+                const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+                mats.forEach(m => { m.map?.dispose(); m.dispose(); });
+              });
+              return;
+            }
+            attachAgentModel(st, gltf, entry);
+          },
+          undefined,
+          err => console.warn(`Modello 3D di ${st.role.id} non caricato, resta l'ufficiale procedurale:`, err)
+        );
       });
     }
 

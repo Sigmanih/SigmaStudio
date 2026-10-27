@@ -263,7 +263,9 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         color: r.domainColor || ROLE_PALETTE[i % ROLE_PALETTE.length],
         desc: r.description || r.desc || 'Agente intelligente con competenze verticali e tool dedicati.',
         category,
-        prompt: resolveRolePrompt({ ...r, id })
+        prompt: resolveRolePrompt({ ...r, id }),
+        // Busto 3D installato con il ruolo: senza, la plancia usa l'ufficiale procedurale
+        model3d: r.model3d || null
       };
       return enriched;
     });

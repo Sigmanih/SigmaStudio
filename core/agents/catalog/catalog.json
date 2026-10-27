@@ -61,6 +61,11 @@
     "is_default": false,
     "name": "Sigma AI Architect",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "sigma_architect/modello.json",
+      "immagine": "sigma_architect/immagine.jpg",
+      "modello3d": "sigma_architect/modello.glb"
+    },
     "role": "System Architect & Swarm Coordinator",
     "target": "Architetti Software & Project Manager",
     "temperature": 0.55
@@ -83,6 +88,11 @@
     "is_default": false,
     "name": "Sigma Code Architect",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "code_architect/modello.json",
+      "immagine": "code_architect/immagine.jpg",
+      "modello3d": "code_architect/modello.glb"
+    },
     "role": "Full-Stack Software Engineer & Algorithm Designer",
     "target": "Sviluppatori Python, JavaScript, React e Full-Stack",
     "temperature": 0.3
@@ -127,6 +137,11 @@
     "is_default": false,
     "name": "Ingegnere dei Test & Validazione",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "test_engineer/modello.json",
+      "immagine": "test_engineer/immagine.jpg",
+      "modello3d": "test_engineer/modello.glb"
+    },
     "role": "Test Automation & Numerical Verification Specialist",
     "target": "QA Engineers, Sviluppatori e Ricercatori",
     "temperature": 0.25
@@ -149,6 +164,11 @@
     "is_default": false,
     "name": "Visual Data Designer",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "viz_designer/modello.json",
+      "immagine": "viz_designer/immagine.jpg",
+      "modello3d": "viz_designer/modello.glb"
+    },
     "role": "Interactive Data Visualizer & Scientific UI Designer",
     "target": "Data Scientist, Designer UI e Divulgatori",
     "temperature": 0.5
@@ -171,6 +191,11 @@
     "is_default": false,
     "name": "Revisore Critico & Peer Reviewer",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "proof_reviewer/modello.json",
+      "immagine": "proof_reviewer/immagine.jpg",
+      "modello3d": "proof_reviewer/modello.glb"
+    },
     "role": "Critical Reviewer & Scientific Verification Auditor",
     "target": "Ricercatori, Autori e Docenti Universitari",
     "temperature": 0.3
@@ -181,11 +206,11 @@
       "Meccanica Quantistica",
       "Elettromagnetismo",
       "Termodinamica Applicata",
-      "Relatività Generale",
+      "Relativit\u00e0 Generale",
       "Simulazioni Numeriche Python"
     ],
     "category": "Scienze, Ingegneria & Tech",
-    "description": "Meccanica classica, quantistica, elettromagnetismo, termodinamica e relatività con modellazione numerica in Python.",
+    "description": "Meccanica classica, quantistica, elettromagnetismo, termodinamica e relativit\u00e0 con modellazione numerica in Python.",
     "domainColor": "#06b6d4",
     "filename": "physics_professor.md",
     "icon": "Atom",
@@ -193,6 +218,11 @@
     "is_default": false,
     "name": "Docente di Fisica Teorica & Sperimentale",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "physics_professor/modello.json",
+      "immagine": "physics_professor/immagine.jpg",
+      "modello3d": "physics_professor/modello.glb"
+    },
     "role": "Theoretical & Experimental Physics Professor",
     "target": "Studenti di Fisica, Ingegneria e Ricercatori",
     "temperature": 0.25
@@ -228,7 +258,7 @@
       "Simulazione Quiz",
       "Valutazione Competenze"
     ],
-    "category": "Studenti & Università",
+    "category": "Studenti & Universit\u00e0",
     "description": "Generazione di prove d'esame, quesiti a risposta multipla e aperta, griglie di valutazione e simulazioni di verifica.",
     "domainColor": "#8b5cf6",
     "filename": "academic_examiner.md",
@@ -250,7 +280,7 @@
       "Articoli Divulgativi",
       "Interviste & Inchieste"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Ricerca web in tempo reale, rassegne stampa tematiche, inchieste giornalistiche, fact-checking e articoli divulgativi.",
     "domainColor": "#3b82f6",
     "filename": "online_journalist.md",
@@ -272,7 +302,7 @@
       "Fonetica IPA",
       "Business English"
     ],
-    "category": "Studenti & Università",
+    "category": "Studenti & Universit\u00e0",
     "description": "Insegnamento inglese, spagnolo, tedesco, francese con correzione saggi, grammatica comparata, fonetica IPA e business language.",
     "domainColor": "#bc8cff",
     "filename": "docente_lingue.md",
@@ -294,7 +324,7 @@
       "KaTeX Impeccabile",
       "Preparazione Esami"
     ],
-    "category": "Studenti & Università",
+    "category": "Studenti & Universit\u00e0",
     "description": "Risoluzione passo-passo di integrali, matrici, limiti e derivate con spiegazione didattica in KaTeX e schemi di ripasso per esami.",
     "domainColor": "#00d2ff",
     "filename": "tutor_matematica.md",
@@ -347,6 +377,11 @@
     "is_default": false,
     "name": "Medico Consulente & Divulgatore Sanitario",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "medico_divulgatore/modello.json",
+      "immagine": "medico_divulgatore/immagine.jpg",
+      "modello3d": "medico_divulgatore/modello.glb"
+    },
     "role": "Medical Researcher & Health Science Communicator",
     "target": "Studenti di Medicina, Professionisti Sanitari e Cittadini",
     "temperature": 0.15
@@ -404,7 +439,7 @@
       "Brand Voice & Tono",
       "Content Strategy"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Storytelling persuasivo, modelli AIDA/PAS, sceneggiature, romanzi, brand voice, content strategy e post ad alto ingaggio.",
     "domainColor": "#ff5064",
     "filename": "copywriter_creativo.md",
@@ -448,7 +483,7 @@
       "Direzione Attori & Personaggi Virtuali",
       "Grammatica Audiovisiva & Pacing"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Visione artistica, regia di scene, inquadrature, movimenti di macchina, blocking attori e coerenza drammaturgica per video e cortometraggi.",
     "domainColor": "#ff007a",
     "filename": "regista_cinematografico.md",
@@ -458,6 +493,11 @@
     "is_default": false,
     "name": "Regista Cinematografico & Direttore Creativo",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "regista_cinematografico/modello.json",
+      "immagine": "regista_cinematografico/immagine.jpg",
+      "modello3d": "regista_cinematografico/modello.glb"
+    },
     "role": "Film Director & Creative Vision Lead",
     "target": "Registi, Filmmaker, Creator Video e Storyteller",
     "temperature": 0.35
@@ -471,7 +511,7 @@
       "Struttura in 3 Atti",
       "Adattamento per Doppiaggio & TTS"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Scrittura di copioni standard, trattamenti di scena, archi trasformativi dei personaggi e dialoghi incisivi per produzioni video.",
     "domainColor": "#f59e0b",
     "filename": "sceneggiatore.md",
@@ -481,6 +521,11 @@
     "is_default": false,
     "name": "Sceneggiatore Cinematografico & Storyteller",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "sceneggiatore/modello.json",
+      "immagine": "sceneggiatore/immagine.jpg",
+      "modello3d": "sceneggiatore/modello.glb"
+    },
     "role": "Cinematic Screenwriter & Storyteller",
     "target": "Sceneggiatori, Scrittori, Autori e Creator",
     "temperature": 0.4
@@ -494,7 +539,7 @@
       "Prompt Engineering Cinematografico",
       "Composizione Inquadratura"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Progettazione illuminotecnica, scelta lenti, color grading e creazione di prompt cinematografici per generatori AI di immagini e video.",
     "domainColor": "#8b5cf6",
     "filename": "direttore_fotografia.md",
@@ -504,6 +549,11 @@
     "is_default": false,
     "name": "Direttore della Fotografia & Prompt Artist",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "direttore_fotografia/modello.json",
+      "immagine": "direttore_fotografia/immagine.jpg",
+      "modello3d": "direttore_fotografia/modello.glb"
+    },
     "role": "Director of Photography & Prompt Artist",
     "target": "Direttori della Fotografia, Fotografi e Prompt Designer",
     "temperature": 0.3
@@ -511,13 +561,13 @@
   {
     "baseModel": "sigma",
     "capabilities": [
-      "Montaggio di Scena & Continuità",
+      "Montaggio di Scena & Continuit\u00e0",
       "Raccordi Dinamici (J-Cut/L-Cut/Match Cut)",
       "Ritmo & Pacing Temporale",
       "Gestione Timeline & Clip Video",
       "Sincronizzazione Audio e Immagini"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Montaggio video, raccordi di scena, ritmo dei tagli, timeline e sincronizzazione per le produzioni video di Sigma Studio.",
     "domainColor": "#06b6d4",
     "filename": "montatore_video.md",
@@ -526,6 +576,11 @@
     "is_default": false,
     "name": "Montatore Video & Editor di Post-Produzione",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "montatore_video/modello.json",
+      "immagine": "montatore_video/immagine.jpg",
+      "modello3d": "montatore_video/modello.glb"
+    },
     "role": "Film Editor & Post-Production Specialist",
     "target": "Video Editor, Montatori e Content Creator",
     "temperature": 0.25
@@ -539,7 +594,7 @@
       "Mix Audio & Bilanciamento Tracce",
       "Prompt per Generatori Musicali"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Stratificazione sonora, effetti sonori Foley, atmosfere ambientali, composizione musicale e mixaggio per video e produzioni.",
     "domainColor": "#10b981",
     "filename": "sound_designer.md",
@@ -548,6 +603,11 @@
     "is_default": false,
     "name": "Sound Designer & Compositore Audio",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "sound_designer/modello.json",
+      "immagine": "sound_designer/immagine.jpg",
+      "modello3d": "sound_designer/modello.glb"
+    },
     "role": "Sound Designer & Audio Composer",
     "target": "Sound Designer, Musicisti, Fonici e Produttori Audio",
     "temperature": 0.3

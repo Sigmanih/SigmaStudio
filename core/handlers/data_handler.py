@@ -3,6 +3,7 @@ import os
 import glob
 import json
 import time
+from pathlib import Path
 from core import paths
 from core.logger import get_logger
 from core.store import modules_store
@@ -354,8 +355,26 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
             if agent_data.get("manifesto") == norm_path:
                 img = agent_data.get("image")
                 break
+    # Foto e modello 3D installati con il ruolo stanno in <ruoli>/<id>/ e il
+    # server li espone sotto /ruoli/<id>/
+    stem = fname[:-3] if fname.lower().endswith('.md') else fname
+    risorse_dir = Path(fpath).parent / stem
+    if not img:
+        for nome_img in ("immagine.jpg", "immagine.png"):
+            if (risorse_dir / nome_img).is_file():
+                img = f"/ruoli/{stem}/{nome_img}"
+                break
     if not img:
         img = _get_fallback_image(fname)
+
+    model3d = None
+    dettagli_path = risorse_dir / "modello.json"
+    if dettagli_path.is_file() and (risorse_dir / "modello.glb").is_file():
+        try:
+            dettagli = json.loads(dettagli_path.read_text(encoding="utf-8"))
+            model3d = {"url": f"/ruoli/{stem}/modello.glb", "collo": dettagli.get("collo")}
+        except (OSError, ValueError) as exc:
+            log.warning("modello.json illeggibile per %s: %s", stem, exc)
 
     # Un ruolo con l'agente sospeso non deve comparire nella Home. In
     # agents_meta.json il manifesto e' relativo ("roles/x.md") mentre qui il
@@ -471,6 +490,7 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
         "size": os.path.getsize(fpath) if os.path.exists(fpath) else 0,
         "image": img,
         "active": active,
+        "model3d": model3d,
         "rawContent": raw_text
     }
 
@@ -633,7 +653,9 @@ from core.manifests_catalog import (
     MANIFESTS_CATALOG,
     GITHUB_REPO_URL,
     GITHUB_RAW_BASE_URL,
-    get_manifesto_by_id_or_filename
+    get_manifesto_by_id_or_filename,
+    installa_risorse,
+    rimuovi_risorse
 )
 from core.agent_registry import register_agent, unregister_agent, load_agents_meta, save_agents_meta
 
@@ -721,8 +743,12 @@ def handle_manifesti_install_from_hub(self):
             with open(dest_path, "w", encoding="utf-8") as fh:
                 fh.write(content)
 
-            # Auto-register agent in agents_meta.json
+            # Foto e modello 3D viaggiano con il ruolo; se mancano o la rete
+            # cade il ruolo funziona lo stesso, con l'ufficiale procedurale
             aid = found["id"]
+            risorse = installa_risorse(aid, Path(manifesto_dir), found)
+
+            # Auto-register agent in agents_meta.json
             register_agent(
                 agent_id=aid,
                 name=found["name"],
@@ -739,7 +765,8 @@ def handle_manifesti_install_from_hub(self):
                 "message": f"Ruolo '{found['name']}' scaricato e attivato con successo nel Kernel!",
                 "filename": found["filename"],
                 "path": dest_path.replace('\\', '/'),
-                "agent_id": aid
+                "agent_id": aid,
+                "risorse": risorse
             })
 
         elif custom_url:
@@ -817,6 +844,8 @@ def handle_manifesti_uninstall(self):
         if legacy_path.exists():
             os.remove(legacy_path)
             
+        rimuovi_risorse(fname[:-3], paths.roles_dir())
+
         # Also unregister from agent_registry
         unregister_agent(aid)
         
