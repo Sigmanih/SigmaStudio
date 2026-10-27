@@ -2108,8 +2108,10 @@ export default function CyberSpace3DCanvas({
     };
 
     const goVisitHolo = (ch) => {
-      // Un punto del bordo del tavolo olografico dalla propria parte della plancia
-      const a = Math.atan2(ch.st.posZ, ch.st.posX) + randomBetween(-0.35, 0.35);
+      // Un punto del bordo del tavolo olografico nel proprio spicchio di plancia:
+      // con 15 postazioni a 0,42 rad l'una dall'altra, +-0,15 tiene ogni agente
+      // fuori dalla strada dei vicini e i percorsi radiali non si incrociano
+      const a = Math.atan2(ch.st.posZ, ch.st.posX) + randomBetween(-0.15, 0.15);
       const holo = new THREE.Vector3(Math.cos(a) * HOLO_RADIUS, DECK_Y, Math.sin(a) * HOLO_RADIUS);
       walkTo(ch, [stationWorld(ch.st, 0, STAND_Z), holo], () => {
         ch.state = 'sosta';

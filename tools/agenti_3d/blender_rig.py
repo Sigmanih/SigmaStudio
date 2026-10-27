@@ -151,6 +151,12 @@ def adatta_scheletro(arm: bpy.types.Object, corpo: bpy.types.Object) -> None:
             # personaggio), ma sulla retta del braccio vero
             punto, direzione = asse
             nuova_spalla = punto + direzione * ((spalla.z - punto.z) / direzione.z)
+            # In A-pose il braccio pende in un piano frontale: la profondita' giusta
+            # e' quella media delle sue sezioni. Estrapolata dava una spalla dietro
+            # il busto e una mano davanti, con l'osso di traverso nel corpo e i
+            # pesi del manichino finiti sulle superfici sbagliate.
+            nuova_spalla.y = punto.y
+            mano = Vector((mano.x, punto.y, mano.z))
         log.info("braccio %s: spalla %s -> %s, mano %s", s, tuple(round(c, 3) for c in spalla),
                  tuple(round(c, 3) for c in nuova_spalla), tuple(round(c, 3) for c in mano))
         allinea_catena(braccio, spalla, dito.copy(), nuova_spalla, mano)

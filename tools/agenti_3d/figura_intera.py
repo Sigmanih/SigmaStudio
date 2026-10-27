@@ -21,10 +21,14 @@ from pathlib import Path
 
 # Il ritratto contiene tavolo, libro e lampada: vanno esclusi esplicitamente,
 # altrimenti klein li porta nella figura intera e TRELLIS li fonde al corpo.
+# Le braccia larghe servono al rig: con le braccia vicine ai fianchi TRELLIS le
+# univa al busto e l'interno della manica prendeva i pesi del fianco.
 PROMPT = (
     "Full body shot of the exact same character as in the reference image, same face, same outfit, "
-    "same colors and materials. Standing upright in a relaxed A-pose, arms straight and held slightly "
-    "away from the body, hands open, legs straight with feet shoulder width apart, facing the camera. "
+    "same colors and materials. Standing upright in an A-pose: both arms straight, extended diagonally "
+    "down and outward at about 45 degrees from the torso, with a wide clear gap of empty space between "
+    "each arm and the body, hands open with palms facing forward, legs straight with feet shoulder "
+    "width apart, facing the camera. "
     "The whole figure is visible from the top of the head to the feet, centered. "
     "Plain light grey studio background, soft even lighting, no shadows on the floor. "
     "No table, no furniture, no props, no other people, no text."
