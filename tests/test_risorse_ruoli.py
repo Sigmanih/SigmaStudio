@@ -122,10 +122,11 @@ class TestElencoEServer(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.ruoli, ignore_errors=True)
 
-    def test_list_manifesti_espone_busto_personaggio_e_immagine(self):
+    def test_list_manifesti_espone_personaggio_e_immagine(self):
         from core.handlers.data_handler import _parse_manifesto_file
         voce = _parse_manifesto_file(str(self.ruoli / "medico.md"), "medico.md", {}, {})
-        self.assertEqual(voce["model3d"], {"url": "/ruoli/medico/modello.glb", "collo": 0.47})
+        # I busti non si usano piu': la plancia mostra il personaggio o l'ufficiale procedurale
+        self.assertNotIn("model3d", voce)
         self.assertEqual(voce["character3d"], {"url": "/ruoli/medico/personaggio.glb"})
         self.assertEqual(voce["image"], "/ruoli/medico/immagine.jpg")
         self.assertTrue(voce["active"])

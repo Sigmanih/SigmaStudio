@@ -367,16 +367,8 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
     if not img:
         img = _get_fallback_image(fname)
 
-    model3d = None
-    dettagli_path = risorse_dir / "modello.json"
-    if dettagli_path.is_file() and (risorse_dir / "modello.glb").is_file():
-        try:
-            dettagli = json.loads(dettagli_path.read_text(encoding="utf-8"))
-            model3d = {"url": f"/ruoli/{stem}/modello.glb", "collo": dettagli.get("collo")}
-        except (OSError, ValueError) as exc:
-            log.warning("modello.json illeggibile per %s: %s", stem, exc)
-
-    # Figura intera con scheletro: cammina nella plancia; il busto resta per la modalita' leggera
+    # Figura intera con scheletro: si muove nella plancia 3D. Senza (o in
+    # modalita' leggera) la postazione mostra l'ufficiale procedurale.
     character3d = None
     if (risorse_dir / "personaggio.glb").is_file():
         character3d = {"url": f"/ruoli/{stem}/personaggio.glb"}
@@ -495,7 +487,6 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
         "size": os.path.getsize(fpath) if os.path.exists(fpath) else 0,
         "image": img,
         "active": active,
-        "model3d": model3d,
         "character3d": character3d,
         "rawContent": raw_text
     }

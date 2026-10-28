@@ -100,7 +100,7 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
     ),
     "moduli": (
         "capability_manager", "civitai_red", "creative_characters", "creative_cleanup", "creative_color_finish", "creative_judge", "creative_ltx", "creative_media", "creative_production", "creative_scene", "creative_speech_qa", "creative_storyboard", "creative_preproduction", "voice_engines", "creative_timeline", "video_agents_and_tools", "docker_fs", "dynamic_swarm", "eda_harness_tools",
-        "eda_lab", "email_client", "frontend_diagnostics",
+        "eda_lab", "email_client", "frontend_diagnostics", "developer_graph",
         "fusione_a_tre_vie", "i18n_translator", "kicad_agent",
         "kicad_edit_tools", "kicad_editor_contract", "kicad_harness_tools",
         "kicad_lab", "kicad_pcbnew_tools", "kicad_pure_functions", "manga_adapter",
@@ -112,6 +112,7 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
     ),
     "rete": (
         "ai_integration", "cloud_native_tool_calling", "dev_provider_routing",
+        "cluster_zero_config_provider", "p2p_network_e2e", "sigma_network_ailo", "sigma_network_ailo_hub",
         "local_ca", "network_fetch_page", "network_research_note",
         "network_ssl_config", "provider_tools", "sigma_network",
         "sigma_network_lab",

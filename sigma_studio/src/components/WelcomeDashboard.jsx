@@ -312,9 +312,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         desc: r.description || r.desc || 'Agente intelligente con competenze verticali e tool dedicati.',
         category,
         prompt: resolveRolePrompt({ ...r, id }),
-        // Busto 3D installato con il ruolo: senza, la plancia usa l'ufficiale procedurale
-        model3d: r.model3d || null,
-        // Figura intera con scheletro: in qualita' alta cammina nella plancia
+        // Personaggio 3D installato con il ruolo: senza, la plancia usa l'ufficiale procedurale
         character3d: r.character3d || null
       };
       return enriched;
