@@ -34,6 +34,37 @@ _target_device: Optional[str] = None
 _stats = {"calls": 0, "total_ms": 0.0, "errors": 0}
 
 
+def _gpu_utilizzabile(torch, device: str) -> bool:
+    """Vero se la GPU esegue davvero un'operazione con il torch installato.
+
+    `cuda.is_available()` non basta: il torch del kernel (cu124) vede le schede
+    Blackwell (sm_120) ma non ha i loro kernel, quindi il modello si carica e
+    poi ogni decisione fallisce con "no kernel image is available".
+    """
+    try:
+        return float((torch.ones(4, device=device) * 2).sum().item()) == 8.0
+    except Exception as exc:
+        log.debug("[LayaRouter] %s inutilizzabile: %s", device, exc)
+        return False
+
+
+def triage_abilitato() -> bool:
+    """Il triage della chat decide se togliere gli strumenti: va acceso apposta.
+
+    Misurato con tools/banco_laya_router.py su richieste italiane, Laya (inglese
+    e multilingue) indovinava l'intento in 16-26 casi su 38 e in alcune
+    configurazioni prendeva per chiacchiera richieste che avevano bisogno di
+    strumenti. Installare laya per altri usi non deve quindi accenderlo.
+    """
+    if os.environ.get("SIGMA_LAYA_TRIAGE", "").strip() == "1":
+        return True
+    try:
+        from core.ai_providers import load_ai_config
+        return bool(load_ai_config().get("laya_triage", False))
+    except Exception:
+        return False
+
+
 def get_target_device() -> str:
     """Determina il device migliore per Laya preservando la GPU primaria per l'LLM."""
     global _target_device
@@ -61,15 +92,13 @@ def get_target_device() -> str:
         import torch
         if torch.cuda.is_available():
             count = torch.cuda.device_count()
-            if count > 1:
-                # GPU secondaria (es. RTX 5060) dedicata a Laya/Embedding
-                _target_device = "cuda:1"
-                log.info("[LayaRouter] Trovate %d GPU: selezionata GPU secondaria 'cuda:1'", count)
+            # GPU secondaria (es. RTX 5060) dedicata a Laya/Embedding, se c'e'
+            candidato = "cuda:1" if count > 1 else "cuda:0"
+            if _gpu_utilizzabile(torch, candidato):
+                _target_device = candidato
+                log.info("[LayaRouter] Trovate %d GPU: selezionata '%s'", count, candidato)
                 return _target_device
-            else:
-                # Singola GPU: default su cuda:0 oppure cpu se configurato
-                _target_device = "cuda:0"
-                return _target_device
+            log.info("[LayaRouter] '%s' non esegue i kernel di questo torch: Laya su CPU", candidato)
     except Exception as exc:
         log.debug("[LayaRouter] Rilevamento CUDA non riuscito: %s", exc)
 
@@ -175,7 +204,7 @@ class LayaDecision:
 
 def triage_chat(message: str) -> LayaDecision:
     """Classifica istantaneamente (15-30 ms) intento e complessità del prompt utente."""
-    if not message or not message.strip():
+    if not message or not message.strip() or not triage_abilitato():
         return LayaDecision(fallback=True)
 
     agent = _get_agent()

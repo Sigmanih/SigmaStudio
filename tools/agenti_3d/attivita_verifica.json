@@ -1,0 +1,18 @@
+[
+  {"state": "tool", "tool": "apply_patch", "detail": "Sistemo l'import mancante in roleIcons.js", "atteso": "console"},
+  {"state": "tool", "tool": "python_exec", "detail": "Calcolo l'autovalore dominante della matrice", "atteso": "console"},
+  {"state": "tool", "tool": "web_fetch", "detail": "Scarico la pagina della documentazione di Blender", "atteso": "olotavolo"},
+  {"state": "tool", "tool": "search_papers", "detail": "Cerco studi recenti sul sonno e la memoria", "atteso": "olotavolo"},
+  {"state": "tool", "tool": "transfer_to_agent", "detail": "Giro la richiesta allo Sceneggiatore", "atteso": "collega"},
+  {"state": "thinking", "tool": "", "detail": "Devo chiedere al Sound Designer quale tema musicale usare", "atteso": "collega"},
+  {"state": "writing", "tool": "", "detail": "Preparo la scaletta del video", "atteso": "console"},
+  {"state": "writing", "tool": "", "detail": "Here is the final report for the user", "atteso": "presenta"},
+  {"state": "thinking", "tool": "", "detail": "Analizzo i dati raccolti online sui consumi", "atteso": "olotavolo"},
+  {"state": "tool", "tool": "image_edit", "detail": "Ritocco la luce del fotogramma 7", "atteso": "console"},
+  {"state": "tool", "tool": "pcb_route", "detail": "Sbroglio le piste dell'alimentazione", "atteso": "console"},
+  {"state": "browsing", "tool": "", "detail": "Leggo un thread su Stack Overflow", "atteso": "olotavolo"},
+  {"state": "error", "tool": "render_video", "detail": "VRAM esaurita", "atteso": "presenta"},
+  {"state": "idle", "tool": "", "detail": "", "atteso": "posa"},
+  {"state": "tool", "tool": "notify_agent", "detail": "Avviso il Producer che la clip e' pronta", "atteso": "collega"},
+  {"state": "tool", "tool": "read_file", "detail": "Rileggo il capitolo 3 della sceneggiatura", "atteso": "console"}
+]

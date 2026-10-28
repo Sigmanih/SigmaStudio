@@ -125,7 +125,7 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "no_dead_wiring", "rollback", "scritture_dalla_shell",
         "server_startup", "store", "system_cleanup", "system_flow",
         "terminal_runner_async", "workqueue", "workspace_isolation", "works_migration",
-        "risorse_ruoli",
+        "risorse_ruoli", "regole_movimento",
     ),
 }
 

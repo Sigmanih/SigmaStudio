@@ -1,15 +1,16 @@
 import React from 'react';
-import { MonitorSmartphone, Orbit, Presentation, Pause } from 'lucide-react';
+import { MonitorSmartphone, Orbit, Presentation, Pause, Users } from 'lucide-react';
 import { roleInitials } from './roleIcons';
 import { activityText } from './agentActivity';
-import { motionFallback } from './agentMotion';
+import { motionFor } from './agentMotion';
 
 /**
  * Plancia2D — la Home senza WebGL, per l'hardware che la 3D non regge.
  *
  * Gli stessi agenti della plancia 3D, sullo stesso anello attorno al nucleo
  * Sigma: ritratto, nome, ruolo e quello che l'agente sta facendo, con le stesse
- * modalita' dei personaggi 3D (console, tavolo olografico, presenta, in posa).
+ * modalita' dei personaggi 3D (console, tavolo olografico, presenta, in posa,
+ * da un collega), decise dalle stesse regole (agentMotion).
  * Solo DOM e CSS: nessun canvas da ridisegnare, quindi niente GPU sul Pi.
  */
 
@@ -17,7 +18,8 @@ const MODE_INFO = {
   console: { Icon: MonitorSmartphone, label: 'Alla console' },
   olotavolo: { Icon: Orbit, label: 'Al tavolo olografico' },
   presenta: { Icon: Presentation, label: 'Presenta' },
-  posa: { Icon: Pause, label: 'In posa' }
+  posa: { Icon: Pause, label: 'In posa' },
+  collega: { Icon: Users, label: 'Da un collega' }
 };
 
 export default function Plancia2D({ roles = [], selectedAgentId = '', onSelectAgent, activity }) {
@@ -38,7 +40,7 @@ export default function Plancia2D({ roles = [], selectedAgentId = '', onSelectAg
           // Stesso ordine e stessa partenza (in alto) della plancia 3D
           const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
           const isActive = role.id === activeId;
-          const mode = isActive ? motionFallback(activity.state) : 'posa';
+          const mode = isActive ? motionFor(activity) : 'posa';
           const { Icon, label } = MODE_INFO[mode];
           const selected = role.id === selectedAgentId;
           return (

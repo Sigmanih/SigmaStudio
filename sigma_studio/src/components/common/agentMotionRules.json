@@ -1,0 +1,26 @@
+{
+  "_nota": "Regole del movimento degli agenti nella plancia. Le legge agentMotion.js e le misura tools/agenti_3d/banco_decisori.py: un solo posto da correggere. Ordine: stati certi, indizi nel dettaglio, nome dello strumento, stato.",
+  "stati_certi": {
+    "idle": "posa",
+    "done": "presenta",
+    "error": "presenta",
+    "browsing": "olotavolo"
+  },
+  "dettaglio": [
+    { "modo": "olotavolo", "schema": "\\b(fonti|sources?|articol[oi]|paper|pdf|bibliograf|datasheet|documentazione|documentation|web|online|sito|website|prezzi|esploro i dati|explor(e|ing) (the )?data|dataset|ricerca bibliografica)\\b" },
+    { "modo": "collega", "schema": "\\b(chiedo|chiede|consulto|coordino|affido|delego|distribuisco|passo (la|il|lo|i|le|al|alla)|invio (al|alla|allo|ai)|ask(ing)? the|delegat|hand(ing)? (it )?off|hand over|coordinat)" },
+    { "modo": "presenta", "schema": "\\b(ecco (la|il|le|i) (risposta|risultat|riepilog)|riepilogo finale|here is the (final|answer|result)|ho finito|ho completato)" }
+  ],
+  "strumento": [
+    { "modo": "presenta", "schema": "complete_goal|deliver|final_answer" },
+    { "modo": "collega", "schema": "deleg|handoff|hand_off|transfer_to|ask_agent|_agent$|send_message|message_agent|swarm|dispatch|consult" },
+    { "modo": "olotavolo", "schema": "web|browse|browser|fetch|url|research|knowledge|query|dataset|arxiv|paper|view_image|read_pdf|scrape|search_part" },
+    { "modo": "console", "schema": "edit|write|append|read|restore|delete|glob|list_dir|find_symbol|search_code|grep|test|terminal|shell|bash|build|lint|render|generate|image_|kicad|eda_|pcb_|drc|commit|git|run_|python|exec|patch|pipeline|propose|queue|spec|screenshot" }
+  ],
+  "stato": {
+    "thinking": "console",
+    "writing": "console",
+    "tool": "console"
+  },
+  "predefinito": "posa"
+}

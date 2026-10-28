@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { roleInitials } from './roleIcons';
 import { AGENT_ACTIVITY_EVENT, getAgentActivity } from './agentActivity';
-import { decideAgentMotion } from './agentMotion';
+import { motionFor } from './agentMotion';
 
 /**
  * CyberSpace3DCanvas — Spaceship Bridge & Command Deck 3D
@@ -2180,8 +2180,11 @@ export default function CyberSpace3DCanvas({
     // ogni meta senza attraversare scrivania e sedia
     const viaStand = (ch, ...points) => {
       const stand = stationWorld(ch.st, 0, STAND_Z);
-      const near = Math.hypot(ch.root.position.x - stand.x, ch.root.position.z - stand.z) < 0.05;
-      return near ? points : [stand, ...points];
+      // Di ritorno da un collega si ripercorre l'arco interno, non la corda
+      const back = ch.awayStation ? ringPath(ch.awayStation, ch.st) : [];
+      ch.awayStation = null;
+      const near = !back.length && Math.hypot(ch.root.position.x - stand.x, ch.root.position.z - stand.z) < 0.05;
+      return near ? points : [...back, stand, ...points];
     };
 
     const MODES = {
@@ -2211,7 +2214,44 @@ export default function CyberSpace3DCanvas({
       presenta: (ch) => walkTo(ch, viaStand(ch), () => {
         ch.state = 'parla';
         playClip(ch, 'Idle_Talking_Loop', 0.4);
-      })
+      }),
+      collega: (ch) => {
+        const other = ch.colleague;
+        if (!other || other === ch.st) {
+          // Nessun collega nominato: ne parla dalla propria postazione
+          MODES.presenta(ch);
+          return;
+        }
+        walkTo(ch, viaStand(ch, ...ringPath(ch.st, other), stationWorld(other, 0.9, STAND_Z)), () => {
+          ch.state = 'fermo';
+          ch.awayStation = other;
+          const target = stationWorld(other, 0, STAND_Z);
+          ch.yawTarget = Math.atan2(target.x - ch.root.position.x, target.z - ch.root.position.z);
+          playClip(ch, 'Idle_Talking_Loop', 0.4);
+        });
+      }
+    };
+
+    // Dalla propria postazione a quella di un collega lungo un arco interno
+    // (raggio 8,5): una corda dritta tagliava scrivanie o il tavolo centrale
+    const RING_PATH_RADIUS = 8.5;
+    const ringPath = (from, to) => {
+      const a0 = Math.atan2(from.posZ, from.posX);
+      const delta = wrapAngle(Math.atan2(to.posZ, to.posX) - a0);
+      const steps = Math.max(1, Math.ceil(Math.abs(delta) / 0.4));
+      const points = [];
+      for (let k = 0; k <= steps; k++) {
+        const a = a0 + (delta * k) / steps;
+        points.push(new THREE.Vector3(Math.cos(a) * RING_PATH_RADIUS, DECK_Y, Math.sin(a) * RING_PATH_RADIUS));
+      }
+      return points;
+    };
+
+    // Il collega e' l'agente nominato nel dettaglio dell'attivita'
+    const findColleague = (activity, self) => {
+      const text = String((activity && activity.detail) || '').toLowerCase();
+      if (!text) return null;
+      return stationDataList.find(s => s !== self && s.role.name && text.includes(String(s.role.name).toLowerCase())) || null;
     };
 
     const setCharacterMode = (ch, mode) => {
@@ -2234,9 +2274,9 @@ export default function CyberSpace3DCanvas({
       }
       activeCharacter = ch || null;
       if (!ch) return;
-      decideAgentMotion(activity).then(mode => {
-        if (!disposed && ch.mode !== mode) setCharacterMode(ch, mode);
-      });
+      const mode = motionFor(activity);
+      ch.colleague = mode === 'collega' ? findColleague(activity, station) : null;
+      if (ch.mode !== mode || mode === 'collega') setCharacterMode(ch, mode);
     };
     window.addEventListener(AGENT_ACTIVITY_EVENT, onAgentActivity);
 
