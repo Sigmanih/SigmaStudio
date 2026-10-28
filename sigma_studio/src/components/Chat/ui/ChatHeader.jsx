@@ -1,11 +1,11 @@
 import React from 'react';
-import { Settings, MessageSquare, Plus, Download } from 'lucide-react';
-import ThinkingOrb from '../../common/ThinkingOrb';
+import { Settings, Plus, Download } from 'lucide-react';
+import AgentPresence from './AgentPresence';
 
 export default function ChatHeader({
   isDragging, onStartDrag,
   onOpenConfig, onClose, isPanel = false, contextStats, onCopyAll,
-  onNewSession, onExportPdf, agentState = 'idle'
+  onNewSession, onExportPdf, activity
 }) {
   const [copiedAll, setCopiedAll] = React.useState(false);
 
@@ -44,19 +44,8 @@ export default function ChatHeader({
       }}
     >
       <div className="chat-header-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-        <div style={{
-          width: '22px', height: '22px', borderRadius: '6px',
-          background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.3)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2ff'
-        }}>
-          <MessageSquare size={12} />
-        </div>
-        <span className="chat-header-title" style={{ fontSize: '0.80rem', fontWeight: 800, color: '#f1f5f9', letterSpacing: '0.2px' }}>
-          Chat AI
-        </span>
-
-        {/* Ambient Thinking Orb */}
-        <ThinkingOrb state={agentState} size={18} showLabel={agentState !== 'idle'} />
+        {/* Chi risponde e cosa sta facendo, al posto dell'etichetta fissa "Chat AI" */}
+        <AgentPresence activity={activity} compact={isPanel} />
 
         {/* Tastino laterale Nuova Conversazione */}
         {onNewSession && (
@@ -80,7 +69,7 @@ export default function ChatHeader({
             }}
           >
             <Plus size={11} />
-            <span>Nuova Conversazione</span>
+            <span className="chat-header-new-label">Nuova conversazione</span>
           </button>
         )}
 

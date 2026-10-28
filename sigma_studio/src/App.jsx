@@ -160,6 +160,29 @@ function AppContent() {
     return () => window.removeEventListener('sigma-open-file', handler);
   }, [openTab]);
 
+  // La Home ha il suo footer di strumenti: aprono gli stessi pannelli flottanti
+  // del menu "Strumenti AI", cosi' si resta sulla plancia mentre si lavora.
+  useEffect(() => {
+    const handler = (e) => {
+      const id = e.detail?.id;
+      if (id === 'chat') setAiChatOpen(true);
+      else if (id === 'hardware') {
+        if (isHardwareInstalled) setHardwarePanelOpen(true);
+        else openTab({ name: 'Monitor Hardware' }, 'hardware_lab');
+      }
+      else if (id === 'cleanup') openCleanupModal();
+      else if (id === 'providers') openTab({ name: 'Providers' }, 'ai_config');
+      else if (id === 'roadmap') openTab({ name: 'Pianificazione & Task' }, 'roadmap');
+      else if (id === 'music') openTab({ name: 'Musica' }, 'music');
+    };
+    window.addEventListener('sigma-quick-tool', handler);
+    return () => window.removeEventListener('sigma-quick-tool', handler);
+  }, [openTab, setAiChatOpen, isHardwareInstalled, openCleanupModal]);
+
+  // Sulla Home il menu flottante e' sostituito dal footer: due accessi agli
+  // stessi strumenti, uno sopra l'altro, coprivano la barra dei comandi.
+  const isHomeVisible = !openTabs.some(t => t.id === activeTabId);
+
   const handleDeleteTask = (task) => {
     if (confirm(`Eliminare il task "${task.titolo}"?`)) {
       deleteTask(task.titolo);
@@ -248,7 +271,8 @@ function AppContent() {
       />
 
       {/* FLOATING ACTION SPEED-DIAL CONTAINER */}
-      <div 
+      {!isHomeVisible && (
+      <div
         className="ai-float-dock-container"
         style={{
           position: 'fixed',
@@ -542,10 +566,7 @@ function AppContent() {
           )}
         </div>
       </div>
-
-
-
-
+      )}
 
       {/* AI CHAT PANEL */}
       {aiChatOpen && (

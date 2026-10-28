@@ -2,10 +2,11 @@
 // useChatCore.js — Central hook orchestrating refactored composite hooks
 // Sigma Studio v7 — Refactored to compose useChatSessions, useChatConfig & useChatStreaming
 // ==============================================================================
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { PROVIDER_COLORS, getModelRoutingInfo } from '../modelProviderMap';
 import { loadMessagesFromStorage, saveMessagesToStorage, createSession } from '../chatStorage';
 import { initSpeechRecognition, createWakeWordMic, stopSpeech } from '../audioSpeech';
+import { deriveAgentActivity, publishAgentActivity, releaseAgentActivity } from '../../common/agentActivity';
 const saveMessagesImmediately = saveMessagesToStorage;
 
 
@@ -150,6 +151,109 @@ export default function useChatCore(extraProps = {}) {
     }
   }, [sessionsHook.activeSessionId, sessionsHook.sessions, sessionsHook.saveSessionsState]);
 
+  // La Home consegna ruolo, prompt e richiesta di invio via evento (chat gia' montata)
+  // o localStorage (chat appena aperta). Il lavoro procede a tappe perche' ogni
+  // passo dipende dallo stato aggiornato dal precedente:
+  //   session -> se la conversazione attiva e' di un altro agente se ne apre una nuova
+  //   role    -> si applica il ruolo (quando i manifesti sono caricati)
+  //   send    -> si invia, solo quando il ruolo e' davvero quello attivo
+  // Scegliere la sessione prima del ruolo evita di cambiare agente a una chat esistente.
+  const homeJobRef = useRef(null);
+  const [homeJobTick, setHomeJobTick] = useState(0);
+  const bumpHomeJob = useCallback(() => setHomeJobTick(t => t + 1), []);
+
+  useEffect(() => {
+    const takePending = () => {
+      try {
+        const roleId = localStorage.getItem('sigma_active_role') || '';
+        const prompt = localStorage.getItem('sigma_pending_chat_prompt') || '';
+        const send = localStorage.getItem('sigma_pending_chat_send') === '1';
+        const rawFiles = localStorage.getItem('sigma_pending_chat_files') || '';
+        localStorage.removeItem('sigma_active_role');
+        localStorage.removeItem('sigma_pending_chat_prompt');
+        localStorage.removeItem('sigma_pending_chat_send');
+        localStorage.removeItem('sigma_pending_chat_files');
+        if (rawFiles) {
+          try {
+            const parsedFiles = JSON.parse(rawFiles);
+            if (Array.isArray(parsedFiles) && parsedFiles.length > 0) {
+              streamingHook.setPcFiles(parsedFiles);
+            }
+          } catch (e) {}
+        }
+        if (!roleId && !prompt && !rawFiles) return;
+        homeJobRef.current = { roleId, prompt, send, stage: roleId ? 'session' : 'send', rolePath: '', since: Date.now() };
+        bumpHomeJob();
+      } catch (e) {}
+    };
+    takePending();
+    window.addEventListener('sigma-chat-select-role', takePending);
+    window.addEventListener('sigma-chat-set-prompt', takePending);
+    return () => {
+      window.removeEventListener('sigma-chat-select-role', takePending);
+      window.removeEventListener('sigma-chat-set-prompt', takePending);
+    };
+  }, [bumpHomeJob]);
+
+  useEffect(() => {
+    const job = homeJobRef.current;
+    if (!job) return;
+    const wanted = `${job.roleId}.md`.toLowerCase();
+
+    if (job.stage === 'session') {
+      const activeId = sessionsHook.activeSessionId;
+      const session = sessionsHook.sessions.find(x => x.id === activeId);
+      const msgs = sessionsHook.sessionMessages[activeId] || loadMessagesFromStorage(activeId) || [];
+      const hasConversation = msgs.some(m => m.role === 'user');
+      const isAuto = job.roleId === 'auto';
+      const currentPath = (session?.manifestoPath || '').toLowerCase();
+      const sameAgent = isAuto
+        ? (!currentPath || currentPath === 'auto')
+        : ((currentPath.split('/').pop() || '') === wanted);
+      job.stage = 'role';
+      if (hasConversation && !sameAgent) sessionsHook.handleNewSession();
+      bumpHomeJob();
+      return;
+    }
+
+    if (job.stage === 'role') {
+      if (job.roleId === 'auto') {
+        job.stage = 'send';
+        job.rolePath = 'auto';
+        handleSelectManifesto({ name: 'Auto (Routing)', path: 'auto', exists: true, image: '/images/default.png' });
+        bumpHomeJob();
+        return;
+      }
+      if (!configHook.manifestos.length) return;
+      const match = configHook.manifestos.find(m =>
+        (m.filename || '').toLowerCase() === wanted ||
+        (m.path || '').toLowerCase().endsWith(`/${wanted}`)
+      );
+      job.stage = 'send';
+      if (match) {
+        job.rolePath = match.path;
+        handleSelectManifesto(match);
+      }
+      bumpHomeJob();
+      return;
+    }
+
+    if (job.stage === 'send') {
+      // La sincronizzazione sessione->ruolo puo' rimettere "auto" per un render:
+      // si aspetta che il ruolo scelto sia quello attivo, con un limite di tempo.
+      const roleReady = !job.rolePath || configHook.selectedManifestoPath === job.rolePath;
+      if (!roleReady && Date.now() - job.since < 2000) {
+        const retry = setTimeout(bumpHomeJob, 120);
+        return () => clearTimeout(retry);
+      }
+      homeJobRef.current = null;
+      if (!job.prompt) return;
+      // Con una risposta gia' in corso il messaggio resta pronto nel campo invece di perdersi
+      if (job.send && !streamingHook.loading) handleSendMessage(job.prompt);
+      else streamingHook.setInput(job.prompt);
+    }
+  }, [homeJobTick, configHook.manifestos, configHook.selectedManifestoPath, sessionsHook.activeSessionId]);
+
   // Sync selected model and active manifesto when activeSessionId or selectedModel changes
   useEffect(() => {
     if (!sessionsHook.activeSessionId) return;
@@ -210,6 +314,63 @@ export default function useChatCore(extraProps = {}) {
     ? (sessionsHook.sessionMessages[sessionsHook.activeSessionId] || loadMessagesFromStorage(sessionsHook.activeSessionId) || [welcomeMessageObj])
     : [welcomeMessageObj];
   const currentRouting = getModelRoutingInfo(configHook.selectedModel, configHook.providerConfigs);
+
+  // Stato dell'agente pubblicato per Home e plancia: e' la chat a sapere cosa sta facendo
+  const activityStatus = deriveAgentActivity({ loading: streamingHook.loading, messages });
+  const activeRoleFile = (configHook.activeManifesto?.path || '').split('/').pop() || '';
+  const activeRoleMeta = configHook.manifestos.find(m => m.path === configHook.activeManifesto?.path);
+  const agentActivity = useMemo(() => ({
+    ...activityStatus,
+    roleId: activeRoleFile.replace(/\.md$/i, ''),
+    roleName: configHook.activeManifesto?.name === 'auto' ? 'Sigma' : (configHook.activeManifesto?.name || 'Sigma'),
+    // Il centralino automatico non ha un volto: si presenta con il logo di Sigma Studio
+    image: configHook.activeManifesto?.image && configHook.activeManifesto.image !== '/images/default.png'
+      ? configHook.activeManifesto.image
+      : (!configHook.activeManifesto?.name || configHook.activeManifesto.name === 'auto' ? '/images/SigmaStudio.png' : ''),
+    color: activeRoleMeta?.domainColor || ''
+  }), [activityStatus.state, activityStatus.tool, activityStatus.detail, activeRoleFile, configHook.activeManifesto?.name, configHook.activeManifesto?.image, activeRoleMeta?.domainColor]);
+
+  const activitySourceRef = useRef(`chat-${Math.random().toString(36).slice(2, 8)}`);
+  const activityBusyRef = useRef(false);
+  const activityTimerRef = useRef(null);
+  const [shownActivity, setShownActivity] = useState(agentActivity);
+
+  // "Ha finito" ed "errore" durano qualche secondo e poi si torna a riposo:
+  // sulla plancia un errore vecchio di ore non deve restare acceso.
+  useEffect(() => {
+    const source = activitySourceRef.current;
+    const show = (activity) => {
+      setShownActivity(activity);
+      publishAgentActivity(source, activity);
+    };
+    const busy = !['idle', 'error'].includes(agentActivity.state);
+    if (busy) {
+      clearTimeout(activityTimerRef.current);
+      activityTimerRef.current = null;
+      activityBusyRef.current = true;
+      show(agentActivity);
+      return;
+    }
+    if (activityBusyRef.current) {
+      activityBusyRef.current = false;
+      show({ ...agentActivity, state: agentActivity.state === 'error' ? 'error' : 'done' });
+      clearTimeout(activityTimerRef.current);
+      activityTimerRef.current = setTimeout(() => {
+        activityTimerRef.current = null;
+        show({ ...agentActivity, state: 'idle', tool: '', detail: '' });
+      }, 4500);
+      return;
+    }
+    if (!activityTimerRef.current) show({ ...agentActivity, state: 'idle', tool: '', detail: '' });
+  }, [agentActivity]);
+
+  useEffect(() => {
+    const source = activitySourceRef.current;
+    return () => {
+      clearTimeout(activityTimerRef.current);
+      releaseAgentActivity(source);
+    };
+  }, []);
   const providerColors = PROVIDER_COLORS[currentRouting.provider] || { bg: '#333', color: '#ccc' };
 
   // Context Gauge calculation
@@ -386,6 +547,7 @@ export default function useChatCore(extraProps = {}) {
     activeSessionId: sessionsHook.activeSessionId,
     sessionMessages: sessionsHook.sessionMessages,
     messages,
+    agentActivity: shownActivity,
     input: streamingHook.input,
     setInput: streamingHook.setInput,
     loading: streamingHook.loading,

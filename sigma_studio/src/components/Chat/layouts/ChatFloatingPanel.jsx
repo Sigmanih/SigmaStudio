@@ -25,7 +25,8 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
   const safeY = panelPos?.y;
   const panelStyle = isMobile ? {} : {
     ...(safeX !== undefined ? { left: safeX, right: 'auto' } : { right: 24 }),
-    ...(safeY !== undefined ? { bottom: 'auto', top: safeY } : { bottom: 80 }),
+    // 104 px: sopra il footer degli strumenti della Home, che altrimenti restava coperto
+    ...(safeY !== undefined ? { bottom: 'auto', top: safeY } : { bottom: 104 }),
     width: panelSize.width, height: panelSize.height,
   };
 
@@ -61,9 +62,9 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
 
   return (
     <div
-      className={`ai-chat-panel ${resizing ? 'is-resizing' : ''} ${core.dragOver ? 'drag-over' : ''}`}
+      className={`ai-chat-panel state-${core.agentActivity?.state || 'idle'} ${resizing ? 'is-resizing' : ''} ${core.dragOver ? 'drag-over' : ''}`}
       ref={core.refs.panel}
-      style={{ ...panelStyle, pointerEvents: 'auto' }}
+      style={{ ...panelStyle, pointerEvents: 'auto', ...(core.agentActivity?.color ? { '--agent-color': core.agentActivity.color } : {}) }}
       onDragEnter={core.handleDragEnter}
       onDragOver={core.handleDragOver}
       onDragLeave={core.handleDragLeave}
@@ -73,15 +74,10 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
       <TechSpaceCanvas isLight={theme === 'light'} />
 
       {(() => {
-        const agentState = core.loading 
-          ? (core.actionsLog?.some(a => !a.done && (String(a.tool || a.type).includes('web') || String(a.tool || a.type).includes('browse'))) ? 'browsing'
-             : core.actionsLog?.some(a => !a.done) ? 'executing' 
-             : 'thinking')
-          : 'idle';
         return (
           <ChatHeader
             isPanel={true}
-            agentState={agentState}
+            activity={core.agentActivity}
             isDragging={isDragging}
             onStartDrag={startDrag}
             onNewSession={handleNewSession}
@@ -216,6 +212,7 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
       />
 
       <ChatInput
+        compactControls
         input={core.input}
         setInput={core.setInput}
         loading={core.loading}

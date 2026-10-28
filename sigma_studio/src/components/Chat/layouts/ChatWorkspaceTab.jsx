@@ -41,12 +41,6 @@ export default function ChatWorkspaceTab() {
     }
   };
 
-  const agentState = core.loading 
-    ? (core.actionsLog?.some(a => !a.done && (String(a.tool || a.type).includes('web') || String(a.tool || a.type).includes('browse'))) ? 'browsing'
-       : core.actionsLog?.some(a => !a.done) ? 'executing' 
-       : 'thinking')
-    : 'idle';
-
   return (
     <div
       className={`chat-workspace-root ${core.dragOver ? 'drag-over' : ''}`}
@@ -70,7 +64,7 @@ export default function ChatWorkspaceTab() {
       {/* Minimal Chat AI Header */}
       <ChatHeader
         isPanel={false}
-        agentState={agentState}
+        activity={core.agentActivity}
         onNewSession={handleNewSession}
         onOpenConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
         contextStats={core.contextStats}

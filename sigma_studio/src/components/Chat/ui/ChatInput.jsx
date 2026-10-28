@@ -24,9 +24,13 @@ export default function ChatInput({
   showManifestoDropdown, setShowManifestoDropdown, onSelectManifesto,
   // Hardware Selector props
   selectedHardware, onSelectHardware, availableHardware,
+  compactControls = false,
   children,
 }) {
   const [showVoicePopover, setShowVoicePopover] = useState(false);
+  // Nel pannello flottante modello, ruolo e interruttori occupavano meta' altezza:
+  // restano a un clic di distanza e lasciano spazio alla conversazione.
+  const [showControls, setShowControls] = useState(!compactControls);
 
   // In Dev Mode il selettore sceglie il ruolo dell'harness, non il manifesto
   // della chat: e' il ruolo che decide procedura e tool dell'agente.
@@ -89,6 +93,7 @@ export default function ChatInput({
   return (
     <div className="chat-input-area">
       {/* Modern Extended Model & Role Selection Strip */}
+      {showControls && (
       <div className="chat-input-controls-strip">
         <div className="chat-input-model-role-group">
           {/* 1. Extended Model Selector with explicit Label */}
@@ -424,6 +429,7 @@ export default function ChatInput({
         )}
         </div>
       </div>
+      )}
 
       {/* Barra Chip Allegati Correnti */}
       {attachedFiles && attachedFiles.length > 0 && (
@@ -531,6 +537,17 @@ export default function ChatInput({
             ) : (
               <MicOff size={15} />
             )}
+          </button>
+        )}
+        {compactControls && (
+          <button
+            type="button"
+            className={`chat-attach-inline-btn chat-options-toggle ${showControls ? 'active' : ''}`}
+            onClick={() => setShowControls(v => !v)}
+            title={showControls ? 'Nascondi modello, ruolo e opzioni' : 'Mostra modello, ruolo e opzioni'}
+            aria-expanded={showControls}
+          >
+            <Sliders size={14} />
           </button>
         )}
         <button className="chat-attach-inline-btn" onClick={onOpenFilePicker} title="Allega file">

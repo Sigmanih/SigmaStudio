@@ -5398,3 +5398,252 @@ table.chat-table tr:hover td {
   font-size: 10px;
   letter-spacing: 0.5px;
 }
+/* ==============================================================================
+   RITRATTO VIVO DELL'AGENTE (AgentPresence)
+   L'anello racconta lo stato reale: gira mentre ragiona o usa un tool,
+   pulsa mentre scrive, diventa verde o rosso per pochi secondi alla fine.
+   ============================================================================== */
+.agent-presence {
+  --agent-color: var(--sigma-primary);
+  --agent-state-color: var(--agent-color);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 340px;
+}
+
+.agent-presence.state-done { --agent-state-color: var(--sigma-success); }
+.agent-presence.state-error { --agent-state-color: var(--sigma-error); }
+.agent-presence.state-browsing { --agent-state-color: var(--sigma-info); }
+
+.agent-presence-avatar {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+}
+
+.agent-presence.is-compact .agent-presence-avatar {
+  width: 28px;
+  height: 28px;
+}
+
+.agent-presence-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--agent-state-color), color-mix(in srgb, var(--agent-state-color) 15%, transparent) 70%, var(--agent-state-color));
+  opacity: 0.35;
+  transition: opacity 0.3s ease;
+}
+
+.agent-presence-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 2px solid var(--sigma-card-bg);
+  background: var(--sigma-surface-bright);
+  color: var(--agent-color);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.agent-presence-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.agent-presence-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--agent-state-color);
+  color: var(--sigma-text-inverse);
+  border: 2px solid var(--sigma-card-bg);
+}
+
+.agent-presence.state-thinking .agent-presence-ring,
+.agent-presence.state-tool .agent-presence-ring,
+.agent-presence.state-browsing .agent-presence-ring {
+  opacity: 1;
+  animation: agent-ring-spin 1.6s linear infinite;
+}
+
+.agent-presence.state-tool .agent-presence-ring {
+  animation-duration: 0.9s;
+}
+
+.agent-presence.state-writing .agent-presence-ring {
+  opacity: 1;
+  animation: agent-ring-breathe 1.2s ease-in-out infinite;
+}
+
+.agent-presence.state-done .agent-presence-ring,
+.agent-presence.state-error .agent-presence-ring {
+  opacity: 1;
+  background: var(--agent-state-color);
+}
+
+@keyframes agent-ring-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes agent-ring-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+.agent-presence-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.agent-presence-name {
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: var(--sigma-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-presence-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--agent-state-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-presence.state-idle .agent-presence-status {
+  color: var(--sigma-text-dim);
+}
+
+.agent-presence-detail {
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 500;
+  color: var(--sigma-text-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-presence-ring {
+    animation: none !important;
+  }
+}
+
+/* ==============================================================================
+   CHAT FLOTTANTE — versione compatta e moderna
+   Il pannello vive sopra la plancia della Home: vetro scuro, bordo nel colore
+   dell'agente che risponde, intestazione a sole icone per non tagliare i comandi.
+   ============================================================================== */
+.ai-chat-panel {
+  --agent-color: var(--sigma-primary);
+  border-radius: var(--sigma-radius-lg);
+  border: 1px solid color-mix(in srgb, var(--agent-color) 45%, transparent);
+  background: color-mix(in srgb, var(--sigma-card-bg) 92%, transparent);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+    0 0 32px color-mix(in srgb, var(--agent-color) 18%, transparent);
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+/* Mentre l'agente lavora il bordo si accende: si vede anche con la coda dell'occhio */
+.ai-chat-panel.state-thinking,
+.ai-chat-panel.state-tool,
+.ai-chat-panel.state-browsing,
+.ai-chat-panel.state-writing {
+  border-color: var(--agent-color);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 0 44px color-mix(in srgb, var(--agent-color) 35%, transparent);
+}
+
+.ai-chat-panel .chat-header {
+  min-height: 52px !important;
+  padding: 8px 12px !important;
+  gap: 8px;
+  background: color-mix(in srgb, var(--sigma-surface-bright) 70%, transparent) !important;
+  border-bottom: 1px solid var(--sigma-border-bright) !important;
+}
+
+.ai-chat-panel .chat-header-left {
+  flex: 1 1 auto;
+  flex-wrap: nowrap !important;
+  min-width: 0;
+}
+
+.ai-chat-panel .chat-header-right {
+  flex-shrink: 0;
+}
+
+/* Nel pannello bastano le icone: le etichette tagliavano "Copia tutto" e il contesto */
+.ai-chat-panel .chat-header-copy-full,
+.ai-chat-panel .chat-header-pdf-full,
+.ai-chat-panel .chat-header-new-label,
+.ai-chat-panel .chat-header-tokens {
+  display: none !important;
+}
+
+.ai-chat-panel .chat-header-copy-short,
+.ai-chat-panel .chat-header-pdf-short {
+  display: inline !important;
+}
+
+.ai-chat-panel .chat-header-new-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0 !important;
+  justify-content: center;
+  border-radius: 50% !important;
+}
+
+.ai-chat-panel .chat-input-row {
+  align-items: flex-end;
+}
+
+.chat-options-toggle.active {
+  color: var(--agent-color, var(--sigma-primary)) !important;
+  background: color-mix(in srgb, var(--agent-color, var(--sigma-primary)) 14%, transparent) !important;
+  border-color: color-mix(in srgb, var(--agent-color, var(--sigma-primary)) 40%, transparent) !important;
+}
+
+/* Il menu delle iterazioni occupava quasi tutta la riga: il testo da scrivere viene prima */
+.ai-chat-panel .chat-input {
+  flex: 1 1 auto;
+  min-width: 120px;
+}
+
+.ai-chat-panel .chat-loop-max-select {
+  width: 96px;
+  max-width: 96px;
+  text-overflow: ellipsis;
+}
+
+/* Nel pannello il nome dell'agente prende lo spazio libero dell'intestazione */
+.ai-chat-panel .agent-presence {
+  flex: 1 1 auto;
+  max-width: none;
+}
+
+/* Il contesto e' gia' nella barra sotto i messaggi: qui ruberebbe spazio al nome */
+.ai-chat-panel .chat-header-context-gauge {
+  display: none !important;
+}
