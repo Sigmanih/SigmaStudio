@@ -111,6 +111,43 @@ class TestMappaTinte(unittest.TestCase):
         self.assertTrue(riassunto["protected"])
 
 
+class TestSceneBuie(unittest.TestCase):
+    def test_buia_resta_virata_e_non_fa_blocco(self):
+        rng = np.random.default_rng(4)
+        trama = lambda lo, hi: rng.uniform(lo, hi, (H, W)).astype(np.float32)  # noqa: E731
+        chiara = lambda: [tinta(trama(0.3, 0.9), (255, 190, 120))] * 40  # noqa: E731
+        # Una silhouette quasi nera: il 90% dei pixel sotto L 40 su 255.
+        buia = [tinta(trama(0.02, 0.16), (255, 190, 120))] * 40
+        with tempfile.TemporaryDirectory() as d:
+            cmap = CF.color_map(scrivi(chiara() + buia + chiara(), Path(d) / "buia.mp4", "20000/1001"))
+        motivi = [s["motivo"] for s in cmap["shots"]]
+        self.assertEqual(motivi, ["", "buia", ""])
+        self.assertEqual([s["protetta"] for s in cmap["shots"]], [False, True, False])
+
+
+class TestPagineChiare(unittest.TestCase):
+    def test_carta_virata_scura_e_ancora_una_pagina(self):
+        rng = np.random.default_rng(5)
+        # Carta a L 45 (grigio di una copia virata) con tratti di inchiostro: la vecchia soglia assoluta la perdeva.
+        pagina = np.full((140, 192), 45.0, np.float32) + rng.normal(0, 1.5, (140, 192)).astype(np.float32)
+        for y in range(20, 120, 12):
+            pagina[y:y + 2, 20:170] = 8.0
+        self.assertTrue(R.is_page(pagina))
+
+    def test_scena_con_toni_medi_non_e_una_pagina(self):
+        rng = np.random.default_rng(6)
+        self.assertFalse(R.is_page(rng.uniform(5, 95, (140, 192)).astype(np.float32)))
+        self.assertFalse(R.is_page(np.full((140, 192), 50.0, np.float32)))
+
+
+class TestAspettoDelWorker(unittest.TestCase):
+    def test_opzioni_teatro(self):
+        from core.modules.sigma_creative_lab.video.postprocess import LOOK_THEATRE, look_args
+        self.assertEqual(look_args(None), [])
+        self.assertEqual(look_args(LOOK_THEATRE), ["--chroma", "1.45", "--dark", "6,40,0.45", "--warm", "3",
+                                                   "--no-titles", "--stretch"])
+
+
 class TestLutVerde(unittest.TestCase):
     def test_spegne_il_verde_e_lascia_la_pelle(self):
         with tempfile.TemporaryDirectory() as d:
