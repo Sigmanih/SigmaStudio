@@ -108,27 +108,45 @@ function renderLatexInText(text, katexBlocks = null) {
 
 
 /**
- * Convert paths like data/file.md to clickable links.
- * Ignores code blocks (<pre>, <code>), existing links (<a>), and template/placeholder paths.
+ * Convert file paths (e.g. data/file.md, roles/sigma_architect.md, `data/...`) to clickable links.
+ * Ignores pre blocks (<pre>), existing links (<a>), and template/placeholder paths.
  */
 function linkifyPaths(text) {
   if (typeof text !== 'string') return '';
+  const FILE_EXTS = 'md|markdown|py|html|js|jsx|ts|tsx|css|json|txt|sh|bat|yml|yaml|png|jpg|jpeg|webp|svg|gif';
+  const FILE_REGEX = new RegExp(
+    '(?:(?:(?:\\.\\/)?(?:data|roles|manifesti|Ruoli|ruoli|core|tests|sigma_studio|docs|projects)\\/)|(?:[a-zA-Z0-9_\\-\\.]+\\/)+)[a-zA-Z0-9_\\-\\.]+\\.(?:' + FILE_EXTS + ')',
+    'gi'
+  );
+
   return text.replace(/(<pre[\s\S]*?<\/pre>|<code[\s\S]*?<\/code>|<a\b[\s\S]*?<\/a>|<[^>]+>)|([^<]+)/gi, (fullMatch, tag, plainText) => {
-    if (tag) return tag;
+    // Check if tag is an inline <code> that contains a file path
+    if (tag) {
+      const codeMatch = tag.match(/^<code([^>]*)>([\s\S]*?)<\/code>$/i);
+      if (codeMatch) {
+        const inner = codeMatch[2].trim();
+        if (FILE_REGEX.test(inner) && !/(&lt;|&gt;|%3[ce]|<|>|\{|\}|\*|\[|\])/i.test(inner)) {
+          const cleanPath = inner.replace(/^\.\//, '');
+          return `<a class="chat-file-link" title="Visualizza ${cleanPath}" data-path="${cleanPath}"><code${codeMatch[1]}>📄 ${cleanPath}</code></a>`;
+        }
+      }
+      return tag;
+    }
     if (!plainText) return '';
 
     return plainText.replace(
-      /((?:data\/|manifesti\/|Ruoli\/|ruoli\/)[^\s<>"'`&{}*]+\.(?:md|py|html|js|jsx|css|json|txt|png|jpg|jpeg|webp|svg|gif))/gi,
+      FILE_REGEX,
       (match) => {
         // Discard placeholders containing template tokens or html entities
         if (/(&lt;|&gt;|%3[ce]|<|>|\{|\}|\*|\[|\])/i.test(match)) {
           return match;
         }
-        const isImage = /\.(?:png|jpg|jpeg|webp|svg|gif)$/i.test(match);
+        const cleanPath = match.replace(/^\.\//, '');
+        const isImage = /\.(?:png|jpg|jpeg|webp|svg|gif)$/i.test(cleanPath);
         if (isImage) {
-          return `<div class="chat-image-preview-card"><img src="/${match}" class="chat-inline-image" loading="lazy" onerror="this.parentElement.style.display='none'" /><span class="chat-image-caption">📄 ${match}</span></div>`;
+          return `<div class="chat-image-preview-card"><img src="/${cleanPath}" class="chat-inline-image" loading="lazy" onerror="this.parentElement.style.display='none'" /><span class="chat-image-caption">📄 ${cleanPath}</span></div>`;
         }
-        return `<a class="chat-file-link" title="Apri ${match}" data-path="${match}">📄 ${match}</a>`;
+        return `<a class="chat-file-link" title="Visualizza ${cleanPath}" data-path="${cleanPath}">📄 ${cleanPath}</a>`;
       }
     );
   });
@@ -271,8 +289,17 @@ function processInlineFormatting(text) {
     const caption = alt && alt.trim().length > 0 && !alt.startsWith('http') ? `<span class="chat-image-caption">${alt}</span>` : '';
     return `<div class="chat-image-preview-card" style="margin:14px 0;"><img src="${url}" alt="${alt}" class="chat-inline-image" loading="lazy" onerror="this.parentElement.style.display='none'" />${caption}</div>`;
   });
-  // Markdown links: [text](url) — with instant inline YouTube video embed right underneath!
+  // Markdown links: [text](url) — file links become chat-file-link, web links become external, with YouTube video embed
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
+    const isFileUrl = url.startsWith('file://') ||
+      /^(?:\.\/)?(?:data|roles|manifesti|Ruoli|ruoli|core|tests|sigma_studio|docs|projects)\//i.test(url) ||
+      /\.(?:md|markdown|py|html|js|jsx|ts|tsx|css|json|txt|sh|bat|yml|yaml)$/i.test(url);
+
+    if (isFileUrl && !url.startsWith('http://') && !url.startsWith('https://')) {
+      const cleanPath = url.replace(/^file:\/\/\/?/, '').replace(/^\.\//, '').trim();
+      return `<a class="chat-file-link" title="Visualizza ${cleanPath}" data-path="${cleanPath}">📄 ${linkText}</a>`;
+    }
+
     const linkHtml = `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-external-link" style="color: #00d2ff; text-decoration: underline; text-underline-offset: 3px; word-break: break-all;">${linkText}</a>`;
     const ytId = extractYouTubeId(url);
     if (ytId && !renderedYtIds.has(ytId)) {

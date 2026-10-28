@@ -1097,7 +1097,9 @@
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  width: min(680px, calc(100% - 32px));
+  width: min(var(--dialogue-width, 680px), calc(100% - 32px));
+  max-width: calc(100% - 32px);
+  max-height: calc(100vh - 60px);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1110,6 +1112,7 @@
   -webkit-backdrop-filter: blur(24px);
   box-shadow: var(--holo-shadow), 0 0 36px color-mix(in srgb, var(--agent-glow) 25%, transparent);
   animation: dialogue-emerge 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), max-width 0.3s ease;
   pointer-events: auto;
   z-index: 10;
 }
@@ -1252,24 +1255,29 @@
 
 .dialogue-form {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px;
+  width: 100%;
 }
 
 .dialogue-input {
   flex: 1;
   min-width: 0;
-  height: 44px;
-  padding: 0 16px;
+  min-height: 44px;
+  max-height: 360px;
+  padding: 11px 16px;
   box-sizing: border-box;
-  border-radius: var(--sigma-radius-full);
+  border-radius: var(--sigma-radius-lg);
   background: var(--sigma-surface-bright);
   border: 1px solid var(--holo-border);
   color: var(--holo-text);
   font-family: var(--holo-font);
   font-size: 0.9375rem;
+  line-height: 1.45;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  resize: none;
+  overflow-y: auto;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, height 0.12s ease;
 }
 
 .dialogue-input::placeholder {

@@ -2507,8 +2507,8 @@ export default function CyberSpace3DCanvas({
     // 10. Loop di Rendering con Animazioni Navicella
     // =========================================================================
     let animationFrameId;
-    const clock = new THREE.Clock();
-    const motionClock = new THREE.Clock();
+    let prevFrameTime = performance.now();
+    const sceneStartTime = performance.now();
     let lastFrameAt = 0;
     let lastScreensAt = -1;
     const badgeTmp = new THREE.Vector3();
@@ -2550,9 +2550,11 @@ export default function CyberSpace3DCanvas({
       if (throttledRef.current && now - lastFrameAt < 80) return;
       lastFrameAt = now;
 
-      const dt = Math.min(clock.getDelta(), 0.1);
+      const currentPerf = performance.now();
+      const dt = Math.min(Math.max((currentPerf - prevFrameTime) / 1000, 0.0001), 0.1);
+      prevFrameTime = currentPerf;
       // Con prefers-reduced-motion la scena resta ferma; si muove solo la camera richiesta dall'utente
-      const elapsedTime = reducedMotion ? 0 : motionClock.getElapsedTime();
+      const elapsedTime = reducedMotion ? 0 : (currentPerf - sceneStartTime) / 1000;
 
       // Il rallentamento voluto non va scambiato per una GPU debole: la misura riparte
       if (!probeDone && throttledRef.current) {

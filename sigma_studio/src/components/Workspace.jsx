@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, Settings, Sliders, Menu, Award, CircuitBoard, Clapperboard } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, CloudDownload, Settings, Sliders, Menu, Award, CircuitBoard, Clapperboard } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 import SkillsHub from './SkillsHub';
 import StudioEditor from './Workspace/StudioEditor';
@@ -39,7 +39,7 @@ const FileIcon = ({ type }) => {
     case 'training_lab': return <Brain size={16} />;
     case 'hardware_lab': return <Zap size={16} />;
     case 'kicad_lab': case 'pcb_lab': return <CircuitBoard size={16} />;
-    case 'model_hub': return <DownloadCloud size={16} />;
+    case 'model_hub': return <CloudDownload size={16} />;
     case 'account': case 'settings': return <Settings size={16} />;
     case 'creative_studio': return <Palette size={16} />;
     case 'video_studio': return <Clapperboard size={16} />;

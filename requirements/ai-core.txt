@@ -8,7 +8,6 @@
 # "architettura non riconosciuta" — che si legge come un checkpoint rotto e non
 # come una libreria da aggiornare. Gemma 4 (gemma4_unified) richiede la 5.10.
 transformers>=5.12.0
-datasets>=2.18.0
 huggingface_hub>=0.22.0
 safetensors>=0.4.0
 accelerate>=0.28.0

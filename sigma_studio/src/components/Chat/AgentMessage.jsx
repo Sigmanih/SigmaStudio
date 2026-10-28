@@ -331,9 +331,9 @@ export default function AgentMessage({
 
   const getCleanPathStr = (p) => {
     if (!p) return '';
-    if (typeof p === 'string') return p;
-    if (typeof p === 'object' && p !== null) return p.path || p.file || p.filename || String(p);
-    return String(p);
+    let s = typeof p === 'string' ? p : (p.path || p.file || p.filename || String(p));
+    s = s.replace(/^📄\s*/, '').replace(/^file:\/\/\/?/, '').replace(/^\.\//, '').trim();
+    return s;
   };
 
   const handleFileClick = (rawPath) => {

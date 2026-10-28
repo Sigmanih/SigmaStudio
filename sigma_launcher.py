@@ -359,7 +359,7 @@ def ensure_pytorch_cuda(python_exe, platform_info):
     try:
         subprocess.check_call([
             python_exe, "-m", "pip", "install", "--default-timeout=180",
-            "torch", "torchvision", "torchaudio",
+            "torch",
             "--index-url", "https://download.pytorch.org/whl/cu124",
         ])
         print_log("[SIGMA] PyTorch CUDA configurato con successo.", Colors.OKGREEN)

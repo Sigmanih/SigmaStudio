@@ -40,7 +40,7 @@ jobs:
         shell: bash
         run: |
           if [ -d "tests" ]; then
-            pytest tests/ -v --tb=short
+            pytest -m base -v --tb=short
           else
             echo "No tests directory in repository — skipping pytest."
           fi

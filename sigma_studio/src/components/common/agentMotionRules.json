@@ -15,7 +15,7 @@
     { "modo": "presenta", "schema": "complete_goal|deliver|final_answer" },
     { "modo": "collega", "schema": "deleg|handoff|hand_off|transfer_to|ask_agent|_agent$|send_message|message_agent|swarm|dispatch|consult" },
     { "modo": "olotavolo", "schema": "web|browse|browser|fetch|url|research|knowledge|query|dataset|arxiv|paper|view_image|read_pdf|scrape|search_part" },
-    { "modo": "console", "schema": "edit|write|append|read|restore|delete|glob|list_dir|find_symbol|search_code|grep|test|terminal|shell|bash|build|lint|render|generate|image_|kicad|eda_|pcb_|drc|commit|git|run_|python|exec|patch|pipeline|propose|queue|spec|screenshot" }
+    { "modo": "console", "schema": "edit|write|append|read|restore|delete|glob|list_dir|find_symbol|search_code|grep|test|terminal|shell|bash|build|lint|render|generate|image_|video|audio|kicad|eda_|pcb_|drc|commit|git|run_|python|exec|patch|pipeline|propose|queue|spec|screenshot" }
   ],
   "stato": {
     "thinking": "console",

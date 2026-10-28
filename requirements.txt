@@ -18,9 +18,9 @@ uvicorn[standard]>=0.22.0
 requests>=2.31.0
 psutil>=5.9.0
 beautifulsoup4>=4.12.0
-python-dateutil>=2.8.2
 pydantic>=2.0.0
 jinja2>=3.1.0
+cryptography>=41.0.0
 
 # Testing Framework
 pytest>=7.4.0
@@ -33,7 +33,6 @@ torch>=2.0.0
 # "architettura non riconosciuta" — che si legge come un checkpoint rotto e non
 # come una libreria da aggiornare. Gemma 4 (gemma4_unified) richiede la 5.10.
 transformers>=5.12.0
-datasets>=2.18.0
 peft>=0.10.0
 accelerate>=0.28.0
 huggingface_hub>=0.22.0

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  DownloadCloud, Search, HardDrive, Zap, Shield, Key,
+  DownloadCloud, CloudDownload, Search, HardDrive, Zap, Shield, Key,
   CheckCircle2, RefreshCw, Folder, FolderOpen, Layers, Activity, Sparkles, ExternalLink,
   ArrowRight, XCircle, RotateCcw, Eye, EyeOff, ShieldCheck, AlertTriangle, Check,
   Plus, X, Tag, FolderPlus, Link2, Copy, FileText, Package, Settings, Star, Square,
@@ -15,6 +15,7 @@ import DirectoryPicker from './DirectoryPicker';
 import SigmaDeployModal from './SigmaDeployModal';
 import HfPublishModal from './HfPublishModal';
 import TabHeader from '../../components/common/TabHeader';
+import TechSpaceCanvas from '../../components/common/TechSpaceCanvas';
 import './styles/model-hub.css';
 
 
@@ -721,17 +722,22 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
     <div 
       className="model-hub-container" 
       style={{ 
-        backgroundColor: isLight ? '#f4efe4' : '#07090e', 
+        background: 'var(--bg)', 
         color: textPrimary,
         padding: 0,
         margin: 0,
         width: '100%',
-        height: '100%'
+        height: '100%',
+        position: 'relative'
       }}
     >
+      {/* Animated Translucent Cyber Space Background Canvas (identico alle tab Chat e MCP) */}
+      <TechSpaceCanvas isLight={isLight} />
+
       {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
-        icon={TabIcon}
+        icon={CloudDownload}
+        iconColor="#38bdf8"
         title="Model Hub"
         tabs={[
           { id: 'inventory', label: 'Modelli Locali', icon: HardDrive, active: activeTab === 'inventory', onClick: () => setActiveTab('inventory') },

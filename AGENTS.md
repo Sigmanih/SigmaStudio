@@ -39,7 +39,7 @@ imports, lists, or names any module. A module registers itself via
   **Component libraries strictly forbidden** (`@mui`, `antd`, `bootstrap`, `tailwind`).
 - Icons exclusively from `lucide-react`.
 - Styles in `sigma_studio/src/styles/` (`01-base`, `02-layout`, `03-modules`). No CSS-in-JS.
-- Allowed dependencies: `d3`, `three`, `mermaid`, `marked`, `prismjs`, `katex`, `react-simple-code-editor`.
+- Allowed dependencies: `d3`, `three`, `mermaid`, `prismjs`, `katex`, `react-simple-code-editor`.
 
 ## Harness in Kernel, IDE in Module
 

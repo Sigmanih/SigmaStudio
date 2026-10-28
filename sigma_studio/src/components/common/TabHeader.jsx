@@ -17,6 +17,8 @@ export default function TabHeader({
   badge,
   badgeIcon: BadgeIcon,
   icon: TitleIcon,
+  iconColor,
+  color,
   title,
   highlight,
   subtitle,
@@ -33,6 +35,15 @@ export default function TabHeader({
 
   const descText = subtitle || description;
   const cleanTitle = title ? String(title).replace(/[\s/&]+$/, '').trim() : '';
+
+  const resolvedColor = iconColor || color;
+  const iconBoxBg = resolvedColor 
+    ? (isLight ? `${resolvedColor}18` : `${resolvedColor}24`)
+    : (isLight ? 'rgba(234, 88, 12, 0.15)' : 'rgba(0, 210, 255, 0.15)');
+  const iconBoxBorder = resolvedColor
+    ? (isLight ? `1px solid ${resolvedColor}40` : `1px solid ${resolvedColor}55`)
+    : (isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(0, 210, 255, 0.3)');
+  const iconBoxColor = resolvedColor || (isLight ? '#ea580c' : '#00d2ff');
 
   return (
     <div 
@@ -65,10 +76,10 @@ export default function TabHeader({
         {TitleIcon && (
           <div style={{
             width: '22px', height: '22px', borderRadius: '6px',
-            background: isLight ? 'rgba(234, 88, 12, 0.15)' : 'rgba(0, 210, 255, 0.15)',
-            border: isLight ? '1px solid rgba(234, 88, 12, 0.3)' : '1px solid rgba(0, 210, 255, 0.3)',
+            background: iconBoxBg,
+            border: iconBoxBorder,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: isLight ? '#ea580c' : '#00d2ff',
+            color: iconBoxColor,
             flexShrink: 0
           }}>
             <TitleIcon size={12} />

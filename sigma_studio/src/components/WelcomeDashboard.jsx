@@ -179,6 +179,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     }
   }, [quickPrompt]);
 
+
   // Registrazione vocale standard (STT)
   const [isRecording, setIsRecording] = useState(false);
   const recognitionRef = useRef(null);
@@ -419,6 +420,32 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   // Agente selezionato e focalizzato nell'ambiente 3D
   const [focusedAgent, setFocusedAgent] = useState(null);
 
+  // Dialogue pod auto-espansione in larghezza ed altezza
+  const dialogueTextareaRef = useRef(null);
+  const adjustDialogueHeight = (el) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    const newHeight = Math.min(Math.max(el.scrollHeight, 44), 360);
+    el.style.height = `${newHeight}px`;
+  };
+
+  const dialoguePodWidth = useMemo(() => {
+    const len = (quickPrompt || '').length;
+    const lines = (quickPrompt || '').split('\n').length;
+    if (len > 300 || lines > 5) return '1100px';
+    if (len > 140 || lines > 2) return '900px';
+    if (len > 60) return '780px';
+    return '680px';
+  }, [quickPrompt]);
+
+  useEffect(() => {
+    if (!quickPrompt && dialogueTextareaRef.current) {
+      dialogueTextareaRef.current.style.height = '44px';
+    } else if (dialogueTextareaRef.current) {
+      adjustDialogueHeight(dialogueTextareaRef.current);
+    }
+  }, [quickPrompt, focusedAgent]);
+
   const focusRole = useCallback((role, withPrompt = true) => {
     if (!role) return;
     setSelectedRole(role.id);
@@ -633,6 +660,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     setQuickPrompt('');
     setAttachedFiles([]);
     if (textareaRef.current) textareaRef.current.style.height = '26px';
+    if (dialogueTextareaRef.current) dialogueTextareaRef.current.style.height = '44px';
   };
 
   const isAutoRole = selectedRole === 'auto';
@@ -855,7 +883,10 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
 
         {focusedAgent ? (
           /* Agente raggiunto nella plancia: dialogo diretto */
-          <div className="holodeck-dialogue-pod">
+          <div
+            className="holodeck-dialogue-pod"
+            style={{ '--dialogue-width': dialoguePodWidth }}
+          >
             <div className="dialogue-agent-header">
               <div className="dialogue-agent-meta">
                 <RoleAvatar role={focusedAgent} className="dialogue-avatar-box" />
@@ -886,7 +917,12 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
               <button
                 type="button"
                 className="dialogue-chip-btn"
-                onClick={() => setQuickPrompt(focusedAgent.prompt)}
+                onClick={() => {
+                  setQuickPrompt(focusedAgent.prompt);
+                  setTimeout(() => {
+                    if (dialogueTextareaRef.current) adjustDialogueHeight(dialogueTextareaRef.current);
+                  }, 10);
+                }}
                 title={focusedAgent.prompt}
               >
                 <Sparkles size={13} aria-hidden="true" />
@@ -896,16 +932,32 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
             )}
 
             <form className="dialogue-form" onSubmit={handleAgentDialogueSubmit}>
-              <input
-                type="text"
+              <textarea
+                ref={dialogueTextareaRef}
+                rows={1}
                 className="dialogue-input"
-                placeholder={`Chiedi a ${focusedAgent.name}…`}
+                placeholder={`Chiedi a ${focusedAgent.name}… (Invio per inviare, Shift+Invio per a capo)`}
                 value={quickPrompt}
-                onChange={e => setQuickPrompt(e.target.value)}
+                onChange={e => {
+                  setQuickPrompt(e.target.value);
+                  adjustDialogueHeight(e.target);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (quickPrompt.trim() || focusedAgent?.prompt) {
+                      handleAgentDialogueSubmit(e);
+                    }
+                  }
+                }}
                 aria-label={`Messaggio per ${focusedAgent.name}`}
                 autoFocus
               />
-              <button type="submit" className="dialogue-submit-btn">
+              <button
+                type="submit"
+                className="dialogue-submit-btn"
+                disabled={!quickPrompt.trim() && !focusedAgent?.prompt}
+              >
                 <span>Invia</span>
                 <Send size={15} aria-hidden="true" />
               </button>
