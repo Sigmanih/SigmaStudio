@@ -274,6 +274,10 @@ viz/peaks_*.json
 Ruoli/
 ruoli/
 manifesti/
+# Foto e modelli 3D arrivano con l'installazione del ruolo da SigmaStudio-Ruoli
+roles/*/immagine.*
+roles/*/modello.*
+roles/*/personaggio.*
 
 # MCP locale (percorsi specifici della macchina)
 .mcp.json

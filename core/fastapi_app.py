@@ -1968,6 +1968,15 @@ async def serve_static_or_spa(path: str):
         if target:
             return FileResponse(target)
 
+    # Foto e modello 3D che un ruolo porta con se' quando lo si installa (roles/<id>/)
+    if path.startswith("ruoli/"):
+        from core.paths import roles_dir
+        from core.manifests_catalog import RISORSE_AMMESSE
+        target = _resolve_inside(roles_dir(), path[len("ruoli/"):])
+        # Solo le risorse dei pacchetti, non i manifesti o i ruoli in Private/
+        if target and target.name in RISORSE_AMMESSE:
+            return FileResponse(target)
+
     # Le creazioni dei moduli (video, immagini, voci, progetti) stanno in works/, fuori dallo studio.
     if path.startswith("works/"):
         from core.paths import works_dir

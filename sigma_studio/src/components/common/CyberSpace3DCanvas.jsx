@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { roleInitials } from './roleIcons';
 
 /**
@@ -38,6 +39,58 @@ const prefersReducedMotion = () => {
   } catch {
     return false;
   }
+};
+
+// Clip degli agenti a figura intera: Universal Animation Library di Quaternius
+// (CC0), scaricate una volta per tutti. Delle tracce si tengono le rotazioni e
+// la posizione del bacino: le altre posizioni e le scale imporrebbero al
+// personaggio le proporzioni del manichino.
+let agentClipsPromise = null;
+const loadAgentClips = (loader) => {
+  if (!agentClipsPromise) {
+    agentClipsPromise = loader.loadAsync('/models/animazioni_agenti.glb').then(g => g.animations.map(c =>
+      new THREE.AnimationClip(c.name, c.duration,
+        c.tracks.filter(t => t.name.endsWith('.quaternion') || t.name === 'DEF-hips.position'))));
+    agentClipsPromise.catch(() => { agentClipsPromise = null; });
+  }
+  return agentClipsPromise;
+};
+
+// Animazione senza scheletro: i modelli generati non hanno rig, quindi la testa
+// gira nel vertex shader. I vertici sopra il collo (altezza misurata in Blender)
+// ruotano attorno al collo, con una fascia di raccordo per non strappare la mesh;
+// sotto, il torace si allarga e si alza appena per il respiro.
+const applyRiglessMotion = (material, uniforms) => {
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>
+uniform float uNeckY;
+uniform float uHeadYaw;
+uniform float uHeadPitch;
+uniform float uBreath;
+float sigmaHeadWeight(float y) { return smoothstep(uNeckY - 0.03, uNeckY + 0.06, y); }
+vec3 sigmaRotate(vec3 v, float w) {
+  float a = uHeadYaw * w;
+  float c = cos(a), s = sin(a);
+  v.xz = vec2(c * v.x + s * v.z, -s * v.x + c * v.z);
+  float b = uHeadPitch * w;
+  c = cos(b); s = sin(b);
+  v.yz = vec2(c * v.y - s * v.z, s * v.y + c * v.z);
+  return v;
+}`)
+      .replace('#include <beginnormal_vertex>', `vec3 objectNormal = sigmaRotate(vec3(normal), sigmaHeadWeight(position.y));
+#ifdef USE_TANGENT
+  vec3 objectTangent = vec3(tangent.xyz);
+#endif`)
+      .replace('#include <begin_vertex>', `float sigmaW = sigmaHeadWeight(position.y);
+vec3 transformed = sigmaRotate(position - vec3(0.0, uNeckY, 0.0), sigmaW) + vec3(0.0, uNeckY, 0.0);
+float sigmaChest = (1.0 - sigmaW) * smoothstep(0.15 * uNeckY, uNeckY, position.y);
+transformed.xz *= 1.0 + uBreath * sigmaChest;
+transformed.y += uBreath * 0.5 * min(position.y, uNeckY);`);
+  };
+  // Stesso programma per tutti gli agenti: cambiano solo le uniform
+  material.customProgramCacheKey = () => 'sigma-rigless-officer';
 };
 
 // Testo che si restringe fino a stare nella larghezza della scheda invece di
@@ -89,7 +142,9 @@ export default function CyberSpace3DCanvas({
   throttledRef.current = throttled;
 
   // Chiave reattiva dei ruoli per ricostruire dinamicamente la plancia quando i ruoli vengono caricati dal backend
-  const rolesKey = (roles || []).map(r => r.id).join('|');
+  // Conta anche il modello 3D: arriva con l'installazione del ruolo, che puo' avvenire a plancia aperta
+  const rolesKey = (roles || []).map(r =>
+    `${r.id}:${(r.model3d && r.model3d.url) || ''}:${(r.character3d && r.character3d.url) || ''}`).join('|');
 
   useEffect(() => {
     const container = mountRef.current;
@@ -2006,6 +2061,10 @@ export default function CyberSpace3DCanvas({
 
       stationDataList.push({
         stationGroup,
+        figureGroup: agentFigureGroup,
+        chairGroup,
+        // Riempito dal GLB ricostruito dalla foto, se esiste (vedi sezione 7b)
+        agentModel: null,
         headGroup,
         coreReactor,
         leftHand,
@@ -2016,6 +2075,266 @@ export default function CyberSpace3DCanvas({
         posX,
         posZ,
         angle
+      });
+    }
+
+    // =========================================================================
+    // 7b. Agenti ricostruiti dalle foto (GLB) al posto degli ufficiali procedurali
+    // =========================================================================
+    // Solo in qualita' alta: sul Pi in modalita' leggera restano le primitive,
+    // che non costano download, decodifica JPEG e memoria per le texture.
+    let disposed = false;
+    const AGENT_MODEL_HEIGHT = 1.4;
+    // Rivolto alla console: il modello guarda verso +Z, la console sta a -Z
+    const CONSOLE_YAW = Math.PI;
+
+    const setAgentModelsVisible = (show) => {
+      stationDataList.forEach(st => {
+        if (!st.agentModel) return;
+        st.agentModel.group.visible = show;
+        st.figureGroup.visible = !show;
+        // L'ufficiale procedurale siede sempre rivolto alla console
+        if (!show) st.chairGroup.rotation.y = 0;
+      });
+    };
+
+    const attachAgentModel = (st, gltf, entry) => {
+      const group = new THREE.Group();
+      // Seduto sulla poltrona come l'ufficiale procedurale, con il busto alto uguale
+      group.position.set(0, 0.78, 0.5);
+      group.rotation.y = CONSOLE_YAW;
+      group.scale.setScalar(AGENT_MODEL_HEIGHT);
+
+      const uniforms = {
+        uNeckY: { value: Number(entry.collo) || 0.66 },
+        uHeadYaw: { value: 0 },
+        uHeadPitch: { value: 0 },
+        uBreath: { value: 0 }
+      };
+      gltf.scene.traverse(o => {
+        if (!o.isMesh) return;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach(m => {
+          // La texture ha gia' la luce della foto: un po' di emissione la tiene
+          // leggibile nella plancia scura senza farla sembrare un adesivo.
+          if (m.map) {
+            m.emissive = new THREE.Color(0xffffff);
+            m.emissiveMap = m.map;
+            m.emissiveIntensity = isLight ? 0.12 : 0.4;
+          }
+          applyRiglessMotion(m, uniforms);
+        });
+      });
+      group.add(gltf.scene);
+      st.stationGroup.add(group);
+      st.agentModel = { group, uniforms, bodyYaw: CONSOLE_YAW, headYaw: 0, headPitch: 0 };
+      st.agentModel.group.visible = !lite;
+      st.figureGroup.visible = lite;
+    };
+
+    // =========================================================================
+    // 7c. Agenti a figura intera: lavorano seduti, passeggiano, vengono incontro
+    // =========================================================================
+    // Scheletro e clip sono quelli della Universal Animation Library (CC0):
+    // il personaggio ha le stesse ossa, quindi le clip valgono per nome d'osso.
+    const agentCharacters = [];
+    const CHARACTER_SCALE = 0.92; // 1,83 del manichino -> ~1,7 unita' di plancia
+    const WALK_SPEED = 1.1; // unita'/s: a questa scala i piedi non scivolano
+    const DECK_Y = -2.0;
+    const POD_TOP = 0.22;
+    const POD_RADIUS = 2.55;
+    const SEAT_Z = 0.36; // piedi davanti alla seduta: da seduto il bacino arretra
+    const STAND_Z = 1.7; // davanti alla poltrona, verso il centro della plancia
+    const HOLO_RADIUS = 5.4; // bordo della piattaforma centrale (4,5) piu' un passo
+
+    const stationWorld = (st, x, z) => {
+      const p = st.stationGroup.localToWorld(new THREE.Vector3(x, 0, z));
+      // Sulla pedana si sta 0,22 piu' in alto che sul ponte
+      p.y = DECK_Y + (Math.hypot(p.x - st.posX, p.z - st.posZ) < POD_RADIUS ? POD_TOP : 0);
+      return p;
+    };
+    const consoleYaw = (st) => st.stationGroup.rotation.y + Math.PI;
+    const randomBetween = (a, b) => a + Math.random() * (b - a);
+
+    const playClip = (ch, name, fade = 0.35, once = false) => {
+      const next = ch.actions[name];
+      if (!next || ch.current === name) return;
+      next.reset();
+      next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+      next.clampWhenFinished = once;
+      next.fadeIn(fade).play();
+      if (ch.current && ch.actions[ch.current]) ch.actions[ch.current].fadeOut(fade);
+      ch.current = name;
+    };
+
+    const walkTo = (ch, points, then) => {
+      ch.path = points;
+      ch.after = then;
+      ch.state = 'cammina';
+      playClip(ch, 'Walk_Loop', 0.3);
+    };
+
+    const sitDown = (ch) => {
+      const p = stationWorld(ch.st, 0, SEAT_Z);
+      ch.root.position.copy(p);
+      ch.yawTarget = consoleYaw(ch.st);
+      ch.state = 'seduto';
+      ch.timer = randomBetween(14, 30);
+      playClip(ch, 'Sitting_Idle_Loop', 0.45);
+    };
+
+    const goVisitHolo = (ch) => {
+      // Un punto del bordo del tavolo olografico nel proprio spicchio di plancia:
+      // con 15 postazioni a 0,42 rad l'una dall'altra, +-0,15 tiene ogni agente
+      // fuori dalla strada dei vicini e i percorsi radiali non si incrociano
+      const a = Math.atan2(ch.st.posZ, ch.st.posX) + randomBetween(-0.15, 0.15);
+      const holo = new THREE.Vector3(Math.cos(a) * HOLO_RADIUS, DECK_Y, Math.sin(a) * HOLO_RADIUS);
+      walkTo(ch, [stationWorld(ch.st, 0, STAND_Z), holo], () => {
+        ch.state = 'sosta';
+        ch.timer = randomBetween(6, 11);
+        // Rivolto al tavolo: consulta la mappa olografica
+        ch.yawTarget = Math.atan2(-holo.x, -holo.z);
+        playClip(ch, Math.random() < 0.5 ? 'Interact' : 'Idle_Loop', 0.35, false);
+      });
+    };
+
+    const goBackToSeat = (ch) => {
+      walkTo(ch, [stationWorld(ch.st, 0, STAND_Z), stationWorld(ch.st, 0, SEAT_Z + 0.4)], () => sitDown(ch));
+    };
+
+    const attachAgentCharacter = (st, gltf, clips) => {
+      const root = new THREE.Group();
+      const body = gltf.scene;
+      body.scale.setScalar(CHARACTER_SCALE);
+      body.traverse(o => {
+        if (!o.isMesh) return;
+        // I personaggi camminano: senza, a meta' strada il frustum culling li
+        // spegneva usando il riquadro della posa di riposo
+        o.frustumCulled = false;
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach(m => {
+          if (m.map) {
+            m.emissive = new THREE.Color(0xffffff);
+            m.emissiveMap = m.map;
+            m.emissiveIntensity = isLight ? 0.12 : 0.4;
+          }
+        });
+      });
+      root.add(body);
+      shipGroup.add(root);
+
+      const mixer = new THREE.AnimationMixer(body);
+      const actions = {};
+      clips.forEach(c => { actions[c.name] = mixer.clipAction(c); });
+      const ch = { st, root, mixer, actions, current: null, state: 'seduto', timer: 0, path: [], after: null,
+        yaw: consoleYaw(st), yawTarget: consoleYaw(st), focused: false };
+      root.rotation.y = ch.yaw;
+      sitDown(ch);
+      // Le postazioni partono sfasate, non tutti si alzano insieme
+      ch.timer = randomBetween(4, 40);
+      mixer.update(randomBetween(0, 1.5));
+
+      st.figureGroup.visible = false;
+      st.agentCharacter = ch;
+      agentCharacters.push(ch);
+    };
+
+    const setAgentCharactersVisible = (show) => {
+      agentCharacters.forEach(ch => {
+        ch.root.visible = show;
+        ch.st.figureGroup.visible = !show;
+      });
+    };
+
+    const updateAgentCharacter = (ch, dt, isFocused) => {
+      if (isFocused && !ch.focused) {
+        // Chiamato dall'utente: si alza e gli va incontro
+        ch.focused = true;
+        walkTo(ch, [stationWorld(ch.st, 0, STAND_Z)], () => {
+          ch.state = 'parla';
+          playClip(ch, 'Idle_Talking_Loop', 0.4);
+        });
+      } else if (!isFocused && ch.focused) {
+        ch.focused = false;
+        goBackToSeat(ch);
+      }
+
+      if (ch.state === 'cammina' && ch.path.length) {
+        const target = ch.path[0];
+        const dx = target.x - ch.root.position.x;
+        const dz = target.z - ch.root.position.z;
+        const dist = Math.hypot(dx, dz);
+        const step = WALK_SPEED * dt;
+        if (dist <= step) {
+          ch.root.position.x = target.x;
+          ch.root.position.z = target.z;
+          ch.path.shift();
+          if (!ch.path.length && ch.after) ch.after();
+        } else {
+          ch.root.position.x += (dx / dist) * step;
+          ch.root.position.z += (dz / dist) * step;
+          ch.yawTarget = Math.atan2(dx, dz);
+        }
+        // Scende dalla pedana o ci sale senza galleggiare
+        const onPod = Math.hypot(ch.root.position.x - ch.st.posX, ch.root.position.z - ch.st.posZ) < POD_RADIUS;
+        ch.root.position.y += ((DECK_Y + (onPod ? POD_TOP : 0)) - ch.root.position.y) * (1 - Math.exp(-dt * 12));
+      } else if (ch.state === 'parla') {
+        ch.yawTarget = Math.atan2(camera.position.x - ch.root.position.x, camera.position.z - ch.root.position.z);
+      } else if (ch.state === 'seduto' || ch.state === 'sosta') {
+        ch.timer -= dt;
+        if (ch.timer <= 0) {
+          if (ch.state === 'seduto') goVisitHolo(ch);
+          else goBackToSeat(ch);
+        }
+      }
+
+      ch.yaw += wrapAngle(ch.yawTarget - ch.yaw) * (1 - Math.exp(-dt * 6));
+      ch.root.rotation.y = ch.yaw;
+      ch.mixer.update(dt);
+    };
+
+    // Il busto arriva con il pacchetto del ruolo (roles/<id>/modello.glb):
+    // un ruolo disinstallato non lo ha piu', e la postazione non esiste nemmeno.
+    // La figura intera, se c'e', lo sostituisce.
+    if (!lite) {
+      const gltfLoader = new GLTFLoader();
+      stationDataList.forEach(st => {
+        const character = st.role.character3d;
+        if (!character || !character.url) return;
+        Promise.all([loadAgentClips(gltfLoader), gltfLoader.loadAsync(character.url)])
+          .then(([clips, gltf]) => {
+            if (disposed) {
+              gltf.scene.traverse(o => {
+                if (o.geometry) o.geometry.dispose();
+                const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+                mats.forEach(m => { m.map?.dispose(); m.dispose(); });
+              });
+              return;
+            }
+            attachAgentCharacter(st, gltf, clips);
+            if (lite) setAgentCharactersVisible(false);
+          })
+          .catch(err => console.warn(`Personaggio di ${st.role.id} non caricato:`, err));
+      });
+      stationDataList.forEach(st => {
+        const entry = st.role.model3d;
+        if (!entry || !entry.url || (st.role.character3d && st.role.character3d.url)) return;
+        gltfLoader.load(
+          entry.url,
+          gltf => {
+            if (disposed) {
+              gltf.scene.traverse(o => {
+                if (o.geometry) o.geometry.dispose();
+                const mats = Array.isArray(o.material) ? o.material : (o.material ? [o.material] : []);
+                mats.forEach(m => { m.map?.dispose(); m.dispose(); });
+              });
+              return;
+            }
+            attachAgentModel(st, gltf, entry);
+          },
+          undefined,
+          err => console.warn(`Modello 3D di ${st.role.id} non caricato, resta l'ufficiale procedurale:`, err)
+        );
       });
     }
 
@@ -2044,9 +2363,14 @@ export default function CyberSpace3DCanvas({
       const camX = station.posX - Math.cos(station.angle) * offsetDist;
       const camZ = station.posZ - Math.sin(station.angle) * offsetDist;
 
-      // Camera calibrata per inquadrare sia l'ufficiale alla console sia la scheda fluttuante soprastante
-      targetCamPos.set(camX, 1.6, camZ);
-      targetLookAt.set(station.posX, 1.4, station.posZ);
+      // Camera calibrata per inquadrare sia l'ufficiale alla console sia la scheda fluttuante soprastante.
+      // Con il modello ricostruito si scende: il volto che si gira verso
+      // l'utente finiva sotto il pannello, la scheda resta comunque leggibile.
+      const hasModel = Boolean(station.agentModel && station.agentModel.group.visible);
+      // La figura intera viene incontro e sta in piedi: si inquadra tutta
+      const hasCharacter = Boolean(station.agentCharacter && station.agentCharacter.root.visible);
+      targetCamPos.set(camX, hasCharacter ? 0.2 : hasModel ? 0.75 : 1.6, camZ);
+      targetLookAt.set(station.posX, hasCharacter ? -0.75 : hasModel ? 0.45 : 1.4, station.posZ);
 
       if (!silent && onSelectAgentRef.current) {
         onSelectAgentRef.current(station.role);
@@ -2227,6 +2551,8 @@ export default function CyberSpace3DCanvas({
     const switchToLite = (reason) => {
       if (lite) return;
       lite = true;
+      setAgentModelsVisible(false);
+      setAgentCharactersVisible(false);
       renderer.setPixelRatio(litePixelRatio);
       renderer.setSize(width, height);
       if (onQualityResolvedRef.current) onQualityResolvedRef.current('lite', reason);
@@ -2239,6 +2565,46 @@ export default function CyberSpace3DCanvas({
     const smoothstep = (a, b, x) => {
       const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
       return t * t * (3 - 2 * t);
+    };
+
+    const camLocal = new THREE.Vector3();
+    // Differenza d'angolo riportata in (-PI, PI]: senza, girarsi da 170 a -170
+    // gradi farebbe fare al busto il giro lungo
+    const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+    const animateAgentModel = (st, idx, elapsedTime, dt, isFocused) => {
+      const m = st.agentModel;
+      const g = m.group;
+      camLocal.copy(camera.position);
+      st.stationGroup.worldToLocal(camLocal);
+      camLocal.sub(g.position);
+      const yawToCam = Math.atan2(camLocal.x, camLocal.z);
+
+      // Selezionato si volta verso chi lo chiama, altrimenti torna alla console
+      const bodyTarget = isFocused ? yawToCam : CONSOLE_YAW;
+      m.bodyYaw += wrapAngle(bodyTarget - m.bodyYaw) * (1 - Math.exp(-dt * 2.2));
+      g.rotation.y = m.bodyYaw;
+      // Poltrona girevole: ruota con l'agente, altrimenti voltandosi verso
+      // l'utente resterebbe con lo schienale davanti al busto
+      st.chairGroup.rotation.y = m.bodyYaw - CONSOLE_YAW;
+
+      // La testa segue la camera solo se e' davanti a lui: oltre la spalla
+      // il collo si spezzerebbe, quindi torna a guardare gli schermi.
+      const rel = wrapAngle(yawToCam - m.bodyYaw);
+      const facing = Math.abs(rel) < 1.7;
+      const idleYaw = Math.sin(elapsedTime * 0.37 + idx * 1.7) * 0.18;
+      const headYawTarget = facing ? Math.max(-0.65, Math.min(0.65, rel)) : idleYaw;
+      const headY = (m.uniforms.uNeckY.value + 0.15) * AGENT_MODEL_HEIGHT;
+      const horiz = Math.hypot(camLocal.x, camLocal.z) || 1;
+      const pitchToCam = -Math.atan2(camLocal.y - headY, horiz);
+      const headPitchTarget = facing ? Math.max(-0.35, Math.min(0.3, pitchToCam)) : 0.12;
+      const headEase = 1 - Math.exp(-dt * (isFocused ? 4.0 : 1.6));
+      m.headYaw += (headYawTarget - m.headYaw) * headEase;
+      m.headPitch += (headPitchTarget - m.headPitch) * headEase;
+
+      m.uniforms.uHeadYaw.value = m.headYaw;
+      m.uniforms.uHeadPitch.value = m.headPitch;
+      m.uniforms.uBreath.value = Math.sin(elapsedTime * 1.6 + idx) * 0.012;
     };
 
     const animate = (now = 0) => {
@@ -2319,12 +2685,19 @@ export default function CyberSpace3DCanvas({
 
         }
 
+        const isFocused = focusedId && st.role.id === focusedId;
+        if (!reducedMotion && st.agentModel && st.agentModel.group.visible) {
+          animateAgentModel(st, idx, elapsedTime, dt, isFocused);
+        }
+        if (!reducedMotion && st.agentCharacter && st.agentCharacter.root.visible) {
+          updateAgentCharacter(st.agentCharacter, dt, isFocused);
+        }
+
         st.badgeMesh.position.y = -2.0 + 4.6 + Math.sin(elapsedTime * 1.8 + idx) * 0.05;
         st.badgeMesh.quaternion.copy(camera.quaternion);
 
         // Le schede lontane crescono moderatamente per restare leggibili, senza ingigantirsi
         const dist = camera.position.distanceTo(badgeTmp.copy(st.badgeMesh.position));
-        const isFocused = focusedId && st.role.id === focusedId;
         // Con un agente in primo piano niente ingrandimento; cap massimo a 1.35 per non intersecare la scrivania
         const scale = focusedId ? 1 : Math.max(0.85, Math.min(1.35, dist / 11));
         const opacity = isFocused ? 1 : smoothstep(4.8, 8.5, dist);
@@ -2344,6 +2717,7 @@ export default function CyberSpace3DCanvas({
     // 11. Pulizia Risorse WebGL
     // =========================================================================
     return () => {
+      disposed = true;
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('mousemove', onMouseMove);
       container.removeEventListener('mousedown', onMouseDown);
