@@ -661,7 +661,8 @@ from core.manifests_catalog import (
     GITHUB_RAW_BASE_URL,
     get_manifesto_by_id_or_filename,
     installa_risorse,
-    rimuovi_risorse
+    rimuovi_risorse,
+    aggiorna_risorse_installate
 )
 from core.agent_registry import register_agent, unregister_agent, load_agents_meta, save_agents_meta
 
@@ -866,4 +867,16 @@ def handle_manifesti_uninstall(self):
 
 
 handle_ruoli_uninstall = handle_manifesti_uninstall
+
+
+def handle_ruoli_aggiorna_risorse(self):
+    """POST /api/ruoli/aggiorna_risorse — Foto e modelli 3D per i ruoli gia' installati."""
+    try:
+        from core import paths
+        body = self.read_json_body() or {}
+        esito = aggiorna_risorse_installate(paths.roles_dir(), solo_mancanti=not body.get("tutte"))
+        self.send_json_response({"success": True, "aggiornati": esito})
+    except Exception as exc:
+        log.error("handle_ruoli_aggiorna_risorse: %s", exc)
+        self.send_json_response({"success": False, "error": str(exc)}, 500)
 handle_update_ruolo_image = handle_update_manifesto_image

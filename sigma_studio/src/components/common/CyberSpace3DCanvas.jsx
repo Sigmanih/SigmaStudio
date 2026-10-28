@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { roleInitials } from './roleIcons';
+import { AGENT_ACTIVITY_EVENT, getAgentActivity } from './agentActivity';
+import { decideAgentMotion } from './agentMotion';
 
 /**
  * CyberSpace3DCanvas — Spaceship Bridge & Command Deck 3D
@@ -19,7 +21,7 @@ import { roleInitials } from './roleIcons';
 // Le GPU del Raspberry Pi (VideoCore/V3D) e i renderer software non reggono
 // la plancia completa: lo si scopre prima di creare il renderer, perche'
 // l'antialias non si puo' cambiare dopo.
-const detectLowEndGpu = () => {
+export const detectLowEndGpu = () => {
   try {
     const probe = document.createElement('canvas');
     const gl = probe.getContext('webgl2') || probe.getContext('webgl');
@@ -2133,7 +2135,8 @@ export default function CyberSpace3DCanvas({
     };
 
     // =========================================================================
-    // 7c. Agenti a figura intera: lavorano seduti, passeggiano, vengono incontro
+    // 7c. Agenti a figura intera: in posa davanti alla propria scheda, si
+    // muovono secondo quello che l'agente sta facendo (agentMotion)
     // =========================================================================
     // Scheletro e clip sono quelli della Universal Animation Library (CC0):
     // il personaggio ha le stesse ossa, quindi le clip valgono per nome d'osso.
@@ -2144,8 +2147,9 @@ export default function CyberSpace3DCanvas({
     const POD_TOP = 0.22;
     const POD_RADIUS = 2.55;
     const SEAT_Z = 0.36; // piedi davanti alla seduta: da seduto il bacino arretra
-    const STAND_Z = 1.7; // davanti alla poltrona, verso il centro della plancia
+    const STAND_Z = 1.7; // davanti alla poltrona e sotto la scheda, verso il centro
     const HOLO_RADIUS = 5.4; // bordo della piattaforma centrale (4,5) piu' un passo
+    const PRESENT_SECONDS = 10; // dopo "ha finito" torna in posa da solo
 
     const stationWorld = (st, x, z) => {
       const p = st.stationGroup.localToWorld(new THREE.Vector3(x, 0, z));
@@ -2154,15 +2158,13 @@ export default function CyberSpace3DCanvas({
       return p;
     };
     const consoleYaw = (st) => st.stationGroup.rotation.y + Math.PI;
-    const randomBetween = (a, b) => a + Math.random() * (b - a);
+    // Rivolto al centro della plancia: davanti alla scheda, verso chi guarda
+    const centerYaw = (st) => st.stationGroup.rotation.y;
 
-    const playClip = (ch, name, fade = 0.35, once = false) => {
+    const playClip = (ch, name, fade = 0.35) => {
       const next = ch.actions[name];
       if (!next || ch.current === name) return;
-      next.reset();
-      next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
-      next.clampWhenFinished = once;
-      next.fadeIn(fade).play();
+      next.reset().fadeIn(fade).play();
       if (ch.current && ch.actions[ch.current]) ch.actions[ch.current].fadeOut(fade);
       ch.current = name;
     };
@@ -2174,33 +2176,69 @@ export default function CyberSpace3DCanvas({
       playClip(ch, 'Walk_Loop', 0.3);
     };
 
-    const sitDown = (ch) => {
-      const p = stationWorld(ch.st, 0, SEAT_Z);
-      ch.root.position.copy(p);
-      ch.yawTarget = consoleYaw(ch.st);
-      ch.state = 'seduto';
-      ch.timer = randomBetween(14, 30);
-      playClip(ch, 'Sitting_Idle_Loop', 0.45);
+    // Ogni percorso passa dal punto davanti alla poltrona: da li' si raggiunge
+    // ogni meta senza attraversare scrivania e sedia
+    const viaStand = (ch, ...points) => {
+      const stand = stationWorld(ch.st, 0, STAND_Z);
+      const near = Math.hypot(ch.root.position.x - stand.x, ch.root.position.z - stand.z) < 0.05;
+      return near ? points : [stand, ...points];
     };
 
-    const goVisitHolo = (ch) => {
-      // Un punto del bordo del tavolo olografico nel proprio spicchio di plancia:
-      // con 15 postazioni a 0,42 rad l'una dall'altra, +-0,15 tiene ogni agente
-      // fuori dalla strada dei vicini e i percorsi radiali non si incrociano
-      const a = Math.atan2(ch.st.posZ, ch.st.posX) + randomBetween(-0.15, 0.15);
-      const holo = new THREE.Vector3(Math.cos(a) * HOLO_RADIUS, DECK_Y, Math.sin(a) * HOLO_RADIUS);
-      walkTo(ch, [stationWorld(ch.st, 0, STAND_Z), holo], () => {
-        ch.state = 'sosta';
-        ch.timer = randomBetween(6, 11);
-        // Rivolto al tavolo: consulta la mappa olografica
-        ch.yawTarget = Math.atan2(-holo.x, -holo.z);
-        playClip(ch, Math.random() < 0.5 ? 'Interact' : 'Idle_Loop', 0.35, false);
+    const MODES = {
+      posa: (ch) => walkTo(ch, viaStand(ch), () => {
+        ch.state = 'fermo';
+        ch.yawTarget = centerYaw(ch.st);
+        playClip(ch, 'Idle_Loop', 0.4);
+      }),
+      console: (ch) => walkTo(ch, [...viaStand(ch), stationWorld(ch.st, 0, SEAT_Z + 0.4)], () => {
+        ch.root.position.copy(stationWorld(ch.st, 0, SEAT_Z));
+        ch.state = 'fermo';
+        ch.yawTarget = consoleYaw(ch.st);
+        // Seduto che gesticola: la libreria non ha una clip di battitura
+        playClip(ch, 'Sitting_Talking_Loop', 0.45);
+      }),
+      olotavolo: (ch) => {
+        // Nel proprio spicchio: con 15 postazioni a 0,42 rad, +-0,15 tiene
+        // ogni agente fuori dalla strada dei vicini
+        const a = Math.atan2(ch.st.posZ, ch.st.posX) + (Math.random() - 0.5) * 0.3;
+        const holo = new THREE.Vector3(Math.cos(a) * HOLO_RADIUS, DECK_Y, Math.sin(a) * HOLO_RADIUS);
+        walkTo(ch, viaStand(ch, holo), () => {
+          ch.state = 'fermo';
+          ch.yawTarget = Math.atan2(-holo.x, -holo.z);
+          playClip(ch, 'Interact', 0.35);
+        });
+      },
+      presenta: (ch) => walkTo(ch, viaStand(ch), () => {
+        ch.state = 'parla';
+        playClip(ch, 'Idle_Talking_Loop', 0.4);
+      })
+    };
+
+    const setCharacterMode = (ch, mode) => {
+      if (!MODES[mode]) return;
+      ch.mode = mode;
+      ch.modeTimer = mode === 'presenta' ? PRESENT_SECONDS : 0;
+      // Mentre l'utente gli parla resta rivolto a lui: la nuova modalita'
+      // parte appena lo si lascia
+      if (!ch.focused) MODES[mode](ch);
+    };
+
+    // L'agente al lavoro guida il suo personaggio; quello che smette torna in posa
+    let activeCharacter = null;
+    const onAgentActivity = (e) => {
+      const activity = (e && e.detail) || {};
+      const station = stationDataList.find(s => s.role.id === activity.roleId);
+      const ch = station && station.agentCharacter;
+      if (activeCharacter && activeCharacter !== ch && activeCharacter.mode !== 'posa') {
+        setCharacterMode(activeCharacter, 'posa');
+      }
+      activeCharacter = ch || null;
+      if (!ch) return;
+      decideAgentMotion(activity).then(mode => {
+        if (!disposed && ch.mode !== mode) setCharacterMode(ch, mode);
       });
     };
-
-    const goBackToSeat = (ch) => {
-      walkTo(ch, [stationWorld(ch.st, 0, STAND_Z), stationWorld(ch.st, 0, SEAT_Z + 0.4)], () => sitDown(ch));
-    };
+    window.addEventListener(AGENT_ACTIVITY_EVENT, onAgentActivity);
 
     const attachAgentCharacter = (st, gltf, clips) => {
       const root = new THREE.Group();
@@ -2226,17 +2264,20 @@ export default function CyberSpace3DCanvas({
       const mixer = new THREE.AnimationMixer(body);
       const actions = {};
       clips.forEach(c => { actions[c.name] = mixer.clipAction(c); });
-      const ch = { st, root, mixer, actions, current: null, state: 'seduto', timer: 0, path: [], after: null,
-        yaw: consoleYaw(st), yawTarget: consoleYaw(st), focused: false };
+      const ch = { st, root, mixer, actions, current: null, state: 'fermo', path: [], after: null,
+        yaw: centerYaw(st), yawTarget: centerYaw(st), focused: false, mode: 'posa', modeTimer: 0 };
+      // Si parte gia' in posa davanti alla scheda, senza camminare
+      root.position.copy(stationWorld(st, 0, STAND_Z));
       root.rotation.y = ch.yaw;
-      sitDown(ch);
-      // Le postazioni partono sfasate, non tutti si alzano insieme
-      ch.timer = randomBetween(4, 40);
-      mixer.update(randomBetween(0, 1.5));
+      playClip(ch, 'Idle_Loop', 0);
+      // Respirazioni sfasate: quindici agenti identici al passo sembrano un plotone
+      mixer.update(Math.random() * 2);
 
       st.figureGroup.visible = false;
       st.agentCharacter = ch;
       agentCharacters.push(ch);
+      const current = getAgentActivity();
+      if (current.roleId === st.role.id) onAgentActivity({ detail: current });
     };
 
     const setAgentCharactersVisible = (show) => {
@@ -2248,15 +2289,12 @@ export default function CyberSpace3DCanvas({
 
     const updateAgentCharacter = (ch, dt, isFocused) => {
       if (isFocused && !ch.focused) {
-        // Chiamato dall'utente: si alza e gli va incontro
+        // Chiamato dall'utente: gli va incontro e gli parla
         ch.focused = true;
-        walkTo(ch, [stationWorld(ch.st, 0, STAND_Z)], () => {
-          ch.state = 'parla';
-          playClip(ch, 'Idle_Talking_Loop', 0.4);
-        });
+        MODES.presenta(ch);
       } else if (!isFocused && ch.focused) {
         ch.focused = false;
-        goBackToSeat(ch);
+        MODES[ch.mode](ch);
       }
 
       if (ch.state === 'cammina' && ch.path.length) {
@@ -2269,7 +2307,6 @@ export default function CyberSpace3DCanvas({
           ch.root.position.x = target.x;
           ch.root.position.z = target.z;
           ch.path.shift();
-          if (!ch.path.length && ch.after) ch.after();
         } else {
           ch.root.position.x += (dx / dist) * step;
           ch.root.position.z += (dz / dist) * step;
@@ -2278,14 +2315,20 @@ export default function CyberSpace3DCanvas({
         // Scende dalla pedana o ci sale senza galleggiare
         const onPod = Math.hypot(ch.root.position.x - ch.st.posX, ch.root.position.z - ch.st.posZ) < POD_RADIUS;
         ch.root.position.y += ((DECK_Y + (onPod ? POD_TOP : 0)) - ch.root.position.y) * (1 - Math.exp(-dt * 12));
+      }
+      if (ch.state === 'cammina' && !ch.path.length) {
+        const after = ch.after;
+        ch.after = null;
+        if (after) after();
+        else ch.state = 'fermo';
       } else if (ch.state === 'parla') {
         ch.yawTarget = Math.atan2(camera.position.x - ch.root.position.x, camera.position.z - ch.root.position.z);
-      } else if (ch.state === 'seduto' || ch.state === 'sosta') {
-        ch.timer -= dt;
-        if (ch.timer <= 0) {
-          if (ch.state === 'seduto') goVisitHolo(ch);
-          else goBackToSeat(ch);
-        }
+      }
+
+      // "Ha finito" dura poco: poi torna in posa davanti alla scheda
+      if (ch.mode === 'presenta' && ch.modeTimer > 0 && !ch.focused) {
+        ch.modeTimer -= dt;
+        if (ch.modeTimer <= 0) setCharacterMode(ch, 'posa');
       }
 
       ch.yaw += wrapAngle(ch.yawTarget - ch.yaw) * (1 - Math.exp(-dt * 6));
@@ -2718,6 +2761,7 @@ export default function CyberSpace3DCanvas({
     // =========================================================================
     return () => {
       disposed = true;
+      window.removeEventListener(AGENT_ACTIVITY_EVENT, onAgentActivity);
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('mousemove', onMouseMove);
       container.removeEventListener('mousedown', onMouseDown);

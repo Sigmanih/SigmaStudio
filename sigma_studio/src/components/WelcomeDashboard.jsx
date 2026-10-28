@@ -3,13 +3,14 @@ import {
   Terminal, Palette, Clapperboard, CircuitBoard, CloudDownload, Sparkles, ChevronDown,
   RefreshCw, ExternalLink, Heart, Layers, X, Cpu, MemoryStick,
   Gauge, History, MessageSquare, Orbit, Calendar, Settings, Trash2, Music, Send,
-  Paperclip, Mic, MicOff, AudioLines, FileText
+  Paperclip, Mic, MicOff, AudioLines, FileText, Box, LayoutGrid
 } from 'lucide-react';
 import { initSpeechRecognition, createWakeWordMic } from './Chat/audioSpeech';
 
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
-import CyberSpace3DCanvas from './common/CyberSpace3DCanvas';
+import CyberSpace3DCanvas, { detectLowEndGpu } from './common/CyberSpace3DCanvas';
+import Plancia2D from './common/Plancia2D';
 import { resolveRoleLucide, roleInitials } from './common/roleIcons';
 import { loadSessions, formatSessionTime, saveActiveSessionId } from './Chat/chatStorage';
 import { useAgentActivity, activityText } from './common/agentActivity';
@@ -22,6 +23,20 @@ const ROLE_PALETTE = ['#00d2ff', '#ff007a', '#7c5bf0', '#10b981', '#f59e0b', '#e
 const QUALITY_KEY = 'sigma_home_3d_quality';
 const QUALITY_CYCLE = ['auto', 'high', 'lite', 'off'];
 const QUALITY_LABEL = { auto: 'Auto', high: 'Alta', lite: 'Leggera', off: 'Spenta' };
+
+// Vista della plancia: 3D (WebGL) o 2D (solo DOM e CSS). Senza una scelta
+// salvata, sulle GPU che la 3D non regge (VideoCore del Pi, renderer software)
+// si parte in 2D invece di far girare la plancia a scatti.
+const VIEW_KEY = 'sigma_home_view';
+const readViewPref = () => {
+  try {
+    const saved = localStorage.getItem(VIEW_KEY);
+    if (saved === '2d' || saved === '3d') return saved;
+  } catch {
+    // localStorage non disponibile: si decide dalla GPU
+  }
+  return detectLowEndGpu() ? '2d' : '3d';
+};
 
 // Footer della Home: laboratori (aprono una scheda) e strumenti flottanti (si resta
 // sulla plancia). Le immagini rendono riconoscibile ogni voce a colpo d'occhio.
@@ -138,6 +153,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   const [qualityPref, setQualityPref] = useState(readQualityPref);
+  const [viewPref, setViewPref] = useState(readViewPref);
   const [resolvedQuality, setResolvedQuality] = useState(null);
   const [systemStats, setSystemStats] = useState(null);
   const [recentChats, setRecentChats] = useState(loadRecentChats);
@@ -421,6 +437,12 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
 
   const handleQualityResolved = useCallback((level) => setResolvedQuality(level), []);
 
+  const toggleView = () => {
+    const next = viewPref === '3d' ? '2d' : '3d';
+    setViewPref(next);
+    try { localStorage.setItem(VIEW_KEY, next); } catch (e) {}
+  };
+
   // Gestione selezione file di qualsiasi tipo
   const handleFileSelect = (e) => {
     const farr = Array.from(e.target.files || []);
@@ -650,13 +672,23 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
 
   return (
     <div
-      className={`holodeck-viewport ${focusedAgent ? 'is-focused' : ''} ${qualityPref === 'off' ? 'is-static' : ''}`}
+      className={`holodeck-viewport ${focusedAgent ? 'is-focused' : ''} ${viewPref === '3d' && qualityPref === 'off' ? 'is-static' : ''} ${viewPref === '2d' ? 'is-2d' : ''}`}
       data-agent-component="CyberHolodeck"
       style={focusedAgent ? { '--agent-glow': focusedAgent.color } : undefined}
     >
 
-      {/* ── 0. Plancia 3D, o sfondo statico quando la grafica e' spenta ── */}
-      {qualityPref === 'off' ? (
+      {/* ── 0. Plancia 3D, plancia 2D, o sfondo statico quando la grafica e' spenta ── */}
+      {viewPref === '2d' ? (
+        <Plancia2D
+          roles={enrichedRoles}
+          selectedAgentId={focusedAgent ? focusedAgent.id : ''}
+          activity={agentActivity}
+          onSelectAgent={(agent) => {
+            if (agent) focusRole(agent);
+            else setFocusedAgent(null);
+          }}
+        />
+      ) : qualityPref === 'off' ? (
         <div className="holodeck-static-bg" aria-hidden="true" />
       ) : (
         <CyberSpace3DCanvas
@@ -731,13 +763,27 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           <div className="holodeck-hud-actions">
             <button
               type="button"
-              onClick={cycleQuality}
+              onClick={toggleView}
               className="holodeck-action-pill"
-              title={qualityTitle}
+              title={viewPref === '3d'
+                ? 'Plancia 3D. Clicca per la vista 2D, piu\' leggera.'
+                : 'Plancia 2D, senza rendering 3D. Clicca per la vista 3D.'}
             >
-              <Orbit size={13} aria-hidden="true" />
-              <span className="pill-text">3D: {QUALITY_LABEL[qualityPref]}</span>
+              {viewPref === '3d' ? <Box size={13} aria-hidden="true" /> : <LayoutGrid size={13} aria-hidden="true" />}
+              <span className="pill-text">Vista: {viewPref === '3d' ? '3D' : '2D'}</span>
             </button>
+
+            {viewPref === '3d' && (
+              <button
+                type="button"
+                onClick={cycleQuality}
+                className="holodeck-action-pill"
+                title={qualityTitle}
+              >
+                <Orbit size={13} aria-hidden="true" />
+                <span className="pill-text">3D: {QUALITY_LABEL[qualityPref]}</span>
+              </button>
+            )}
 
             {updateState.updateAvailable ? (
               <button

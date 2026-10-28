@@ -140,8 +140,8 @@ def get_manifesto_by_id_or_filename(identifier: str) -> Optional[Dict[str, Any]]
     return mappa.get(con_md)
 
 
-def _risorse_dal_repository(ruolo_id: str) -> Optional[Dict[str, str]]:
-    """Le risorse dichiarate dall'indice online: piu' fresche di quelle del catalogo."""
+def _indice_del_repository() -> Optional[Dict[str, Dict[str, str]]]:
+    """Risorse di ogni ruolo secondo l'indice online: piu' fresche del catalogo."""
     import urllib.request
 
     try:
@@ -151,21 +151,26 @@ def _risorse_dal_repository(ruolo_id: str) -> Optional[Dict[str, str]]:
     except (OSError, ValueError) as exc:
         log.warning("[Ruoli] Indice del repository non raggiungibile: %s", exc)
         return None
-    for voce in indice.get("manifests", []):
-        if voce.get("id") == ruolo_id:
-            return voce.get("risorse") or {}
-    return {}
+    return {voce.get("id"): (voce.get("risorse") or {}) for voce in indice.get("manifests", [])}
 
 
-def installa_risorse(ruolo_id: str, cartella_ruoli: Path, voce_catalogo: Optional[Dict[str, Any]] = None) -> List[str]:
+def _risorse_dal_repository(ruolo_id: str) -> Optional[Dict[str, str]]:
+    indice = _indice_del_repository()
+    return None if indice is None else indice.get(ruolo_id, {})
+
+
+def installa_risorse(ruolo_id: str, cartella_ruoli: Path, voce_catalogo: Optional[Dict[str, Any]] = None,
+                     risorse: Optional[Dict[str, str]] = None) -> List[str]:
     """Scarica foto, modello 3D e dettagli del ruolo in <ruoli>/<id>/.
 
     Le risorse sono facoltative: un ruolo senza modello si installa lo stesso
     e la plancia gli lascia l'ufficiale procedurale. Ritorna i file scritti.
+    `risorse` evita di rileggere l'indice online quando lo si e' gia' letto.
     """
     import urllib.request
 
-    risorse = _risorse_dal_repository(ruolo_id)
+    if risorse is None:
+        risorse = _risorse_dal_repository(ruolo_id)
     if risorse is None:
         risorse = (voce_catalogo or {}).get("risorse") or {}
     if not risorse:
@@ -203,3 +208,39 @@ def rimuovi_risorse(ruolo_id: str, cartella_ruoli: Path) -> None:
         log.warning("[Ruoli] %s contiene file non suoi: la cartella resta", dest)
         return
     shutil.rmtree(dest)
+
+
+def aggiorna_risorse_installate(cartella_ruoli: Path, solo_mancanti: bool = True) -> Dict[str, List[str]]:
+    """Porta foto e modelli ai ruoli gia' installati, senza reinstallarli.
+
+    I ruoli installati prima che il repository avesse le risorse ne restano
+    senza: la plancia mostrerebbe solo ufficiali procedurali. Con
+    `solo_mancanti` non si riscarica cio' che c'e' gia'.
+    """
+    indice = _indice_del_repository()
+    mappa = get_catalog_map()
+    esito: Dict[str, List[str]] = {}
+    for md in sorted(cartella_ruoli.glob("*.md")):
+        ruolo_id = md.stem
+        voce = mappa.get(ruolo_id) or mappa.get(md.name.lower())
+        risorse = (indice or {}).get(ruolo_id) if indice is not None else (voce or {}).get("risorse")
+        if not risorse:
+            continue
+        if solo_mancanti:
+            risorse = {k: v for k, v in risorse.items()
+                       if not (cartella_ruoli / ruolo_id / Path(str(v)).name).is_file()}
+            if not risorse:
+                continue
+        scritti = installa_risorse(ruolo_id, cartella_ruoli, voce, risorse=risorse)
+        if scritti:
+            esito[ruolo_id] = scritti
+            log.info("[Ruoli] %s: risorse aggiornate %s", ruolo_id, scritti)
+    return esito
+
+
+if __name__ == "__main__":
+    # python -m core.agents.manifests_catalog: scarica le risorse mancanti dei ruoli installati
+    from core import paths
+
+    risultato = aggiorna_risorse_installate(paths.roles_dir())
+    log.info("[Ruoli] risorse scaricate per %d ruoli", len(risultato))

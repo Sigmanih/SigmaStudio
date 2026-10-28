@@ -6,6 +6,8 @@
 import { useEffect, useState } from 'react';
 
 const EVENT = 'sigma-agent-activity';
+// Esportato per chi ascolta fuori da React (la plancia 3D)
+export const AGENT_ACTIVITY_EVENT = EVENT;
 export const IDLE_ACTIVITY = { state: 'idle', tool: '', detail: '', roleId: '', roleName: '', image: '', color: '' };
 
 export const ACTIVITY_LABEL = {

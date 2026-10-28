@@ -279,6 +279,7 @@ def register_post_handlers(handler_class):
         '/api/ruoli/install_from_hub': 'handle_ruoli_install_from_hub',
         '/api/manifesti/uninstall': 'handle_manifesti_uninstall',
         '/api/ruoli/uninstall': 'handle_ruoli_uninstall',
+        '/api/ruoli/aggiorna_risorse': 'handle_ruoli_aggiorna_risorse',
         '/api/models/hf/download': 'handle_models_hf_download',
         '/api/models/hf/download/start': 'handle_models_hf_download_start',
         '/api/models/hf/download/repo': 'handle_models_hf_download_repo',

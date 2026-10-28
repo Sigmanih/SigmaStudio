@@ -312,7 +312,7 @@ from core.data_handler import (
     handle_update_manifesto_image, handle_upload_agent_image, handle_upload_user_avatar,
     handle_manifesti_hub, handle_manifesti_install_from_hub, handle_manifesti_uninstall,
     handle_list_ruoli, handle_update_ruolo_image, handle_ruoli_hub,
-    handle_ruoli_install_from_hub, handle_ruoli_uninstall
+    handle_ruoli_install_from_hub, handle_ruoli_uninstall, handle_ruoli_aggiorna_risorse
 )
 FastAPIHandlerAdapter.handle_api_modules = handle_api_modules
 FastAPIHandlerAdapter.handle_api_topics = handle_api_topics
@@ -329,6 +329,7 @@ FastAPIHandlerAdapter.handle_manifesti_install_from_hub = handle_manifesti_insta
 FastAPIHandlerAdapter.handle_ruoli_install_from_hub = handle_ruoli_install_from_hub
 FastAPIHandlerAdapter.handle_manifesti_uninstall = handle_manifesti_uninstall
 FastAPIHandlerAdapter.handle_ruoli_uninstall = handle_ruoli_uninstall
+FastAPIHandlerAdapter.handle_ruoli_aggiorna_risorse = handle_ruoli_aggiorna_risorse
 
 
 from core.mcp_handler import (
