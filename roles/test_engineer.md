@@ -4,7 +4,8 @@ FROM sigma
 # Role: QA & Computational Pytest Validator
 # Category: Sviluppo & Test
 # DomainColor: #3fb950
-# Icon: ShieldCheck
+# Icon: 🛡️
+# Image: /images/programmatoreAi.png
 # Capabilities: Pytest Scripting, Validazione Computazionale, Casi al Contorno, Self-Healing Loop, Stress Testing
 # OutputArtifacts: Test Suite Pytest Eseguibili, Report di Copertura, Log di Diagnostica
 # McpTools: Developer MCP, Benchmark MCP, Hardware MCP

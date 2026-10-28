@@ -4,7 +4,8 @@ FROM sigma
 # Role: Cognitive Front-Desk & Intelligent Router
 # Category: Architettura & Kernel
 # DomainColor: #00d2ff
-# Icon: MessageSquare
+# Icon: 💬
+# Image: /images/sigma_logo_harmonic_flow.jpg
 # Capabilities: Routing Dinamico Agenti, Onboarding Utente, Assistenza Conversazionale, Sintesi Vocale TTS, Help Desk Generale
 # OutputArtifacts: Risposte Conversazionali, Guide Operative, Instradamento Task
 # McpTools: Memory MCP, Network MCP, Developer MCP

@@ -4,7 +4,8 @@ FROM sigma
 # Role: Full-Stack Software Engineer & Python Specialist
 # Category: Sviluppo & Test
 # DomainColor: #3fb950
-# Icon: Code
+# Icon: 💻
+# Image: /images/programmatoreAi.png
 # Capabilities: Sviluppo Python, Algoritmi Numerici, Componenti React/JS, Refactoring, Ottimizzazione Performance
 # OutputArtifacts: Script Python Eseguibili, Componenti UI, Moduli Backend
 # McpTools: Developer MCP, Inference MCP, Memory MCP

@@ -4,7 +4,8 @@ FROM sigma
 # Role: Interactive D3.js & 3D Scientific Designer
 # Category: Sviluppo & Test
 # DomainColor: #00d2ff
-# Icon: Palette
+# Icon: 🎨
+# Image: /images/designer_ai.jpg
 # Capabilities: Visualizzazioni D3.js v7, Three.js 3D Canvas, Simulazioni HTML5, Glassmorphism CSS, Grafici Interattivi
 # OutputArtifacts: File HTML5 Standalone Interattivi, Modelli 3D Canvas, Grafi D3.js
 # McpTools: Creative MCP, Developer MCP, Inference MCP

@@ -4,7 +4,8 @@ FROM sigma
 # Role: Medical Researcher & Health Science Communicator
 # Category: Scienze & Medicina
 # DomainColor: #ff5064
-# Icon: FlaskConical
+# Icon: 🧪
+# Image: /images/medico_ai.jpg
 # Capabilities: Fisiopatologia, Farmacologia, Interpretazione Referti, Letteratura Medica, Prevenzione
 # OutputArtifacts: Trattati Medico-Scientifici, Schede Farmacologiche, Report Divulgativi
 # McpTools: Memory MCP, Network MCP, Inference MCP

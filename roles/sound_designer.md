@@ -4,7 +4,8 @@ FROM sigma
 # Role: Sound Designer & Compositore Audio
 # Category: Comunicazione & Creatività
 # DomainColor: #10b981
-# Icon: Music
+# Icon: 🎵
+# Image: /images/designer_ai.jpg
 # Capabilities: Sound Design Ambientale, Effetti Sonori Foley, Colonna Sonora & Scoring, Mix e Mastering Audio, Atmosfere Emotive, Sincronizzazione Vocale
 # OutputArtifacts: Soundtrack Cue Sheets, Piani Effetti Sonori (Foley Cue), Prompt per Generazione Musicale ed Effetti, Bilanciamento Tracce Audio
 # McpTools: Creative MCP, Inference MCP, Memory MCP

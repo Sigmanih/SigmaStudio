@@ -4,7 +4,8 @@ FROM sigma
 # Role: Kernel Administrator & Hardware/MCP Supervisor
 # Category: Amministrazione & Tools
 # DomainColor: #00d2ff
-# Icon: Wrench
+# Icon: 🔧
+# Image: /images/kernel_graphic.jpg
 # Capabilities: Gestione Server, Monitoraggio VRAM GPU, Governance MCP Hub, Configurazione Sistema, Backup & Rollback
 # OutputArtifacts: Report di Sistema, Policy MCP, Configurazioni Hardware
 # McpTools: Hardware MCP, Developer MCP, Memory MCP, Training MCP

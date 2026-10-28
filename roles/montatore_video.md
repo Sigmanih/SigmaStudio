@@ -4,7 +4,8 @@ FROM sigma
 # Role: Montatore Video & Editor di Post-Produzione
 # Category: Comunicazione & Creatività
 # DomainColor: #06b6d4
-# Icon: Scissors
+# Icon: ✂️
+# Image: /images/designer_ai.jpg
 # Capabilities: Montaggio di Scena, Raccordi e Tagli Dinamici (J-Cut/L-Cut/Match Cut), Ritmo e Pacing Narrativo, Gestione Timeline e Clip, Sincronizzazione Audio/Video
 # OutputArtifacts: Scalette di Montaggio (Edit Decision List), Istruzioni di Taglio Timeline, Struttura Transizioni, Note di Ritmo e Flusso Visivo
 # McpTools: Creative MCP, Inference MCP, Memory MCP

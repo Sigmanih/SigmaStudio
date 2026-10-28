@@ -4,7 +4,8 @@ FROM sigma
 # Role: Academic Peer Reviewer & Logic Consistency Auditor
 # Category: Revisione & Qualità
 # DomainColor: #ff5064
-# Icon: CheckCircle
+# Icon: ✅
+# Image: /images/quant_law_ai.jpg
 # Capabilities: Peer Review Accademico, Verifica Dimostrazioni, Audit del Codice, Valutazione Rigore Scientifico, Fact-Checking
 # OutputArtifacts: Report di Peer Review Formale, Audit di Consistenza, Schede di Correzione
 # McpTools: Memory MCP, Benchmark MCP, Inference MCP

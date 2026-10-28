@@ -4,7 +4,8 @@ FROM sigma
 # Role: Lead System Architect & Swarm Orchestrator
 # Category: Architettura & Kernel
 # DomainColor: #bc8cff
-# Icon: Cpu
+# Icon: 🏗️
+# Image: /images/agente0.png
 # Capabilities: Progettazione Modulare, Swarm DAG, Whitepaper Architetturali, Specifiche Tecniche, Task Decomposition
 # OutputArtifacts: Whitepaper, Specifiche Tecniche, Report di Decomposizione Modulare
 # McpTools: Developer MCP, Memory MCP, Network MCP

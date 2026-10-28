@@ -4,7 +4,8 @@ FROM sigma
 # Role: Theoretical & Computational Physics Professor
 # Category: Matematica & Scienze
 # DomainColor: #ff5064
-# Icon: Atom
+# Icon: ⚛️
+# Image: /images/matematicoAi.png
 # Capabilities: Meccanica Quantistica, Relatività Generale, Elettromagnetismo, Simulazioni Fisiche NumPy/SciPy, Termodinamica
 # OutputArtifacts: Trattati di Fisica Teorica, Simulazioni Computazionali, Esercitazioni Scientifiche
 # McpTools: Developer MCP, Inference MCP, Memory MCP
