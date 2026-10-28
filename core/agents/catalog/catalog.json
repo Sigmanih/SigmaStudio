@@ -64,7 +64,6 @@
     "risorse": {
       "dettagli": "sigma_architect/modello.json",
       "immagine": "sigma_architect/immagine.jpg",
-      "modello3d": "sigma_architect/modello.glb",
       "personaggio": "sigma_architect/personaggio.glb"
     },
     "role": "System Architect & Swarm Coordinator",
@@ -92,7 +91,6 @@
     "risorse": {
       "dettagli": "code_architect/modello.json",
       "immagine": "code_architect/immagine.jpg",
-      "modello3d": "code_architect/modello.glb",
       "personaggio": "code_architect/personaggio.glb"
     },
     "role": "Full-Stack Software Engineer & Algorithm Designer",
@@ -142,7 +140,6 @@
     "risorse": {
       "dettagli": "test_engineer/modello.json",
       "immagine": "test_engineer/immagine.jpg",
-      "modello3d": "test_engineer/modello.glb",
       "personaggio": "test_engineer/personaggio.glb"
     },
     "role": "Test Automation & Numerical Verification Specialist",
@@ -170,7 +167,6 @@
     "risorse": {
       "dettagli": "viz_designer/modello.json",
       "immagine": "viz_designer/immagine.jpg",
-      "modello3d": "viz_designer/modello.glb",
       "personaggio": "viz_designer/personaggio.glb"
     },
     "role": "Interactive Data Visualizer & Scientific UI Designer",
@@ -198,7 +194,6 @@
     "risorse": {
       "dettagli": "proof_reviewer/modello.json",
       "immagine": "proof_reviewer/immagine.jpg",
-      "modello3d": "proof_reviewer/modello.glb",
       "personaggio": "proof_reviewer/personaggio.glb"
     },
     "role": "Critical Reviewer & Scientific Verification Auditor",
@@ -226,7 +221,6 @@
     "risorse": {
       "dettagli": "physics_professor/modello.json",
       "immagine": "physics_professor/immagine.jpg",
-      "modello3d": "physics_professor/modello.glb",
       "personaggio": "physics_professor/personaggio.glb"
     },
     "role": "Theoretical & Experimental Physics Professor",
@@ -386,7 +380,6 @@
     "risorse": {
       "dettagli": "medico_divulgatore/modello.json",
       "immagine": "medico_divulgatore/immagine.jpg",
-      "modello3d": "medico_divulgatore/modello.glb",
       "personaggio": "medico_divulgatore/personaggio.glb"
     },
     "role": "Medical Researcher & Health Science Communicator",
@@ -503,7 +496,6 @@
     "risorse": {
       "dettagli": "regista_cinematografico/modello.json",
       "immagine": "regista_cinematografico/immagine.jpg",
-      "modello3d": "regista_cinematografico/modello.glb",
       "personaggio": "regista_cinematografico/personaggio.glb"
     },
     "role": "Film Director & Creative Vision Lead",
@@ -532,7 +524,6 @@
     "risorse": {
       "dettagli": "sceneggiatore/modello.json",
       "immagine": "sceneggiatore/immagine.jpg",
-      "modello3d": "sceneggiatore/modello.glb",
       "personaggio": "sceneggiatore/personaggio.glb"
     },
     "role": "Cinematic Screenwriter & Storyteller",
@@ -561,7 +552,6 @@
     "risorse": {
       "dettagli": "direttore_fotografia/modello.json",
       "immagine": "direttore_fotografia/immagine.jpg",
-      "modello3d": "direttore_fotografia/modello.glb",
       "personaggio": "direttore_fotografia/personaggio.glb"
     },
     "role": "Director of Photography & Prompt Artist",
@@ -589,7 +579,6 @@
     "risorse": {
       "dettagli": "montatore_video/modello.json",
       "immagine": "montatore_video/immagine.jpg",
-      "modello3d": "montatore_video/modello.glb",
       "personaggio": "montatore_video/personaggio.glb"
     },
     "role": "Film Editor & Post-Production Specialist",
@@ -617,7 +606,6 @@
     "risorse": {
       "dettagli": "sound_designer/modello.json",
       "immagine": "sound_designer/immagine.jpg",
-      "modello3d": "sound_designer/modello.glb",
       "personaggio": "sound_designer/personaggio.glb"
     },
     "role": "Sound Designer & Audio Composer",
