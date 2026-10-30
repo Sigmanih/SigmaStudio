@@ -90,13 +90,6 @@ export default function ActionsBar({
         >
           ⚡ FA: ON
         </span>
-        <button
-          className={`chat-header-btn ${showQuickConfig ? 'active' : ''}`}
-          onClick={(e) => { e.stopPropagation(); onOpenQuickConfig(); }}
-          title="Impostazioni di interazione e parametri modello"
-        >
-          ⚙️
-        </button>
       </div>
     </div>
   );

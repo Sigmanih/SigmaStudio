@@ -8,13 +8,12 @@ import ChatInput from '../ui/ChatInput';
 import ChatHistory from '../ChatHistory';
 import FilePicker from '../FilePicker';
 import ActionsBar from '../ActionsBar';
-import QuickConfigPanel from '../ui/QuickConfigPanel';
 import { exportChatPdf } from '../../../utils/exportChatPdf';
 import { loadMessagesFromStorage } from '../chatStorage';
 import TechSpaceCanvas from '../../common/TechSpaceCanvas';
 
 export default function ChatWorkspaceTab() {
-  const { theme } = useApp();
+  const { theme, setAiConfigOpen } = useApp();
   const core = useChatCore({});
 
 
@@ -66,7 +65,7 @@ export default function ChatWorkspaceTab() {
         isPanel={false}
         activity={core.agentActivity}
         onNewSession={handleNewSession}
-        onOpenConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
+        onOpenConfig={() => setAiConfigOpen(true)}
         contextStats={core.contextStats}
         onCopyAll={() => {
           const msgs = core.messages || [];
@@ -190,23 +189,6 @@ export default function ChatWorkspaceTab() {
         />
       </div>
 
-      {core.showQuickConfig && (
-        <QuickConfigPanel
-          quickConfig={core.quickConfig}
-          setQuickConfig={core.setQuickConfig}
-          onClose={() => core.setShowQuickConfig(false)}
-          selectedModel={core.selectedModel}
-          onSelectModel={core.handleModelSelect}
-          availableModels={core.availableModels}
-          activeManifesto={core.activeManifesto}
-          onSelectManifesto={core.handleSelectManifesto}
-          manifestos={core.manifestos}
-          selectedHardware={core.selectedHardware}
-          onSelectHardware={core.setSelectedHardware}
-          availableHardware={core.availableHardware}
-        />
-      )}
-
       <ActionsBar
         activeMode={core.activeMode}
         onSetMode={core.setActiveMode}
@@ -219,11 +201,11 @@ export default function ChatWorkspaceTab() {
         taskProgress={0}
         maxTaskIterations={core.maxTaskIterations}
         contextStats={core.contextStats}
-        onOpenQuickConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
-        showQuickConfig={core.showQuickConfig}
       />
 
       <ChatInput
+        quickConfig={core.quickConfig}
+        setQuickConfig={core.setQuickConfig}
         input={core.input}
         setInput={core.setInput}
         loading={core.loading}
@@ -246,7 +228,7 @@ export default function ChatWorkspaceTab() {
         selectedHardware={core.selectedHardware}
         onSelectHardware={core.setSelectedHardware}
         availableHardware={core.availableHardware}
-        onOpenConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
+        onOpenConfig={() => setAiConfigOpen(true)}
         refs={core.refs}
         providerColors={core.providerColors}
         currentRouting={core.currentRouting}

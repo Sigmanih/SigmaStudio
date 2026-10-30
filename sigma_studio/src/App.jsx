@@ -167,8 +167,7 @@ function AppContent() {
       const id = e.detail?.id;
       if (id === 'chat') setAiChatOpen(true);
       else if (id === 'hardware') {
-        if (isHardwareInstalled) setHardwarePanelOpen(true);
-        else openTab({ name: 'Monitor Hardware' }, 'hardware_lab');
+        setHardwarePanelOpen(prev => !prev);
       }
       else if (id === 'cleanup') openCleanupModal();
       else if (id === 'providers') openTab({ name: 'Providers' }, 'ai_config');
@@ -177,7 +176,7 @@ function AppContent() {
     };
     window.addEventListener('sigma-quick-tool', handler);
     return () => window.removeEventListener('sigma-quick-tool', handler);
-  }, [openTab, setAiChatOpen, isHardwareInstalled, openCleanupModal]);
+  }, [openTab, setAiChatOpen, openCleanupModal]);
 
   // Sulla Home il menu flottante e' sostituito dal footer: due accessi agli
   // stessi strumenti, uno sopra l'altro, coprivano la barra dei comandi.
@@ -271,7 +270,6 @@ function AppContent() {
       />
 
       {/* FLOATING ACTION SPEED-DIAL CONTAINER */}
-      {!isHomeVisible && (
       <div
         className="ai-float-dock-container"
         style={{
@@ -480,15 +478,32 @@ function AppContent() {
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#00f2fe' }} />
                 </button>
 
-                {/* Item 6: Musica & Focus Lounge Quick Widget */}
-                {isAudioInstalled && (
-                  <div style={{ marginTop: '2px' }}>
-                    <MusicFloatingWidget onOpenTab={(tabObj, tabId) => {
-                      openTab(tabObj, tabId);
-                      setDockMinimized(true);
-                    }} />
+                {/* Item 6: Musica & Focus Lounge */}
+                <button
+                  onClick={() => {
+                    openTab({ name: 'Musica' }, 'music');
+                    setDockMinimized(true);
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 12px', borderRadius: '10px',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    color: '#e2e4eb',
+                    cursor: 'pointer', transition: 'all 0.18s ease', textAlign: 'left'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(244, 114, 182, 0.15)', border: '1px solid rgba(244, 114, 182, 0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Music size={16} color="#f472b6" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>Musica & Lounge</div>
+                      <div style={{ fontSize: '0.62rem', color: '#8b8fa3' }}>Focus synth, radio e playlist</div>
+                    </div>
                   </div>
-                )}
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f472b6' }} />
+                </button>
               </div>
             </div>
           )}
@@ -566,7 +581,6 @@ function AppContent() {
           )}
         </div>
       </div>
-      )}
 
       {/* AI CHAT PANEL */}
       {aiChatOpen && (
@@ -581,7 +595,7 @@ function AppContent() {
       )}
 
       {/* HARDWARE MINI FLOATING PANEL */}
-      {hardwarePanelOpen && isHardwareInstalled && LazyHardwareFloating && (
+      {hardwarePanelOpen && LazyHardwareFloating && (
         <React.Suspense fallback={null}>
           <LazyHardwareFloating
             onClose={() => setHardwarePanelOpen(false)}
@@ -593,6 +607,19 @@ function AppContent() {
           />
         </React.Suspense>
       )}
+
+      {/* GLOBAL BOTTOM-RIGHT MUSIC WIDGET */}
+      <div
+        className="global-music-dock"
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          right: '20px',
+          zIndex: 9980
+        }}
+      >
+        <MusicFloatingWidget onOpenTab={(tabObj, tabId) => openTab(tabObj, tabId)} />
+      </div>
 
 
       {/* AI CONFIG MODAL */}

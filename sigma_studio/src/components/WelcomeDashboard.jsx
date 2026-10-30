@@ -3,9 +3,9 @@ import {
   Terminal, Palette, Clapperboard, CircuitBoard, CloudDownload, Sparkles, ChevronDown,
   RefreshCw, ExternalLink, Heart, Layers, X, Cpu, MemoryStick,
   Gauge, History, MessageSquare, Orbit, Calendar, Settings, Trash2, Music, Send,
-  Paperclip, Mic, MicOff, AudioLines, FileText, Box, LayoutGrid
+  Paperclip, Mic, MicOff, AudioLines, FileText, Box, LayoutGrid, Sliders
 } from 'lucide-react';
-import { initSpeechRecognition, createWakeWordMic } from './Chat/audioSpeech';
+import { initSpeechRecognition, createWakeWordMic, getVoiceSilenceTimeout, setVoiceSilenceTimeout } from './Chat/audioSpeech';
 
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
@@ -162,20 +162,54 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   const [attachedFiles, setAttachedFiles] = useState([]);
   const fileInputRef = useRef(null);
 
-  // Textarea ad auto-espansione dinamica
+  // Pannello opzioni cluster omnibar e timeout invio vocale
+  const [showOmniOptions, setShowOmniOptions] = useState(false);
+  const [voiceSilenceTimeout, setVoiceSilenceTimeoutState] = useState(() => getVoiceSilenceTimeout());
+
+  useEffect(() => {
+    const handleTimeoutUpdated = (e) => {
+      if (e && e.detail !== undefined) setVoiceSilenceTimeoutState(e.detail);
+    };
+    window.addEventListener('sigma-voice-timeout-updated', handleTimeoutUpdated);
+    return () => window.removeEventListener('sigma-voice-timeout-updated', handleTimeoutUpdated);
+  }, []);
+
+  const handleVoiceTimeoutChange = (newSec) => {
+    const val = parseFloat(newSec);
+    setVoiceSilenceTimeoutState(val);
+    setVoiceSilenceTimeout(val);
+  };
+
+  // Textarea ad auto-espansione dinamica senza slider prematuro
   const textareaRef = useRef(null);
+  const dialogueTextareaRef = useRef(null);
+
   const adjustHeight = (el) => {
     if (!el) return;
-    el.style.height = 'auto';
-    const newHeight = Math.min(Math.max(el.scrollHeight, 26), 220);
+    el.style.height = '0px';
+    const scrollH = el.scrollHeight;
+    const newHeight = Math.min(Math.max(scrollH, 36), 260);
     el.style.height = `${newHeight}px`;
+    el.style.overflowY = scrollH > 260 ? 'auto' : 'hidden';
+  };
+
+  const adjustDialogueHeight = (el) => {
+    adjustHeight(el);
   };
 
   useEffect(() => {
     if (!quickPrompt && textareaRef.current) {
-      textareaRef.current.style.height = '26px';
+      textareaRef.current.style.height = '36px';
+      textareaRef.current.style.overflowY = 'hidden';
     } else if (textareaRef.current) {
       adjustHeight(textareaRef.current);
+    }
+
+    if (!quickPrompt && dialogueTextareaRef.current) {
+      dialogueTextareaRef.current.style.height = '36px';
+      dialogueTextareaRef.current.style.overflowY = 'hidden';
+    } else if (dialogueTextareaRef.current) {
+      adjustHeight(dialogueTextareaRef.current);
     }
   }, [quickPrompt]);
 
@@ -420,14 +454,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   // Agente selezionato e focalizzato nell'ambiente 3D
   const [focusedAgent, setFocusedAgent] = useState(null);
 
-  // Dialogue pod auto-espansione in larghezza ed altezza
-  const dialogueTextareaRef = useRef(null);
-  const adjustDialogueHeight = (el) => {
-    if (!el) return;
-    el.style.height = 'auto';
-    const newHeight = Math.min(Math.max(el.scrollHeight, 44), 360);
-    el.style.height = `${newHeight}px`;
-  };
+
 
   const dialoguePodWidth = useMemo(() => {
     const len = (quickPrompt || '').length;
@@ -544,6 +571,18 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           if (textareaRef.current) adjustHeight(textareaRef.current);
         }
       },
+      onSilence: (finalText) => {
+        const prefix = initialInputRef.current ? initialInputRef.current.trim() : '';
+        const textToSend = prefix ? `${prefix} ${finalText}` : finalText;
+        if (textToSend && textToSend.trim()) {
+          setIsRecording(false);
+          setQuickPrompt('');
+          handleStartChatWithRole(selectedRole, textToSend.trim(), attachedFiles);
+          setAttachedFiles([]);
+          if (textareaRef.current) textareaRef.current.style.height = '36px';
+          if (addToast) addToast('⚡ Richiesta vocale inviata alla chat!', 'info');
+        }
+      },
       onError: (err) => {
         console.warn('SpeechRecognition error:', err);
         setIsRecording(false);
@@ -568,7 +607,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       console.error('Start recognition error:', err);
       setIsRecording(false);
     }
-  }, [isRecording, quickPrompt, addToast, stopSmartMic]);
+  }, [isRecording, quickPrompt, addToast, stopSmartMic, selectedRole, attachedFiles]);
 
   const toggleSmartMic = useCallback(() => {
     if (smartMicRef.current) {
@@ -968,6 +1007,60 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           <footer className="holodeck-bottom-deck">
 
             <div className="holodeck-omnibar-cluster">
+              {showOmniOptions && (
+                <div className="holodeck-omnibar-options-panel">
+                  <div className="holodeck-options-header">
+                    <span className="holodeck-options-title">
+                      <Sliders size={13} style={{ color: '#00d2ff' }} /> Opzioni & Dettatura Vocale
+                    </span>
+                    <button
+                      type="button"
+                      className="holodeck-options-close-btn"
+                      onClick={() => setShowOmniOptions(false)}
+                      title="Chiudi opzioni"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+
+                  <div className="holodeck-options-body">
+                    {/* Timeout Invio Vocale */}
+                    <div className="holodeck-options-row">
+                      <div className="holodeck-option-desc">
+                        <span className="holodeck-option-label">
+                          <Mic size={13} style={{ color: voiceSilenceTimeout > 0 ? '#10b981' : '#8b8fa3' }} /> Timeout Invio Vocale Automatico:
+                        </span>
+                        <span className="holodeck-option-hint">
+                          {voiceSilenceTimeout > 0
+                            ? `Dopo ${voiceSilenceTimeout}s di silenzio dall'ultima parola, il messaggio viene inviato automaticamente alla chat senza premere invio.`
+                            : "Invio vocale automatico disattivato: dovrai premere Invio per spedire il messaggio."}
+                        </span>
+                      </div>
+
+                      <div className="holodeck-timeout-pills">
+                        {[
+                          { val: 1.0, label: '1.0s (Rapido)' },
+                          { val: 1.5, label: '1.5s (Veloce)' },
+                          { val: 2.0, label: '2.0s (Consigliato)' },
+                          { val: 3.0, label: '3.0s (Pausa)' },
+                          { val: 5.0, label: '5.0s (Lungo)' },
+                          { val: 0.0, label: 'Off (Manuale)' }
+                        ].map(opt => (
+                          <button
+                            key={opt.val}
+                            type="button"
+                            className={`holodeck-timeout-pill ${voiceSilenceTimeout === opt.val ? 'active' : ''}`}
+                            onClick={() => handleVoiceTimeoutChange(opt.val)}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <form
                 className="holodeck-omnibar-form"
                 onSubmit={handleQuickPromptSubmit}
@@ -1087,6 +1180,16 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
                     aria-label="Ascolto continuo Hey Sigma"
                   >
                     <AudioLines size={16} />
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`holodeck-tool-btn holodeck-options-btn ${showOmniOptions ? 'active' : ''}`}
+                    onClick={() => setShowOmniOptions(prev => !prev)}
+                    title={showOmniOptions ? 'Chiudi opzioni' : 'Opzioni e timeout invio vocale'}
+                    aria-label="Opzioni e impostazioni"
+                  >
+                    <Sliders size={16} />
                   </button>
 
                   <button

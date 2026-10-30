@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Plus, Download } from 'lucide-react';
+import { Plus, Download, Copy, Check, Minus, X } from 'lucide-react';
 import AgentPresence from './AgentPresence';
 
 export default function ChatHeader({
@@ -38,38 +38,25 @@ export default function ChatHeader({
         borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
         background: 'rgba(10, 14, 26, 0.75)',
         backdropFilter: 'blur(10px)',
-        minHeight: '38px',
+        minHeight: '40px',
         margin: 0,
         boxSizing: 'border-box'
       }}
     >
-      <div className="chat-header-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+      <div className="chat-header-left" style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: '1 1 auto' }}>
         {/* Chi risponde e cosa sta facendo, al posto dell'etichetta fissa "Chat AI" */}
         <AgentPresence activity={activity} compact={isPanel} />
 
-        {/* Tastino laterale Nuova Conversazione */}
+        {/* Tastino tondo Nuova Conversazione */}
         {onNewSession && (
           <button
-            className="chat-header-new-btn"
+            type="button"
+            className="chat-header-circle-btn chat-header-new-btn"
             onClick={(e) => { e.stopPropagation(); onNewSession(); }}
-            title="Avvia una nuova conversazione"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '3px 8px',
-              borderRadius: '6px',
-              background: 'rgba(0, 210, 255, 0.12)',
-              border: '1px solid rgba(0, 210, 255, 0.3)',
-              color: '#00d2ff',
-              fontSize: '0.68rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'all 0.15s ease'
-            }}
+            title="Nuova conversazione"
+            aria-label="Nuova conversazione"
           >
-            <Plus size={11} />
-            <span className="chat-header-new-label">Nuova conversazione</span>
+            <Plus size={14} />
           </button>
         )}
 
@@ -83,7 +70,7 @@ export default function ChatHeader({
               alignItems: 'center',
               gap: '6px',
               padding: '2px 8px',
-              borderRadius: '6px',
+              borderRadius: '999px',
               background: 'rgba(255, 255, 255, 0.04)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
               cursor: onOpenConfig ? 'pointer' : 'default',
@@ -99,8 +86,8 @@ export default function ChatHeader({
             <div
               className="chat-header-gauge-track"
               style={{
-                width: '54px',
-                height: '6px',
+                width: '46px',
+                height: '5px',
                 borderRadius: '999px',
                 background: 'rgba(255, 255, 255, 0.10)',
                 overflow: 'hidden',
@@ -147,98 +134,52 @@ export default function ChatHeader({
         )}
       </div>
 
-      <div className="chat-header-right" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <div className="chat-header-right" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
         {onCopyAll && (
           <button
-            className={`chat-header-btn chat-header-copy-btn ${copiedAll ? 'copied' : ''}`}
+            type="button"
+            className={`chat-header-circle-btn chat-header-copy-btn ${copiedAll ? 'copied' : ''}`}
             onClick={handleCopyAll}
-            title="Copia l'intera conversazione negli appunti"
-            style={{
-              gap: '4px',
-              fontSize: '0.68rem',
-              padding: '3px 8px',
-              background: copiedAll ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255,255,255,0.05)',
-              color: copiedAll ? '#4ade80' : 'var(--text-muted, #8b8fa3)',
-              border: copiedAll ? '1px solid rgba(74, 222, 128, 0.3)' : '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              transition: 'all 0.2s ease'
-            }}
+            title={copiedAll ? "Copiato negli appunti!" : "Copia l'intera conversazione"}
+            aria-label="Copia conversazione"
           >
-            <span className="chat-header-copy-full">{copiedAll ? '✓ Copiato!' : '📋 Copia Tutto'}</span>
-            <span className="chat-header-copy-short">{copiedAll ? '✓' : '📋'}</span>
+            {copiedAll ? <Check size={13} /> : <Copy size={13} />}
           </button>
         )}
         {onExportPdf && (
           <button
-            className="chat-header-btn chat-header-pdf-btn"
+            type="button"
+            className="chat-header-circle-btn chat-header-pdf-btn"
             onClick={(e) => {
               e.stopPropagation();
               onExportPdf();
             }}
-            title="Salva l'intera conversazione in un documento PDF impaginato"
-            style={{
-              gap: '4px',
-              fontSize: '0.68rem',
-              padding: '3px 8px',
-              background: 'rgba(239, 68, 68, 0.12)',
-              color: '#f87171',
-              border: '1px solid rgba(239, 68, 68, 0.28)',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              fontWeight: 600,
-              transition: 'all 0.2s ease'
-            }}
+            title="Salva l'intera conversazione in PDF"
+            aria-label="Salva PDF"
           >
-            <Download size={12} />
-            <span className="chat-header-pdf-full">Salva PDF</span>
-            <span className="chat-header-pdf-short">PDF</span>
-          </button>
-        )}
-        {onOpenConfig && (
-          <button
-            className="chat-header-btn"
-            onClick={(e) => { e.stopPropagation(); onOpenConfig(); }}
-            title="Impostazioni AI, Modello, Ruolo & Parametri"
-            style={{
-              padding: '4px 7px',
-              borderRadius: '6px',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              cursor: 'pointer',
-              color: '#00d2ff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <Settings size={13} />
+            <Download size={13} />
           </button>
         )}
         {onClose && (
           <button
-            className="chat-header-btn"
+            type="button"
+            className="chat-header-circle-btn chat-header-minimize-btn"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
-            title="Riduci in basso nel dock"
-            style={{ padding: '4px 6px', borderRadius: '6px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', color: '#8b8fa3' }}
+            title="Riduci pannello"
+            aria-label="Riduci pannello"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M5 12h14" />
-            </svg>
+            <Minus size={13} />
           </button>
         )}
         {onClose && (
           <button
-            className="chat-close-btn"
+            type="button"
+            className="chat-header-circle-btn chat-header-close-btn"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             title="Chiudi"
-            style={{ padding: '4px 6px', borderRadius: '6px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', cursor: 'pointer', color: '#ef4444', fontWeight: 700 }}
+            aria-label="Chiudi"
           >
-            ✕
+            <X size={13} />
           </button>
         )}
       </div>

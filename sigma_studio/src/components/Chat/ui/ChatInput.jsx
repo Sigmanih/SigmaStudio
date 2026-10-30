@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Send, Paperclip, RefreshCw, StopCircle, Mic, MicOff, AudioLines, Volume2, VolumeX, Sliders, Square, ChevronDown, Cpu, X, FileText, Image } from 'lucide-react';
-import { setVoiceConfig as saveVoiceConfigToSpeechEngine, getVoiceConfig } from '../audioSpeech';
+import { setVoiceConfig as saveVoiceConfigToSpeechEngine, getVoiceConfig, getVoiceSilenceTimeout, setVoiceSilenceTimeout } from '../audioSpeech';
 import ModelSelector from '../ModelSelector';
 
 export default function ChatInput({
@@ -24,10 +24,13 @@ export default function ChatInput({
   showManifestoDropdown, setShowManifestoDropdown, onSelectManifesto,
   // Hardware Selector props
   selectedHardware, onSelectHardware, availableHardware,
+  // Quick Config Parameters
+  quickConfig, setQuickConfig,
   compactControls = false,
   children,
 }) {
   const [showVoicePopover, setShowVoicePopover] = useState(false);
+  const [showAdvancedParams, setShowAdvancedParams] = useState(false);
   // Nel pannello flottante modello, ruolo e interruttori occupavano meta' altezza:
   // restano a un clic di distanza e lasciano spazio alla conversazione.
   const [showControls, setShowControls] = useState(!compactControls);
@@ -52,6 +55,22 @@ export default function ChatInput({
     }
   };
   const [voiceConfig, setVoiceConfigState] = useState(() => getVoiceConfig());
+  const [voiceSilenceTimeout, setVoiceSilenceTimeoutState] = useState(() => getVoiceSilenceTimeout());
+
+  useEffect(() => {
+    const onVoiceTimeoutUpdated = (e) => {
+      if (typeof e.detail === 'number') {
+        setVoiceSilenceTimeoutState(e.detail);
+      }
+    };
+    window.addEventListener('sigma-voice-timeout-updated', onVoiceTimeoutUpdated);
+    return () => window.removeEventListener('sigma-voice-timeout-updated', onVoiceTimeoutUpdated);
+  }, []);
+
+  const handleSetVoiceSilenceTimeout = (sec) => {
+    setVoiceSilenceTimeoutState(sec);
+    setVoiceSilenceTimeout(sec);
+  };
 
   const updateVoiceConfig = (updater) => {
     setVoiceConfigState(prev => {
@@ -95,7 +114,7 @@ export default function ChatInput({
       {/* Modern Extended Model & Role Selection Strip */}
       {showControls && (
       <div className="chat-input-controls-strip">
-        <div className="chat-input-model-role-group">
+        <div className="chat-settings-primary">
           {/* 1. Extended Model Selector with explicit Label */}
           <div className="chat-control-field">
             <span className="chat-control-label">Modello:</span>
@@ -124,14 +143,11 @@ export default function ChatInput({
                 type="button"
                 className={`manifesto-selector-btn ${!ruoloAttivo?.name ? 'no-manifesto' : ''}`}
                 onClick={(e) => { e.stopPropagation(); setShowManifestoDropdown && setShowManifestoDropdown(!showManifestoDropdown); }}
-                title={inDev ? "Ruolo dell'agente in Dev Mode: decide procedura e tool" : "Seleziona il Ruolo Specialistico dell'Agente per la conversazione"}
+                title={inDev ? "Ruolo dell'agente in Dev Mode: decide procedura e tool" : (ruoloAttivo?.role ? `${ruoloAttivo.name}: ${ruoloAttivo.role}` : "Seleziona il Ruolo Specialistico dell'Agente")}
               >
-                <span className="manifesto-icon">{ruoloAttivo?.icon || '🎭'}</span>
-                <div className="manifesto-info">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
+                  <span className="manifesto-icon">{ruoloAttivo?.icon || '🎭'}</span>
                   <span className="manifesto-name">{ruoloAttivo?.name || 'Sigma Assistant'}</span>
-                  {ruoloAttivo?.role && (
-                    <span className="manifesto-role-preview">{ruoloAttivo.role}</span>
-                  )}
                 </div>
                 <ChevronDown size={11} className={`manifesto-chevron ${showManifestoDropdown ? 'open' : ''}`} />
               </button>
@@ -173,25 +189,10 @@ export default function ChatInput({
             <span className="chat-control-label">Hardware:</span>
             <div className="manifesto-selector-wrapper" style={{ position: 'relative' }}>
               <select
-                className="manifesto-selector-btn"
+                className="manifesto-selector-btn chat-hardware-select"
                 value={selectedHardware || 'auto'}
                 onChange={(e) => onSelectHardware && onSelectHardware(e.target.value)}
                 title="Seleziona la GPU o l'acceleratore dedicato per l'inferenza"
-                style={{
-                  cursor: 'pointer',
-                  appearance: 'none',
-                  WebkitAppearance: 'none',
-                  paddingRight: '24px',
-                  background: 'rgba(15, 20, 32, 0.75)',
-                  border: '1px solid rgba(16, 185, 129, 0.35)',
-                  color: '#ffffff',
-                  fontSize: '0.74rem',
-                  fontWeight: 600,
-                  outline: 'none',
-                  borderRadius: '6px',
-                  height: '28px',
-                  padding: '2px 24px 2px 8px',
-                }}
               >
                 {(availableHardware && availableHardware.length > 0 ? availableHardware : [
                   { id: 'auto', name: '⚡ Auto (Tutto)' },
@@ -209,8 +210,8 @@ export default function ChatInput({
           </div>
         </div>
 
-        {/* Right Group: Utility Toggles & Speaker Controls */}
-        <div className="chat-input-utilities-group">
+        {/* Middle Group: Utility Toggles & Speaker Controls */}
+        <div className="chat-settings-toggles">
           <label className="chat-scroll-toggle" title="Auto-scroll verso l'ultimo messaggio inviato o generato">
             <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} />
             <span>📜 Auto Scroll</span>
@@ -423,11 +424,255 @@ export default function ChatInput({
                     style={{ accentColor: '#00d2ff', cursor: 'pointer', height: '4px' }}
                   />
                 </div>
+
+                {/* Timeout Auto-invio Microfono (Silenzio) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
+                    <span style={{ color: '#8b8fa3', fontWeight: 600 }}>Invio vocale dopo silenzio:</span>
+                    <span style={{ color: voiceSilenceTimeout > 0 ? '#10b981' : '#f59e0b', fontWeight: 700 }}>
+                      {voiceSilenceTimeout > 0 ? `${voiceSilenceTimeout.toFixed(1)}s` : 'Off (Manuale)'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    {[
+                      { sec: 1.0, label: '1.0s' },
+                      { sec: 1.5, label: '1.5s' },
+                      { sec: 2.0, label: '2.0s' },
+                      { sec: 3.0, label: '3.0s' },
+                      { sec: 5.0, label: '5.0s' },
+                      { sec: 0, label: 'Off' },
+                    ].map(opt => (
+                      <button
+                        key={opt.sec}
+                        type="button"
+                        onClick={() => handleSetVoiceSilenceTimeout(opt.sec)}
+                        style={{
+                          flex: '1 1 auto',
+                          padding: '3px 6px',
+                          fontSize: '0.64rem',
+                          fontWeight: 700,
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          border: voiceSilenceTimeout === opt.sec ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+                          background: voiceSilenceTimeout === opt.sec ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.03)',
+                          color: voiceSilenceTimeout === opt.sec ? '#10b981' : '#94a3b8',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>
         )}
+
+          {/* Quick Mic Auto-send Timeout Selector */}
+          <div 
+            className="chat-voice-timeout-pill"
+            title={`Timeout invio vocale automatico dopo che smetti di parlare: ${voiceSilenceTimeout > 0 ? voiceSilenceTimeout + 's' : 'Disattivato (invio con Invio)'}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '2px 8px',
+              borderRadius: '7px',
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              fontSize: '0.64rem',
+              color: '#94a3b8'
+            }}
+          >
+            <Mic size={11} color={voiceSilenceTimeout > 0 ? '#10b981' : '#f59e0b'} />
+            <span>Mic invio:</span>
+            <select
+              value={voiceSilenceTimeout}
+              onChange={e => handleSetVoiceSilenceTimeout(parseFloat(e.target.value))}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: voiceSilenceTimeout > 0 ? '#10b981' : '#f59e0b',
+                fontWeight: 700,
+                fontSize: '0.64rem',
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              <option value={1.0} style={{ background: '#0f1420', color: '#fff' }}>1.0s</option>
+              <option value={1.5} style={{ background: '#0f1420', color: '#fff' }}>1.5s</option>
+              <option value={2.0} style={{ background: '#0f1420', color: '#fff' }}>2.0s (Consigliato)</option>
+              <option value={3.0} style={{ background: '#0f1420', color: '#fff' }}>3.0s</option>
+              <option value={5.0} style={{ background: '#0f1420', color: '#fff' }}>5.0s</option>
+              <option value={0} style={{ background: '#0f1420', color: '#fff' }}>Off (Manuale)</option>
+            </select>
+          </div>
         </div>
+
+        {/* Unified Model Parameters & Presets Section */}
+        {quickConfig && setQuickConfig && (
+          <div className="chat-settings-params">
+            {/* Presets Row & Details Toggle */}
+            <div className="chat-presets-header">
+              <div className="chat-presets-list">
+                <span className="chat-presets-label">
+                  <Sliders size={11} color="#00d2ff" /> Preset:
+                </span>
+                <button
+                  type="button"
+                  className={`chat-preset-btn ${quickConfig.temperature === 0.7 ? 'active' : ''}`}
+                  onClick={() => setQuickConfig(prev => ({ ...prev, temperature: 0.7, top_p: 0.95, top_k: 40, repeat_penalty: 1.1, max_tokens: 16384, num_ctx: 32768 }))}
+                >
+                  🎯 Bilanciato
+                </button>
+                <button
+                  type="button"
+                  className={`chat-preset-btn ${quickConfig.temperature === 0.2 ? 'active' : ''}`}
+                  onClick={() => setQuickConfig(prev => ({ ...prev, temperature: 0.2, top_p: 0.9, top_k: 40, repeat_penalty: 1.05, max_tokens: 32768, num_ctx: 65536 }))}
+                >
+                  🔬 Codice & Logica
+                </button>
+                <button
+                  type="button"
+                  className={`chat-preset-btn ${quickConfig.temperature === 0.85 ? 'active' : ''}`}
+                  onClick={() => setQuickConfig(prev => ({ ...prev, temperature: 0.85, top_p: 0.95, top_k: 50, repeat_penalty: 1.05, max_tokens: 16384, num_ctx: 65536 }))}
+                >
+                  🎨 Creativo
+                </button>
+                <button
+                  type="button"
+                  className={`chat-preset-btn ${quickConfig.temperature === 1.2 ? 'active' : ''}`}
+                  onClick={() => setQuickConfig(prev => ({ ...prev, temperature: 1.2, top_p: 1.0, top_k: 80, repeat_penalty: 1.0, max_tokens: 32768, num_ctx: 65536 }))}
+                >
+                  🔓 Libero
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className={`chat-params-toggle-btn ${showAdvancedParams ? 'active' : ''}`}
+                onClick={() => setShowAdvancedParams(!showAdvancedParams)}
+              >
+                <span>Parametri Modello (Temp: {quickConfig.temperature})</span>
+                <ChevronDown size={11} className={`chat-params-chevron ${showAdvancedParams ? 'open' : ''}`} />
+              </button>
+            </div>
+
+            {/* Collapsible Sliders & Detailed Parameters */}
+            {showAdvancedParams && (
+              <div className="chat-params-grid">
+                {/* Temp */}
+                <div className="chat-param-card">
+                  <div className="chat-param-header">
+                    <span className="chat-param-title">🌡️ Temperatura:</span>
+                    <span className="chat-param-val" style={{ color: '#00d2ff' }}>{quickConfig.temperature?.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range" min="0" max="2" step="0.05"
+                    value={quickConfig.temperature ?? 0.7}
+                    onChange={e => setQuickConfig(prev => ({ ...prev, temperature: parseFloat(e.target.value) }))}
+                    className="chat-param-slider"
+                    style={{ accentColor: '#00d2ff' }}
+                  />
+                </div>
+
+                {/* Top P */}
+                <div className="chat-param-card">
+                  <div className="chat-param-header">
+                    <span className="chat-param-title">🎯 Top P:</span>
+                    <span className="chat-param-val" style={{ color: '#00d2ff' }}>{quickConfig.top_p?.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range" min="0" max="1" step="0.05"
+                    value={quickConfig.top_p ?? 0.95}
+                    onChange={e => setQuickConfig(prev => ({ ...prev, top_p: parseFloat(e.target.value) }))}
+                    className="chat-param-slider"
+                    style={{ accentColor: '#00d2ff' }}
+                  />
+                </div>
+
+                {/* Top K */}
+                <div className="chat-param-card">
+                  <div className="chat-param-header">
+                    <span className="chat-param-title">🔝 Top K:</span>
+                    <span className="chat-param-val" style={{ color: '#bc8cff' }}>{quickConfig.top_k}</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="100" step="1"
+                    value={quickConfig.top_k ?? 40}
+                    onChange={e => setQuickConfig(prev => ({ ...prev, top_k: parseInt(e.target.value) }))}
+                    className="chat-param-slider"
+                    style={{ accentColor: '#bc8cff' }}
+                  />
+                </div>
+
+                {/* Repeat Penalty */}
+                <div className="chat-param-card">
+                  <div className="chat-param-header">
+                    <span className="chat-param-title">🔁 Penalità Ripetizione:</span>
+                    <span className="chat-param-val" style={{ color: '#10b981' }}>{quickConfig.repeat_penalty?.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range" min="0" max="2" step="0.05"
+                    value={quickConfig.repeat_penalty ?? 1.1}
+                    onChange={e => setQuickConfig(prev => ({ ...prev, repeat_penalty: parseFloat(e.target.value) }))}
+                    className="chat-param-slider"
+                    style={{ accentColor: '#10b981' }}
+                  />
+                </div>
+
+                {/* Max Tokens Select */}
+                <div className="chat-param-card">
+                  <span className="chat-param-title">📝 Max Tokens:</span>
+                  <select
+                    value={quickConfig.max_tokens ?? 16384}
+                    onChange={e => setQuickConfig(prev => ({ ...prev, max_tokens: parseInt(e.target.value) }))}
+                    className="chat-param-select"
+                  >
+                    {[2048, 4096, 8192, 16384, 32768, 65536].map(v => (
+                      <option key={v} value={v} style={{ background: '#0f1420', color: '#fff' }}>
+                        {v >= 1024 ? `${v/1024}K token` : `${v} token`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Context Window Select */}
+                <div className="chat-param-card">
+                  <span className="chat-param-title">🧠 Contesto (num_ctx):</span>
+                  <select
+                    value={quickConfig.num_ctx ?? 32768}
+                    onChange={e => setQuickConfig(prev => ({ ...prev, num_ctx: parseInt(e.target.value) }))}
+                    className="chat-param-select"
+                  >
+                    {[4096, 8192, 16384, 32768, 65536, 131072].map(v => (
+                      <option key={v} value={v} style={{ background: '#0f1420', color: '#fff' }}>
+                        {v >= 1024 ? `${v/1024}K finestra` : `${v} token`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Timeout Select */}
+                <div className="chat-param-card">
+                  <span className="chat-param-title">⏱️ Timeout Risposta:</span>
+                  <select
+                    value={quickConfig.timeout ?? 300}
+                    onChange={e => setQuickConfig(prev => ({ ...prev, timeout: parseInt(e.target.value) }))}
+                    className="chat-param-select"
+                  >
+                    {[60, 120, 300, 600, 900].map(v => (
+                      <option key={v} value={v} style={{ background: '#0f1420', color: '#fff' }}>
+                        {v >= 60 ? `${v/60}m` : `${v}s`} {v === 300 ? '(Consigliato)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       )}
 

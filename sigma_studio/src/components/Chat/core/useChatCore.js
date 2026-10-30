@@ -449,6 +449,16 @@ export default function useChatCore(extraProps = {}) {
           streamingHook.setInput(newText);
         }
       },
+      onSilence: (finalText) => {
+        const prefix = initialInputRef.current ? initialInputRef.current.trim() : '';
+        const textToSend = prefix ? `${prefix} ${finalText}` : finalText;
+        if (textToSend && textToSend.trim()) {
+          setIsRecording(false);
+          streamingHook.setInput('');
+          handleSendMessage(textToSend.trim());
+          if (addToast) addToast('⚡ Messaggio vocale inviato automaticamente', 'info');
+        }
+      },
       onError: (err) => {
         console.warn('SpeechRecognition error:', err);
         setIsRecording(false);

@@ -7,7 +7,6 @@ import ChatInput from '../ui/ChatInput';
 import ChatHistory from '../ChatHistory';
 import FilePicker from '../FilePicker';
 import ActionsBar from '../ActionsBar';
-import QuickConfigPanel from '../ui/QuickConfigPanel';
 import useChatResize from '../useChatResize';
 import useChatDrag from '../useChatDrag';
 import { exportChatPdf } from '../../../utils/exportChatPdf';
@@ -178,23 +177,6 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         />
       </div>
 
-      {core.showQuickConfig && (
-        <QuickConfigPanel
-          quickConfig={core.quickConfig}
-          setQuickConfig={core.setQuickConfig}
-          onClose={() => core.setShowQuickConfig(false)}
-          selectedModel={core.selectedModel}
-          onSelectModel={core.handleModelSelect}
-          availableModels={core.availableModels}
-          activeManifesto={core.activeManifesto}
-          onSelectManifesto={core.handleSelectManifesto}
-          manifestos={core.manifestos}
-          selectedHardware={core.selectedHardware}
-          onSelectHardware={core.setSelectedHardware}
-          availableHardware={core.availableHardware}
-        />
-      )}
-
       <ActionsBar
         activeMode={core.activeMode}
         onSetMode={core.setActiveMode}
@@ -207,12 +189,12 @@ export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, on
         taskProgress={0}
         maxTaskIterations={core.maxTaskIterations}
         contextStats={core.contextStats}
-        onOpenQuickConfig={() => core.setShowQuickConfig(!core.showQuickConfig)}
-        showQuickConfig={core.showQuickConfig}
       />
 
       <ChatInput
         compactControls
+        quickConfig={core.quickConfig}
+        setQuickConfig={core.setQuickConfig}
         input={core.input}
         setInput={core.setInput}
         loading={core.loading}

@@ -586,6 +586,7 @@
 }
 
 .holodeck-omnibar-cluster {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -593,6 +594,140 @@
   width: 100%;
   max-width: 760px;
   min-width: 0;
+}
+
+/* Pannello Opzioni Fluttuante Omnibar */
+.holodeck-omnibar-options-panel {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: 0;
+  width: 320px;
+  max-width: 90vw;
+  background: rgba(13, 17, 26, 0.94);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid color-mix(in srgb, var(--omni-color, var(--holo-accent)) 45%, rgba(255, 255, 255, 0.1));
+  border-radius: 16px;
+  padding: 14px 16px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 24px color-mix(in srgb, var(--omni-color, var(--holo-accent)) 25%, transparent);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: holodeck-panel-pop 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes holodeck-panel-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.holodeck-options-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 8px;
+}
+
+.holodeck-options-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.holodeck-options-close-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.holodeck-options-close-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.holodeck-options-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.holodeck-options-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.holodeck-options-val {
+  font-weight: 700;
+  color: #10b981;
+}
+
+.holodeck-timeout-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.holodeck-timeout-pill {
+  flex: 1 1 calc(33.33% - 4px);
+  min-width: 48px;
+  padding: 5px 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94a3b8;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.holodeck-timeout-pill:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+}
+
+.holodeck-timeout-pill.active {
+  background: color-mix(in srgb, var(--omni-color, #00d2ff) 25%, transparent);
+  border-color: var(--omni-color, #00d2ff);
+  color: #ffffff;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--omni-color, #00d2ff) 35%, transparent);
+}
+
+.holodeck-options-hint {
+  font-size: 0.64rem;
+  color: #64748b;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.holodeck-tool-btn.active {
+  background: color-mix(in srgb, var(--omni-color, #00d2ff) 25%, rgba(255, 255, 255, 0.1));
+  border-color: var(--omni-color, #00d2ff);
+  color: var(--omni-color, #00d2ff);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--omni-color, #00d2ff) 35%, transparent);
 }
 
 /* Riquadri con immagine: si riconoscono a colpo d'occhio, a differenza delle
@@ -906,9 +1041,8 @@
   resize: none;
   overflow-y: auto;
   box-sizing: border-box;
-  max-height: 220px;
+  max-height: 260px;
   min-height: 28px;
-  transition: height 0.15s ease;
 }
 
 .holodeck-prompt-textarea::placeholder {
@@ -1277,7 +1411,7 @@
   outline: none;
   resize: none;
   overflow-y: auto;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, height 0.12s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .dialogue-input::placeholder {

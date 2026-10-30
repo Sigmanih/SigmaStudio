@@ -563,12 +563,16 @@
   .chat-input-controls-strip {
     display: flex !important;
     flex-direction: column !important;
-    gap: 4px !important;
-    padding: 1px 0 3px !important;
+    gap: 8px !important;
+    padding: 8px 10px !important;
   }
 
+  .chat-settings-primary,
   .chat-input-model-role-group {
-    display: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    gap: 8px !important;
   }
 
   .chat-control-field {
@@ -723,9 +727,15 @@
     font-size: 0.76rem !important;
   }
 
-  .chat-header-new-btn {
-    padding: 2px 6px !important;
-    font-size: 0.64rem !important;
+  .chat-header-circle-btn {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+    min-height: 28px !important;
+    max-width: 28px !important;
+    max-height: 28px !important;
+    border-radius: 50% !important;
+    padding: 0 !important;
   }
 
   .chat-header-tokens {
