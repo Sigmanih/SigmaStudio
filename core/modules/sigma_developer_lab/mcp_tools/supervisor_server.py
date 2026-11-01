@@ -1,9 +1,10 @@
 # ==============================================================================
 # core/modules/sigma_developer_lab/mcp_tools/supervisor_server.py
-# Server MCP per Supervisione, Valutazione delle Performance (0-100%) e Ruoli Runtime
+# Audit strutturale e ruoli runtime: i punteggi storici non misurano prestazioni.
 # ==============================================================================
 import json
 import time
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -21,13 +22,27 @@ def _audit_codebase(project_dir: str) -> Dict[str, Any]:
     if not abs_dir.exists():
         return {"exists": False, "error": f"Directory non trovata: {abs_dir}"}
 
-    files = list(abs_dir.rglob("*"))
+    from core.harness.fs_manager import SEARCH_IGNORE_DIRS
+    files = []
+    deadline = time.monotonic() + 3.0
+    partial = False
+    for directory, children, names in os.walk(abs_dir, followlinks=False):
+        children[:] = [name for name in children if name not in SEARCH_IGNORE_DIRS
+                       and not (Path(directory) / name).is_symlink()]
+        for name in names:
+            files.append(Path(directory) / name)
+            if len(files) >= 10000 or time.monotonic() >= deadline:
+                partial = True
+                break
+        if partial:
+            break
     source_files = [f for f in files if f.suffix in (".rs", ".py", ".js", ".jsx", ".ts", ".tsx")]
     test_files = [f for f in files if "test" in f.name.lower()]
     config_files = [f for f in files if f.name in ("Cargo.toml", "package.json", "Dockerfile", "docker-compose.yml")]
 
     return {
         "exists": True,
+        "partial": partial,
         "total_files": len(files),
         "source_files_count": len(source_files),
         "test_files_count": len(test_files),
@@ -50,7 +65,7 @@ class SupervisorMCPServer(BaseMCPServer):
             name="Developer Supervisor",
             version="1.0.0",
             description=(
-                "Supervisione del team: valutazione delle prestazioni (0-100%), "
+                "Supervisione del team: valutazione strutturale euristica, "
                 "registrazione di ruoli a runtime e audit del codice."
             ),
         )
@@ -92,9 +107,9 @@ class SupervisorMCPServer(BaseMCPServer):
             {
                 "name": "evaluate_team_performance",
                 "description": (
-                    "Valuta le prestazioni e le strategie del team di agenti calcolando un punteggio "
-                    "oggettivo (0-100%) sulle 8 dimensioni chiave: Velocità, Efficienza, Scelta Tools, "
-                    "Ricezione Input, Sviluppo Software, Qualità/Test, Retrocompatibilità e Modificabilità Runtime."
+                    "Ispeziona struttura, configurazione e presenza di test. I punteggi sono "
+                    "euristiche statiche di compatibilità: non misurano velocità, efficienza "
+                    "né correttezza del progetto."
                 ),
                 "parameters": {
                     "type": "object",
@@ -168,6 +183,10 @@ class SupervisorMCPServer(BaseMCPServer):
         project_dir = arguments.get("project_dir", "projects/sigma_engine_rust")
         audit = _audit_codebase(project_dir)
 
+        if not audit.get("exists"):
+            return {"success": False, "error": audit.get("error", "Progetto non disponibile."),
+                    "measurement_kind": "static_structure", "performance_measured": False}
+
         # Criteri di valutazione oggettivi sulle 8 dimensioni
         # 1. Velocità
         speed_score = 100 if audit.get("has_cargo_toml") else 60
@@ -208,14 +227,16 @@ class SupervisorMCPServer(BaseMCPServer):
             "success": True,
             "project_dir": project_dir,
             "total_score_percentage": average_score,
+            "measurement_kind": "static_structure",
+            "performance_measured": False,
             "is_perfect_100": average_score == 100.0,
             "breakdown": scores,
             "audit_summary": audit,
-            "recommendations": recommendations or ["Tutti i parametri soddisfano il 100% degli standard di eccellenza."],
+            "recommendations": recommendations or ["Caratteristiche strutturali presenti; prestazioni e correttezza richiedono prove eseguibili."],
             "supervisor_verdict": (
-                "ECCELLENTE: Tutti gli standard di velocità, efficienza e retrocompatibilità sono pienamente raggiunti."
+                "Copertura strutturale completa secondo le euristiche dell'audit; prestazioni non misurate."
                 if average_score == 100.0
-                else f"BUONO: Punteggio medio {average_score}%, margini di rifinitura individuati."
+                else f"Copertura strutturale {average_score}%; prestazioni non misurate."
             ),
         }
 

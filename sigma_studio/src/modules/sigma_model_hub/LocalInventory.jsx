@@ -658,7 +658,7 @@ export default function LocalInventory({
         }
         const passed = data.passed ?? 0;
         const failed = data.failed ?? 0;
-        const total = data.total ?? (passed + failed) ?? 0;
+        const total = data.total ?? (passed + failed);
         const pct = total > 0 ? Math.round((passed / total) * 100) : (data.score ?? data.pass_rate ?? 0);
         return { name, passed, failed, total, pct };
       });

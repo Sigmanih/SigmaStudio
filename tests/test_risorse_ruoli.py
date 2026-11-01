@@ -141,7 +141,7 @@ class TestElencoEServer(unittest.TestCase):
         from fastapi.testclient import TestClient
         from core import fastapi_app
         with mock.patch("core.paths.roles_dir", return_value=self.ruoli):
-            client = TestClient(fastapi_app.app)
+            client = TestClient(fastapi_app.app, base_url="http://localhost", client=("127.0.0.1", 50000))
             self.assertEqual(client.get("/ruoli/medico/personaggio.glb").content, b"rig")
             # Il manifesto c'e' su disco ma non e' una risorsa: non esce da /ruoli/,
             # nemmeno risalendo di cartella (a quel punto risponde la pagina della SPA)

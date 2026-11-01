@@ -12,6 +12,8 @@ made raw file I/O directly from the handler class.
 
 import os
 import shutil
+from pathlib import Path
+from core import paths
 
 from core.store import modules_store
 from core.logger import get_logger
@@ -55,8 +57,12 @@ def handle_create_topic(self) -> None:
         else:
             topic_id = raw_id
 
-        topic_folder = os.path.join("data", topic_id)
-        os.makedirs(topic_folder, exist_ok=True)
+        root = paths.workspace_dir().resolve()
+        target = (root / topic_id.replace("\\", "/")).resolve()
+        if target == root or not target.is_relative_to(root):
+            return self.send_json_response({"error": "Percorso argomento non consentito"}, 400)
+        target.mkdir(parents=True, exist_ok=True)
+        topic_folder = str(target)
 
         def _add(m: dict) -> dict:
             m.setdefault("topics", {})[topic_id] = {

@@ -3,14 +3,18 @@ import {
   Terminal, Palette, Clapperboard, CircuitBoard, CloudDownload, Sparkles, ChevronDown,
   RefreshCw, ExternalLink, Heart, Layers, X, Cpu, MemoryStick,
   Gauge, History, MessageSquare, Orbit, Calendar, Settings, Trash2, Music, Send,
-  Paperclip, Mic, MicOff, AudioLines, FileText, Box, LayoutGrid
+  Paperclip, Mic, MicOff, AudioLines, FileText, Box, LayoutGrid, Sliders
 } from 'lucide-react';
-import { initSpeechRecognition, createWakeWordMic } from './Chat/audioSpeech';
+import { initSpeechRecognition, createWakeWordMic, getVoiceSilenceTimeout, setVoiceSilenceTimeout } from './Chat/audioSpeech';
 
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
-import CyberSpace3DCanvas, { detectLowEndGpu } from './common/CyberSpace3DCanvas';
+import { detectLowEndGpu } from '../utils/graphicsQuality';
+import { groupWorkDomains } from '../utils/workDomains';
+import { prepareRoleChat } from '../services/chatNavigation';
+import WorkDomainActions from './Home/WorkDomainActions';
 import Plancia2D from './common/Plancia2D';
+const CyberSpace3DCanvas = React.lazy(() => import('./common/CyberSpace3DCanvas'));
 import { resolveRoleLucide, roleInitials } from './common/roleIcons';
 import { loadSessions, formatSessionTime, saveActiveSessionId } from './Chat/chatStorage';
 import { useAgentActivity, activityText } from './common/agentActivity';
@@ -42,15 +46,6 @@ const readViewPref = () => {
 // sulla plancia). Le immagini rendono riconoscibile ogni voce a colpo d'occhio.
 const FOOTER_TILES = [
   { key: 'chat', label: 'Chat AI', hint: 'Chat flottante', image: '/images/chat_swarm_banner.jpg', Icon: MessageSquare, color: '#bc8cff', tool: 'chat' },
-  { key: 'developer', label: 'Developer', hint: 'Studio di sviluppo', image: '/images/kernel_graphic.jpg', Icon: Terminal, color: '#eab308', tab: { id: 'developer_studio', name: 'Developer Sigma' } },
-  { key: 'creative', label: 'Creative', hint: 'Immagini e 3D', image: '/images/creative_lab_banner.jpg', Icon: Palette, color: '#ff5064', tab: { id: 'creative_studio', name: 'Creative Studio' } },
-  { key: 'video', label: 'Video', hint: 'Film e manga', image: '/images/regista_cinematografico.jpg', Icon: Clapperboard, color: '#ff007a', tab: { id: 'video_studio', name: 'Video Studio' } },
-  { key: 'kicad', label: 'KiCad', hint: 'Schemi e PCB', image: '/images/hardware_cluster_lab.jpg', Icon: CircuitBoard, color: '#10b981', tab: { id: 'kicad_lab', name: 'KiCad Lab' } },
-  { key: 'models', label: 'Modelli', hint: 'Model Hub', image: '/images/training_lab_hero.jpg', Icon: CloudDownload, color: '#38bdf8', tab: { id: 'model_hub', name: 'Modelli' } },
-  { key: 'graph', label: 'Grafo', hint: 'Dipendenze del codice', image: '/images/knowledge_graph_banner.jpg', Icon: Layers, color: '#06b6d4', tab: { id: 'developer_studio', name: 'Developer Sigma' }, event: 'sigma_dev_open_graph' },
-  { key: 'hardware', label: 'Hardware', hint: 'GPU e VRAM', image: '/images/hardware_nodes_cooling.jpg', Icon: Cpu, color: '#3fb950', tool: 'hardware' },
-  { key: 'roadmap', label: 'Pianificazione', hint: 'Task e calendario', image: '/images/roadmap_plan_banner.jpg', Icon: Calendar, color: '#00f2fe', tool: 'roadmap', module: 'sigma_roadmap' },
-  { key: 'music', label: 'Musica', hint: 'Focus lounge', image: '/images/account_voice_banner.jpg', Icon: Music, color: '#f472b6', tool: 'music', module: 'audio_studio' },
   { key: 'providers', label: 'Providers', hint: 'Modelli e API', image: '/images/mcp_protocol_hub.jpg', Icon: Settings, color: '#ffb86c', tool: 'providers' },
   { key: 'cleanup', label: 'Pulisci', hint: 'RAM e cronologia', image: '/images/swarm_graphic.jpg', Icon: Trash2, color: '#94a3b8', tool: 'cleanup' }
 ];
@@ -142,7 +137,7 @@ const loadRecentChats = () => loadSessions()
 
 export default function WelcomeDashboard({ modules = [], openTab }) {
   const { theme, manifesti: contextManifesti, aiChatOpen, setAiChatOpen, addToast } = useApp();
-  const { modulesState } = useModuleState();
+  const { moduleCatalog } = useModuleState();
   // Anche "cream" e' un tema chiaro: prima la plancia restava scura sotto un'interfaccia chiara
   const isLight = theme === 'light' || theme === 'cream';
 
@@ -162,20 +157,54 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   const [attachedFiles, setAttachedFiles] = useState([]);
   const fileInputRef = useRef(null);
 
-  // Textarea ad auto-espansione dinamica
+  // Pannello opzioni cluster omnibar e timeout invio vocale
+  const [showOmniOptions, setShowOmniOptions] = useState(false);
+  const [voiceSilenceTimeout, setVoiceSilenceTimeoutState] = useState(() => getVoiceSilenceTimeout());
+
+  useEffect(() => {
+    const handleTimeoutUpdated = (e) => {
+      if (e && e.detail !== undefined) setVoiceSilenceTimeoutState(e.detail);
+    };
+    window.addEventListener('sigma-voice-timeout-updated', handleTimeoutUpdated);
+    return () => window.removeEventListener('sigma-voice-timeout-updated', handleTimeoutUpdated);
+  }, []);
+
+  const handleVoiceTimeoutChange = (newSec) => {
+    const val = parseFloat(newSec);
+    setVoiceSilenceTimeoutState(val);
+    setVoiceSilenceTimeout(val);
+  };
+
+  // Textarea ad auto-espansione dinamica senza slider prematuro
   const textareaRef = useRef(null);
+  const dialogueTextareaRef = useRef(null);
+
   const adjustHeight = (el) => {
     if (!el) return;
-    el.style.height = 'auto';
-    const newHeight = Math.min(Math.max(el.scrollHeight, 26), 220);
+    el.style.height = '0px';
+    const scrollH = el.scrollHeight;
+    const newHeight = Math.min(Math.max(scrollH, 36), 260);
     el.style.height = `${newHeight}px`;
+    el.style.overflowY = scrollH > 260 ? 'auto' : 'hidden';
+  };
+
+  const adjustDialogueHeight = (el) => {
+    adjustHeight(el);
   };
 
   useEffect(() => {
     if (!quickPrompt && textareaRef.current) {
-      textareaRef.current.style.height = '26px';
+      textareaRef.current.style.height = '36px';
+      textareaRef.current.style.overflowY = 'hidden';
     } else if (textareaRef.current) {
       adjustHeight(textareaRef.current);
+    }
+
+    if (!quickPrompt && dialogueTextareaRef.current) {
+      dialogueTextareaRef.current.style.height = '36px';
+      dialogueTextareaRef.current.style.overflowY = 'hidden';
+    } else if (dialogueTextareaRef.current) {
+      adjustHeight(dialogueTextareaRef.current);
     }
   }, [quickPrompt]);
 
@@ -312,6 +341,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         color: r.domainColor || ROLE_PALETTE[i % ROLE_PALETTE.length],
         desc: r.description || r.desc || 'Agente intelligente con competenze verticali e tool dedicati.',
         category,
+        workDomain: r.workDomain || r.work_domain,
         prompt: resolveRolePrompt({ ...r, id }),
         // Personaggio 3D installato con il ruolo: senza, la plancia usa l'ufficiale procedurale
         character3d: r.character3d || null
@@ -319,6 +349,8 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       return enriched;
     });
   }, [loadedRoles]);
+
+  const homeRoles = useMemo(() => groupWorkDomains(enrichedRoles), [enrichedRoles]);
 
   useEffect(() => {
     if (selectedRole === 'auto') return;
@@ -348,7 +380,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     loading: true,
     checking: false,
     updateAvailable: false,
-    currentVersion: '0.9.0',
+    currentVersion: '0.9.1',
     commitsBehind: 0,
     newCommits: [],
     localCommit: '',
@@ -371,7 +403,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           loading: false,
           checking: false,
           updateAvailable: !!data.update_available,
-          currentVersion: data.current_version || '0.9.0',
+          currentVersion: data.current_version || '0.9.1',
           commitsBehind: data.commits_behind || 0,
           newCommits: Array.isArray(data.new_commits) ? data.new_commits : [],
           localCommit: data.local_commit || '',
@@ -420,14 +452,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   // Agente selezionato e focalizzato nell'ambiente 3D
   const [focusedAgent, setFocusedAgent] = useState(null);
 
-  // Dialogue pod auto-espansione in larghezza ed altezza
-  const dialogueTextareaRef = useRef(null);
-  const adjustDialogueHeight = (el) => {
-    if (!el) return;
-    el.style.height = 'auto';
-    const newHeight = Math.min(Math.max(el.scrollHeight, 44), 360);
-    el.style.height = `${newHeight}px`;
-  };
+
 
   const dialoguePodWidth = useMemo(() => {
     const len = (quickPrompt || '').length;
@@ -500,15 +525,11 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   // conversazione di quell'agente o aprirne una nuova.
   const handleStartChatWithRole = (roleId, customText = '', filesToSend = [], send = true) => {
     try {
-      if (roleId) localStorage.setItem('sigma_active_role', roleId);
-      if (customText && customText.trim()) {
-        localStorage.setItem('sigma_pending_chat_prompt', customText.trim());
-      }
-      if (Array.isArray(filesToSend) && filesToSend.length > 0) {
-        localStorage.setItem('sigma_pending_chat_files', JSON.stringify(filesToSend));
-      }
-      if (send) localStorage.setItem('sigma_pending_chat_send', '1');
-    } catch (e) {}
+      prepareRoleChat(localStorage, { roleId, text: customText, files: filesToSend, send });
+    } catch (error) {
+      addToast(`Impossibile preparare la chat: ${error.message}`, 'error');
+      return;
+    }
     // Se la chat e' gia' aperta riceve l'evento, altrimenti legge i valori al montaggio
     if (aiChatOpen) window.dispatchEvent(new CustomEvent('sigma-chat-select-role', { detail: roleId }));
     else setAiChatOpen(true);
@@ -544,6 +565,18 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           if (textareaRef.current) adjustHeight(textareaRef.current);
         }
       },
+      onSilence: (finalText) => {
+        const prefix = initialInputRef.current ? initialInputRef.current.trim() : '';
+        const textToSend = prefix ? `${prefix} ${finalText}` : finalText;
+        if (textToSend && textToSend.trim()) {
+          setIsRecording(false);
+          setQuickPrompt('');
+          handleStartChatWithRole(selectedRole, textToSend.trim(), attachedFiles);
+          setAttachedFiles([]);
+          if (textareaRef.current) textareaRef.current.style.height = '36px';
+          if (addToast) addToast('⚡ Richiesta vocale inviata alla chat!', 'info');
+        }
+      },
       onError: (err) => {
         console.warn('SpeechRecognition error:', err);
         setIsRecording(false);
@@ -568,7 +601,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       console.error('Start recognition error:', err);
       setIsRecording(false);
     }
-  }, [isRecording, quickPrompt, addToast, stopSmartMic]);
+  }, [isRecording, quickPrompt, addToast, stopSmartMic, selectedRole, attachedFiles]);
 
   const toggleSmartMic = useCallback(() => {
     if (smartMicRef.current) {
@@ -641,7 +674,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     openTab?.({ name: tile.tab.name }, tile.tab.id);
   };
 
-  const footerTiles = FOOTER_TILES.filter(t => !t.module || modulesState?.[t.module] === true);
+  const footerTiles = FOOTER_TILES;
 
   const handleQuickPromptSubmit = (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -706,7 +739,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       {/* ── 0. Plancia 3D, plancia 2D, o sfondo statico quando la grafica e' spenta ── */}
       {viewPref === '2d' ? (
         <Plancia2D
-          roles={enrichedRoles}
+          roles={homeRoles}
           selectedAgentId={focusedAgent ? focusedAgent.id : ''}
           activity={agentActivity}
           onSelectAgent={(agent) => {
@@ -717,9 +750,10 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       ) : qualityPref === 'off' ? (
         <div className="holodeck-static-bg" aria-hidden="true" />
       ) : (
+        <React.Suspense fallback={<Plancia2D roles={homeRoles} onSelectAgent={focusRole} activity={agentActivity} />}>
         <CyberSpace3DCanvas
           isLight={isLight}
-          roles={enrichedRoles}
+          roles={homeRoles}
           selectedAgentId={focusedAgent ? focusedAgent.id : ''}
           quality={qualityPref}
           throttled={agentBusy}
@@ -730,6 +764,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           }}
           interactive={true}
         />
+        </React.Suspense>
       )}
 
       <div className="holodeck-hud-overlay">
@@ -737,11 +772,11 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         {/* Barra superiore: identita', stato reale del sistema, azioni */}
         <header className="holodeck-topbar">
           <div className="holodeck-hud-tag">
-            <img src="/images/SigmaStudio.png" alt="" className="holodeck-hud-logo" />
+            <img src="/images/sigma_logo_harmonic_flow.jpg" alt="" className="holodeck-hud-logo" />
             <span className="holodeck-brand">Sigma Studio</span>
             <span className="holodeck-version">v{updateState.currentVersion}</span>
             <span className="holodeck-hud-sep" aria-hidden="true" />
-            <span className="holodeck-hud-meta">{enrichedRoles.length} agenti</span>
+            <span className="holodeck-hud-meta">{homeRoles.length} campi · {enrichedRoles.length} specialisti</span>
           </div>
 
           {agentActivity.state !== 'idle' && (
@@ -913,6 +948,9 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
               </button>
             </div>
 
+            <WorkDomainActions agent={focusedAgent} catalog={moduleCatalog} onOpenTab={openTab}
+              onChat={() => handleStartChatWithRole(focusedAgent.id, '', [], false)} />
+
             {focusedAgent.prompt && quickPrompt !== focusedAgent.prompt && (
               <button
                 type="button"
@@ -968,6 +1006,60 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           <footer className="holodeck-bottom-deck">
 
             <div className="holodeck-omnibar-cluster">
+              {showOmniOptions && (
+                <div className="holodeck-omnibar-options-panel">
+                  <div className="holodeck-options-header">
+                    <span className="holodeck-options-title">
+                      <Sliders size={13} style={{ color: '#00d2ff' }} /> Opzioni & Dettatura Vocale
+                    </span>
+                    <button
+                      type="button"
+                      className="holodeck-options-close-btn"
+                      onClick={() => setShowOmniOptions(false)}
+                      title="Chiudi opzioni"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+
+                  <div className="holodeck-options-body">
+                    {/* Timeout Invio Vocale */}
+                    <div className="holodeck-options-row">
+                      <div className="holodeck-option-desc">
+                        <span className="holodeck-option-label">
+                          <Mic size={13} style={{ color: voiceSilenceTimeout > 0 ? '#10b981' : '#8b8fa3' }} /> Timeout Invio Vocale Automatico:
+                        </span>
+                        <span className="holodeck-option-hint">
+                          {voiceSilenceTimeout > 0
+                            ? `Dopo ${voiceSilenceTimeout}s di silenzio dall'ultima parola, il messaggio viene inviato automaticamente alla chat senza premere invio.`
+                            : "Invio vocale automatico disattivato: dovrai premere Invio per spedire il messaggio."}
+                        </span>
+                      </div>
+
+                      <div className="holodeck-timeout-pills">
+                        {[
+                          { val: 1.0, label: '1.0s (Rapido)' },
+                          { val: 1.5, label: '1.5s (Veloce)' },
+                          { val: 2.0, label: '2.0s (Consigliato)' },
+                          { val: 3.0, label: '3.0s (Pausa)' },
+                          { val: 5.0, label: '5.0s (Lungo)' },
+                          { val: 0.0, label: 'Off (Manuale)' }
+                        ].map(opt => (
+                          <button
+                            key={opt.val}
+                            type="button"
+                            className={`holodeck-timeout-pill ${voiceSilenceTimeout === opt.val ? 'active' : ''}`}
+                            onClick={() => handleVoiceTimeoutChange(opt.val)}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <form
                 className="holodeck-omnibar-form"
                 onSubmit={handleQuickPromptSubmit}
@@ -1087,6 +1179,16 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
                     aria-label="Ascolto continuo Hey Sigma"
                   >
                     <AudioLines size={16} />
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`holodeck-tool-btn holodeck-options-btn ${showOmniOptions ? 'active' : ''}`}
+                    onClick={() => setShowOmniOptions(prev => !prev)}
+                    title={showOmniOptions ? 'Chiudi opzioni' : 'Opzioni e timeout invio vocale'}
+                    aria-label="Opzioni e impostazioni"
+                  >
+                    <Sliders size={16} />
                   </button>
 
                   <button

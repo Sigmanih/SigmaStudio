@@ -34,6 +34,10 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from core.logger import get_logger
+from core.system.runtime_env import apply_hardware_env
+apply_hardware_env()
+from core.security.http_access import HTTPAccessMiddleware, allowed_origins
+from core.security.request_limits import RequestLimitMiddleware
 from core.sandbox import is_path_allowed
 from core.store import modules_store, tasks_store
 from core.api_router import register_get_handlers, register_post_handlers
@@ -102,7 +106,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Σ-SIGMA Studio API",
     description="Unified Research Environment & Cognitive Orchestration Engine",
-    version="0.9.0-beta",
+    version="0.9.1",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -110,11 +114,13 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLimitMiddleware)
+app.add_middleware(HTTPAccessMiddleware)
 
 
 # Handlers are synchronous, so every API request spends its life on a worker
@@ -130,6 +136,8 @@ app.add_middleware(
 # not compete for CPU) rather than from the core count.
 _API_WORKERS = 32
 _STREAM_WORKERS = 16
+_SSE_QUEUE_SIZE = 256
+_stream_slots = threading.BoundedSemaphore(_STREAM_WORKERS)
 
 _api_executor = concurrent.futures.ThreadPoolExecutor(
     max_workers=_API_WORKERS, thread_name_prefix="sigma-api"
@@ -160,16 +168,35 @@ async def _aiter_blocking(factory):
     thread, never on the loop.
     """
     loop = asyncio.get_running_loop()
-    items: asyncio.Queue = asyncio.Queue()
+    items: asyncio.Queue = asyncio.Queue(maxsize=_SSE_QUEUE_SIZE)
     stop = threading.Event()
+    if not _stream_slots.acquire(blocking=False):
+        raise RuntimeError("Troppi stream attivi. Riprova fra poco.")
 
     def _deliver(item) -> bool:
+        pending = None
         try:
-            loop.call_soon_threadsafe(items.put_nowait, item)
-            return True
-        except RuntimeError:                    # loop closed under us
+            if stop.is_set():
+                return False
+            delivery = items.put(item)
+            try:
+                pending = asyncio.run_coroutine_threadsafe(delivery, loop)
+            except RuntimeError:
+                delivery.close()
+                raise
+            while not stop.is_set():
+                try:
+                    pending.result(timeout=0.1)
+                    return True
+                except concurrent.futures.TimeoutError:
+                    continue
+            return False
+        except (RuntimeError, concurrent.futures.CancelledError):
             stop.set()
             return False
+        finally:
+            if pending is not None and not pending.done():
+                pending.cancel()
 
     def _pump():
         source = None
@@ -192,9 +219,17 @@ async def _aiter_blocking(factory):
                     source.close()
                 except Exception as exc:
                     log.debug("[FastAPI] chiusura generatore ignorata: %s", exc)
-            _deliver(_STREAM_SENTINEL)
+            try:
+                _deliver(_STREAM_SENTINEL)
+            finally:
+                # Il posto resta occupato finché il lavoro bloccante termina davvero.
+                _stream_slots.release()
 
-    _stream_executor.submit(_pump)
+    try:
+        _stream_executor.submit(_pump)
+    except RuntimeError:
+        _stream_slots.release()
+        raise
     try:
         while True:
             item = await items.get()
@@ -243,7 +278,7 @@ class FastAPIHandlerAdapter:
         doing nothing at all.
         """
         self._loop = loop
-        self._stream_queue = asyncio.Queue()
+        self._stream_queue = asyncio.Queue(maxsize=_SSE_QUEUE_SIZE)
         return self._stream_queue
 
     def emit(self, item) -> None:
@@ -254,7 +289,33 @@ class FastAPIHandlerAdapter:
             self.sse_queue.put(item)
             return
         try:
-            self._loop.call_soon_threadsafe(self._stream_queue.put_nowait, item)
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        try:
+            if current_loop is self._loop:
+                try:
+                    self._stream_queue.put_nowait(item)
+                except asyncio.QueueFull as exc:
+                    self.client_gone.set()
+                    raise ClientGone("Il lettore non consuma gli eventi.") from exc
+                return
+            pending = self._stream_queue.put(item)
+            try:
+                future = asyncio.run_coroutine_threadsafe(pending, self._loop)
+            except RuntimeError:
+                pending.close()
+                raise
+            deadline = time.monotonic() + 30.0
+            while True:
+                try:
+                    future.result(timeout=0.25)
+                    return
+                except concurrent.futures.TimeoutError:
+                    if self.client_gone.is_set() or time.monotonic() >= deadline:
+                        future.cancel()
+                        self.client_gone.set()
+                        raise ClientGone("Il lettore ha interrotto o rallentato lo stream.")
         except RuntimeError as exc:            # loop already closed
             self.client_gone.set()
             raise ClientGone(str(exc)) from exc
@@ -646,19 +707,10 @@ register_post_handlers(FastAPIHandlerAdapter)
 # (Raspberry Pi, server remoto, clone da git) anche prima che l'utente abbia
 # configurato il marketplace o salvato qualsiasi impostazione.
 # ==============================================================================
-try:
-    from core.modules.sigma_model_hub.backend import handlers as _hub_handlers
-    _hub_handlers.register_routes(app)
-    log.info("[FastAPI] sigma_model_hub caricato come modulo core.")
-except Exception as _hub_err:
-    import traceback as _hub_tb
-    log.warning(
-        f"[FastAPI] sigma_model_hub non caricato (verrà riprovato dal ModuleLoader): "
-        f"{type(_hub_err).__name__}: {_hub_err}\n{_hub_tb.format_exc()}"
-    )
 
 # Caricamento dinamico dei moduli opzionali installati (Training Lab, Creative Lab, Domotica, etc.)
 _module_loader_error: str | None = None
+module_loader = None
 try:
     from core.module_loader import ModuleLoader
     module_loader = ModuleLoader()
@@ -669,11 +721,6 @@ except Exception as _mod_err:
     _module_loader_error = f"{type(_mod_err).__name__}: {_mod_err}\n{_tb.format_exc()}"
     log.warning(f"[FastAPI] Avviso inizializzazione ModuleLoader: {_mod_err}")
 # Fallback per /api/developer/status se sigma_developer_lab non è installato o attivo
-if "sigma_developer_lab" not in getattr(module_loader, "_loaded", {}):
-    @app.get("/api/developer/status")
-    async def api_developer_status_fallback():
-        """Informa il frontend che il modulo Developer Lab non è attualmente installato/attivo."""
-        return {"success": True, "available": False, "workspace_root": ""}
 
 
 @app.get("/api/harness/activity")
@@ -742,8 +789,6 @@ async def api_harness_fanout(request: Request):
     """
     import asyncio
     import json as _json
-    import queue as _queue
-    import threading as _threading
 
     from core.harness.fanout import run_queue
 
@@ -769,25 +814,12 @@ async def api_harness_fanout(request: Request):
         opzioni["workspace_root"] = get_default_workspace_root()
 
     async def flusso():
-        eventi: "_queue.Queue" = _queue.Queue(maxsize=512)
-        FINE = object()
-
-        def produttore():
-            try:
-                for evento in run_queue(queue_id, **opzioni):
-                    eventi.put(evento)
-            except Exception as exc:
-                log.exception("[FastAPI] ventaglio fallito: %s", exc)
-                eventi.put({"type": "error", "error": str(exc)})
-            finally:
-                eventi.put(FINE)
-
-        _threading.Thread(target=produttore, name="fanout-stream", daemon=True).start()
-        while True:
-            evento = await asyncio.to_thread(eventi.get)
-            if evento is FINE:
-                break
-            yield "data: " + _json.dumps(evento, default=str) + "\n\n"
+        try:
+            async for evento in _aiter_blocking(lambda: run_queue(queue_id, **opzioni)):
+                yield "data: " + _json.dumps(evento, default=str) + "\n\n"
+        except Exception as exc:
+            log.exception("[FastAPI] ventaglio fallito: %s", exc)
+            yield "data: " + _json.dumps({"type": "error", "error": str(exc)}) + "\n\n"
 
     return StreamingResponse(flusso(), media_type="text/event-stream")
 
@@ -849,6 +881,14 @@ async def api_modules_sync(request: Request):
         return {"success": False, "errors": [str(exc)], "changed": {}}
 
 
+@app.get("/api/modules/local")
+async def api_modules_local():
+    if module_loader is None:
+        return JSONResponse(status_code=503, content={"error": "Registro moduli non disponibile."})
+    modules = await asyncio.to_thread(module_loader.describe_modules)
+    return {"modules": modules, "modules_state": {entry["id"]: entry["available"] for entry in modules}}
+
+
 @app.get("/api/modules/status")
 async def api_modules_status():
     """Diagnostica: quali moduli opzionali sono caricati e quali route /api/models/* sono registrate."""
@@ -883,7 +923,6 @@ async def api_modules_status():
         "module_loader_error": _module_loader_error,
         "installed_state": installed,
         "loaded_modules": loaded_modules,
-        "sigma_model_hub_active": "sigma_model_hub" in loaded_modules,
         "model_hub_get_routes": sorted(model_get_routes),
         "model_hub_post_routes": sorted(model_post_routes),
         "total_registered_get": total_get,
@@ -941,6 +980,9 @@ async def _dispatch_route(request: Request, method: str):
 
     # Check if SSE streaming is expected
     if request.url.path in SSE_ENDPOINTS:
+        if not _stream_slots.acquire(blocking=False):
+            return JSONResponse(status_code=503, content={"error": "Troppi stream attivi. Riprova fra poco."},
+                                headers={"Retry-After": "1"})
         loop = asyncio.get_running_loop()
         stream_queue = adapter.attach_stream(loop)
 
@@ -970,23 +1012,34 @@ async def _dispatch_route(request: Request, method: str):
                 # what lets the generator below finish instead of being garbage
                 # collected mid-await.
                 try:
-                    loop.call_soon_threadsafe(stream_queue.put_nowait, None)
-                except RuntimeError:
-                    pass
+                    adapter.emit(None)
+                except (ClientGone, RuntimeError):
+                    log.debug("Stream gia' chiuso: %s", request.url.path)
+                finally:
+                    _stream_slots.release()
 
         # A dedicated thread rather than a pool slot: this one is a user's chat
         # turn, it spends nearly all its life blocked on the engine's own queue,
         # and queueing it behind a pool would leave the request with no reply at
         # all -- not even the "engine busy" notice the runtime sends.
-        threading.Thread(
-            target=_run_in_thread, daemon=True,
-            name=f"sigma-sse-{request.url.path}",
-        ).start()
+        try:
+            threading.Thread(
+                target=_run_in_thread, daemon=True,
+                name=f"sigma-sse-{request.url.path}",
+            ).start()
+        except RuntimeError:
+            _stream_slots.release()
+            log.exception("Impossibile avviare lo stream %s", request.url.path)
+            return JSONResponse(status_code=503, content={"error": "Stream temporaneamente non disponibile."})
 
         async def sse_generator():
             try:
-                while True:
-                    item = await stream_queue.get()
+                while not adapter.client_gone.is_set():
+                    try:
+                        item = await asyncio.wait_for(stream_queue.get(), timeout=15.0)
+                    except asyncio.TimeoutError:
+                        yield ": keep-alive\n\n"
+                        continue
                     if item is None:
                         break
                     yield item
@@ -1168,26 +1221,29 @@ async def v1_completions(request: Request):
             created_ts = int(time.time())
             from core.engine.unified_runtime import sigma_engine
             from core.engine.evaluation import is_notice
-            async for chunk in _aiter_blocking(lambda: sigma_engine.generate_stream(
-                prompt=str(prompt),
-                system_prompt="",
-                model_name=model,
-                messages=messages,
-                params=params,
-                thinking=thinking,
-            )):
-                token = chunk.get("token", "")
-                if is_notice(chunk) and not chunk.get("error"):
-                    continue
-                if token:
-                    payload = {
-                        "id": req_id,
-                        "object": "text_completion",
-                        "created": created_ts,
-                        "model": model,
-                        "choices": [{"text": token, "index": 0, "logprobs": None, "finish_reason": None}]
-                    }
-                    yield f"data: {json.dumps(payload)}\n\n"
+            try:
+                async for chunk in _aiter_blocking(lambda: sigma_engine.generate_stream(
+                    prompt=str(prompt),
+                    system_prompt="",
+                    model_name=model,
+                    messages=messages,
+                    params=params,
+                    thinking=thinking,
+                )):
+                    token = chunk.get("token", "")
+                    if is_notice(chunk) and not chunk.get("error"):
+                        continue
+                    if token:
+                        payload = {
+                            "id": req_id,
+                            "object": "text_completion",
+                            "created": created_ts,
+                            "model": model,
+                            "choices": [{"text": token, "index": 0, "logprobs": None, "finish_reason": None}]
+                        }
+                        yield f"data: {json.dumps(payload)}\n\n"
+            except Exception as exc:
+                yield f"data: {json.dumps({'error': {'message': str(exc), 'type': 'server_error'}})}\n\n"
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(sse_stream(), media_type="text/event-stream; charset=utf-8")
@@ -1683,72 +1739,6 @@ async def engine_server_info_route():
 # Il modulo ha dipendenze proprie: su un clone appena fatto non sono ancora
 # installate, e prima un import fallito qui impediva l'avvio dell'intero Sigma
 # Studio per un modulo opzionale.
-try:
-    from core.modules.sigma_network import router as sigma_network_router
-    app.include_router(sigma_network_router, prefix="/api/sigma_network",
-                       tags=["Sigma Network"])
-except Exception as _sn_exc:
-    # Exception e non ImportError soltanto: il modulo esegue codice al
-    # caricamento -- identita', registro dei peer -- e un file di stato
-    # illeggibile lo ferma senza essere un errore di import.
-    log.warning("[FastAPI] Sigma Network non caricato all'avvio: %s", _sn_exc, exc_info=True)
-    from fastapi import APIRouter, Request, Response
-    from starlette.responses import JSONResponse
-
-    _SIGMA_NETWORK_MOTIVO = f"{type(_sn_exc).__name__}: {_sn_exc}"
-    _sigma_network_subapp = None
-
-    sigma_network_router = APIRouter()
-
-    @sigma_network_router.api_route(
-        "/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
-    )
-    async def _sigma_network_gateway(path: str, request: Request):
-        global _sigma_network_subapp
-        try:
-            # Prova a caricare a runtime: se cryptography e dipendenze sono state installate,
-            # rispondiamo direttamente con il router reale invece del 503 fisso.
-            if _sigma_network_subapp is None:
-                from fastapi import FastAPI
-                from core.modules.sigma_network.handlers import router as real_router
-                sub = FastAPI()
-                sub.include_router(real_router)
-                _sigma_network_subapp = sub
-
-            scope = dict(request.scope)
-            scope["path"] = "/" + path.lstrip("/")
-            scope["root_path"] = request.scope.get("root_path", "") + "/api/sigma_network"
-
-            status_code = 200
-            headers = []
-            body_parts = []
-
-            async def receive():
-                return await request.receive()
-
-            async def send(message):
-                nonlocal status_code, headers
-                if message["type"] == "http.response.start":
-                    status_code = message["status"]
-                    headers = [(k.decode("latin1"), v.decode("latin1")) for k, v in message.get("headers", [])]
-                elif message["type"] == "http.response.body":
-                    body_parts.append(message.get("body", b""))
-
-            await _sigma_network_subapp(scope, receive, send)
-
-            raw_body = b"".join(body_parts)
-            h_dict = dict(headers)
-            media_type = h_dict.get("content-type")
-            return Response(content=raw_body, status_code=status_code, headers=h_dict, media_type=media_type)
-        except Exception as exc:
-            return JSONResponse(status_code=503, content={
-                "error": "Modulo Sigma Network non caricato.",
-                "reason": f"{type(exc).__name__}: {exc}",
-                "hint": "pip install -r core/modules/sigma_network/requirements.txt",
-            })
-
-    app.include_router(sigma_network_router, prefix="/api/sigma_network",
-                       tags=["Sigma Network"])
 
 # --- SSL / TLS: Certificate Authority locale ---
 
@@ -1985,25 +1975,26 @@ async def serve_static_or_spa(path: str):
         if target:
             return FileResponse(target)
 
-    target_img = _ROOT / "images" / path
-    if target_img.exists() and target_img.is_file():
+    target_img = _resolve_inside(_ROOT / "images", path)
+    if target_img:
         return FileResponse(target_img)
 
     if path.startswith("images/"):
-        target_img2 = Path(path)
-        if target_img2.exists() and target_img2.is_file():
+        target_img2 = _resolve_inside(_ROOT / "images", path[len("images/"):])
+        if target_img2:
             return FileResponse(target_img2)
 
-    target_dist = DIST_DIR / path
-    if target_dist.exists() and target_dist.is_file():
+    target_dist = _resolve_inside(DIST_DIR, path)
+    if target_dist:
         return FileResponse(target_dist)
 
-    target_data = _ROOT / "data" / path
-    if target_data.exists() and target_data.is_file():
+    target_data = _resolve_inside(DATA_DIR, path)
+    if target_data:
         return FileResponse(target_data)
 
-    for r_cand in (_ROOT / "roles" / path, _ROOT / "Ruoli" / path, _ROOT / "ruoli" / path, _ROOT / "manifesti" / path):
-        if r_cand.exists() and r_cand.is_file():
+    for root_name in ("roles", "Ruoli", "ruoli", "manifesti"):
+        r_cand = _resolve_inside(_ROOT / root_name, path)
+        if r_cand:
             return FileResponse(r_cand)
 
     # Missing static assets, scripts, stylesheets, fonts or images must NEVER return index.html (which causes MIME text/html errors)

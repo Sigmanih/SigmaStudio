@@ -30,10 +30,10 @@ export default function Plancia2D({ roles = [], selectedAgentId = '', onSelectAg
     // Lo strato esterno fa da contenitore per le query: una container query
     // non si applica all'elemento contenitore, solo a cio' che contiene
     <div className="plancia2d-scena">
-      <div className="plancia2d" role="list" aria-label="Agenti della plancia">
+      <div className="plancia2d" role="group" aria-label="Campi di lavoro della plancia">
         <div className="plancia2d-core" aria-hidden="true">
-          <img src="/images/SigmaStudio.png" alt="" />
-          <span>{roles.length} agenti</span>
+          <img src="/images/sigma_logo_harmonic_flow.jpg" alt="" />
+          <span>{roles.length} campi di lavoro</span>
         </div>
 
         {roles.map((role, i) => {
@@ -47,7 +47,6 @@ export default function Plancia2D({ roles = [], selectedAgentId = '', onSelectAg
             <button
               key={role.id}
               type="button"
-              role="listitem"
               className={`plancia2d-agent mode-${mode}${isActive ? ' is-active' : ''}${selected ? ' is-selected' : ''}`}
               style={{
                 '--agent-color': role.color || '#00d2ff',

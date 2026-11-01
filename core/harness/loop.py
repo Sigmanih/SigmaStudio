@@ -770,6 +770,9 @@ def scrittura_consentita(destinazione: str, workspace_root: str) -> bool:
     basso = pulito.lower().replace(chr(92), chr(47))
     if basso.startswith(("$env:", "%temp%", "%tmp%", "/tmp", "/dev/", "nul")):
         return True
+    from pathlib import PureWindowsPath
+    if PureWindowsPath(pulito).is_absolute() and PureWindowsPath(workspace_root).is_absolute():
+        return not PureWindowsPath(pulito).is_relative_to(PureWindowsPath(workspace_root))
     if not Path(pulito).is_absolute():
         relativo = basso[2:] if basso.startswith("./") else basso
         return relativo.startswith("var/") or relativo == "var"
@@ -1531,13 +1534,19 @@ def resolve_workspace_path(path: Optional[str], workspace_root: str,
             return f"docker://{cid}{internal_root}"
         clean_docker = path.strip().strip("'\"`")
         if clean_docker.startswith("docker://"):
-            return clean_docker
-        clean_docker = re.sub(r"^[./\\]+", "", clean_docker).replace("\\", "/")
+            requested_cid, clean_docker = parse_docker_uri(clean_docker)
+            if strict and requested_cid != cid:
+                raise FuoriDalWorkspace(path, workspace_root)
+        clean_docker = clean_docker.replace("\\", "/")
         norm_docker = posixpath.normpath(posixpath.join(internal_root, clean_docker))
+        if strict and posixpath.commonpath((internal_root, norm_docker)) != internal_root:
+            raise FuoriDalWorkspace(path, workspace_root)
         return f"docker://{cid}{norm_docker}"
 
     # Se il singolo path richiesto porta già il prefisso docker://
     if isinstance(path, str) and path.strip().strip("'\"`").startswith("docker://"):
+        if strict:
+            raise FuoriDalWorkspace(path, workspace_root)
         return path.strip().strip("'\"`")
 
     workspace_root = os.path.abspath(workspace_root)
@@ -1553,8 +1562,9 @@ def resolve_workspace_path(path: Optional[str], workspace_root: str,
     ):
         return workspace_root
 
-    # Strip redundant leading slashes and prefix words
-    clean = re.sub(r"^[./\\]+", "", clean)
+    # Togliere tutti i punti trasformava un'uscita '../' in un percorso ammesso.
+    while clean.startswith(("./", ".\\")):
+        clean = clean[2:]
 
     # Un modello scrive spesso il nome del progetto in testa al percorso, e
     # altrettanto spesso omette la cartella del frontend. Le due correzioni si
@@ -1748,14 +1758,13 @@ def _separa_corpo_grezzo(body: str) -> Tuple[Optional[str], Optional[str]]:
     caso dentro un JSON, e un separatore confondibile con il contenuto
     reintrodurrebbe l ambiguita che questa forma esiste per togliere.
     """
-    righe = (body or "").splitlines()
+    righe = (body or "").splitlines(keepends=True)
     for indice, riga in enumerate(righe):
         if riga.strip() == _SEPARATORE_CORPO:
             # Un file di codice finisce con un a capo: `splitlines` lo perde,
             # e un file scritto senza e quello che i diff segnalano per sempre.
-            coda = "\n" if righe[indice + 1:] and (body or "").endswith("\n") else ""
-            intestazione = "\n".join(righe[:indice]).strip()
-            return intestazione, "\n".join(righe[indice + 1:]) + coda
+            intestazione = "".join(righe[:indice]).strip()
+            return intestazione, "".join(righe[indice + 1:])
     return body, None
 
 
@@ -1783,15 +1792,18 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
         raw_block_end = len(text)
         if fence_matches:
             for fm in fence_matches:
-                cand = text[start_body : start_body + fm.start()].strip()
-                if _loads_forgiving(cand) is not None:
+                end_body = start_body + fm.start() + (1 if text[start_body + fm.start():].startswith("\n") else 0)
+                cand = text[start_body:end_body]
+                header, raw_content = _separa_corpo_grezzo(cand)
+                if _loads_forgiving(cand) is not None or (raw_content is not None and isinstance(_loads_forgiving(header), dict)):
                     body = cand
                     raw_block_end = start_body + fm.end()
                     pos = raw_block_end
                     break
             if body is None:
                 for fm in reversed(fence_matches):
-                    cand = text[start_body : start_body + fm.start()].strip()
+                    end_body = start_body + fm.start() + (1 if text[start_body + fm.start():].startswith("\n") else 0)
+                    cand = text[start_body:end_body]
                     if cand.count("{") == cand.count("}") and cand.count("{") > 0:
                         body = cand
                         raw_block_end = start_body + fm.end()
@@ -1799,11 +1811,12 @@ def extract_tool_invocations(text: str) -> List[Dict[str, Any]]:
                         break
             if body is None:
                 fm = fence_matches[-1]
-                body = text[start_body : start_body + fm.start()].strip()
+                end_body = start_body + fm.start() + (1 if text[start_body + fm.start():].startswith("\n") else 0)
+                body = text[start_body:end_body]
                 raw_block_end = start_body + fm.end()
                 pos = raw_block_end
         else:
-            body = text[start_body:].strip()
+            body = text[start_body:]
             raw_block_end = len(text)
             pos = len(text)
 
@@ -2930,7 +2943,7 @@ def _stream_agent_turn_impl(
 
     # Append MCP developer tools section if available
     try:
-        from core.modules.sigma_developer_lab.mcp_tools.bridge import build_mcp_tools_section
+        from core.mcp.harness_bridge import build_mcp_tools_section
         mcp_section = build_mcp_tools_section()
         if mcp_section:
             base_system_prompt = base_system_prompt + "\n" + mcp_section
@@ -4227,7 +4240,7 @@ def _stream_agent_turn_impl(
             if result is None:
                 # Route through MCP Hub for Git/Lint/Test tools, local for FS/Terminal
                 try:
-                    from core.modules.sigma_developer_lab.mcp_tools.bridge import is_mcp_tool, execute_via_mcp
+                    from core.mcp.harness_bridge import is_mcp_tool, execute_via_mcp
                     if is_mcp_tool(t_name):
                         result = execute_via_mcp(t_name, t_params)
                     else:
@@ -4251,7 +4264,7 @@ def _stream_agent_turn_impl(
                             log.info("[LayaAutoRetry] Errore transiente su '%s' (%s). Eseguo retry immediato...", t_name, err_msg[:120])
                             time.sleep(0.25)
                             try:
-                                from core.modules.sigma_developer_lab.mcp_tools.bridge import is_mcp_tool, execute_via_mcp
+                                from core.mcp.harness_bridge import is_mcp_tool, execute_via_mcp
                                 if is_mcp_tool(t_name):
                                     retry_res = execute_via_mcp(t_name, t_params)
                                 else:

@@ -17,6 +17,18 @@ from core.harness.roles import DEV_ROLES
 from core.harness.tool_schema import TOOL_SCHEMAS, schemas_for
 
 
+@pytest.fixture(autouse=True)
+def servizi_elettronica():
+    from core import service_registry
+    register_services = pytest.importorskip("core.modules.sigma_eda_lab.handlers").register_services
+    previous = service_registry.snapshot()
+    register_services(service_registry)
+    try:
+        yield
+    finally:
+        service_registry.restore(previous)
+
+
 # ---------------------------------------------------------------------------
 # Dichiarazione e smistamento
 # ---------------------------------------------------------------------------

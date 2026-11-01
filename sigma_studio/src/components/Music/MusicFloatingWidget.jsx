@@ -7,13 +7,13 @@ import React, { useState } from 'react';
 import { 
   Play, Pause, SkipForward, SkipBack, Volume2, VolumeX, 
   Heart, Music, Sparkles, Radio, ExternalLink, ChevronUp, ChevronDown, 
-  RadioTower, Waves
+  RadioTower, Waves, Minus
 } from 'lucide-react';
 import { useMusic } from '../../contexts/MusicContext';
 import { useApp } from '../../contexts/AppContext';
 
 export default function MusicFloatingWidget({ onOpenTab }) {
-  const { theme } = useApp ? useApp() : { theme: 'dark' };
+  const { theme } = useApp();
   const isLight = theme === 'light';
 
   const {
@@ -34,11 +34,83 @@ export default function MusicFloatingWidget({ onOpenTab }) {
   } = useMusic();
 
   const [expanded, setExpanded] = useState(false);
+  const [minimized, setMinimized] = useState(true);
 
   if (!currentTrack) return null;
 
   const currentGenreObj = genres.find(g => g.id === currentTrack.genre) || genres[0];
   const isFav = favorites.includes(currentTrack.id);
+
+  if (minimized) {
+    return (
+      <div 
+        className="music-floating-pill"
+        onClick={() => setMinimized(false)}
+        title={`🎵 ${currentTrack.title} · ${currentTrack.artist} (Clicca per aprire player)`}
+        style={{
+          background: isLight 
+            ? 'linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.95))' 
+            : 'linear-gradient(135deg, rgba(8, 12, 22, 0.96), rgba(15, 23, 42, 0.94))',
+          border: isLight ? '1px solid rgba(2, 132, 199, 0.35)' : '1px solid rgba(0, 242, 254, 0.45)',
+          borderRadius: '26px',
+          padding: '6px 14px',
+          boxShadow: isPlaying
+            ? (isLight ? '0 8px 24px rgba(2, 132, 199, 0.3)' : '0 8px 28px rgba(0, 242, 254, 0.35), 0 0 16px rgba(0, 242, 254, 0.2)')
+            : (isLight ? '0 4px 16px rgba(0,0,0,0.1)' : '0 4px 18px rgba(0,0,0,0.5)'),
+          backdropFilter: 'blur(16px)',
+          color: isLight ? '#0f172a' : '#e2e8f0',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          userSelect: 'none',
+          transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+        }}
+      >
+        <div style={{
+          width: '26px', height: '26px', borderRadius: '50%',
+          background: isPlaying ? (isLight ? '#0284c7' : '#00f2fe') : (isLight ? '#94a3b8' : '#475569'),
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#fff', flexShrink: 0
+        }}>
+          <Music size={13} />
+        </div>
+        <div style={{ textAlign: 'left', minWidth: 0, maxWidth: '140px' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {currentTrack.title}
+          </div>
+          <div style={{ fontSize: '0.60rem', color: isLight ? '#64748b' : '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {currentTrack.artist}
+          </div>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            togglePlay();
+          }}
+          title={isPlaying ? 'Pausa' : 'Riproduci'}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: isLight ? '#0284c7' : '#00f2fe',
+            cursor: 'pointer',
+            padding: '2px',
+            display: 'flex',
+            alignItems: 'center'
+          }}
+        >
+          {isPlaying ? <Pause size={14} fill={isLight ? '#0284c7' : '#00f2fe'} /> : <Play size={14} fill={isLight ? '#0284c7' : '#00f2fe'} />}
+        </button>
+        {isPlaying && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+            <span className="eq-bar eq-1" style={{ background: isLight ? '#0284c7' : '#00f2fe' }} />
+            <span className="eq-bar eq-2" style={{ background: isLight ? '#0284c7' : '#00f2fe' }} />
+            <span className="eq-bar eq-3" style={{ background: isLight ? '#0284c7' : '#00f2fe' }} />
+          </span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -129,6 +201,7 @@ export default function MusicFloatingWidget({ onOpenTab }) {
           )}
           <button
             onClick={() => setExpanded(!expanded)}
+            title={expanded ? 'Riduci controlli' : 'Espandi generi e volume'}
             style={{
               background: 'transparent',
               border: 'none',
@@ -139,6 +212,20 @@ export default function MusicFloatingWidget({ onOpenTab }) {
             }}
           >
             {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          <button
+            onClick={() => setMinimized(true)}
+            title="Riduci a pillola fluttuante"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: isLight ? '#64748b' : '#8b8fa3',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex'
+            }}
+          >
+            <Minus size={14} />
           </button>
         </div>
       </div>

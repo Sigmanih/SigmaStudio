@@ -1607,10 +1607,34 @@ export function isSpeaking() {
   return window.speechSynthesis ? window.speechSynthesis.speaking : false;
 }
 
+export const VOICE_SILENCE_TIMEOUT_KEY = 'sigma_voice_silence_timeout';
+export const DEFAULT_VOICE_SILENCE_SECONDS = 2.0;
+
+export function getVoiceSilenceTimeout() {
+  if (typeof window === 'undefined') return DEFAULT_VOICE_SILENCE_SECONDS;
+  try {
+    const val = localStorage.getItem(VOICE_SILENCE_TIMEOUT_KEY);
+    if (val !== null && val !== undefined) {
+      const num = parseFloat(val);
+      if (!isNaN(num)) return num;
+    }
+  } catch (e) {}
+  return DEFAULT_VOICE_SILENCE_SECONDS;
+}
+
+export function setVoiceSilenceTimeout(seconds) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(VOICE_SILENCE_TIMEOUT_KEY, String(seconds));
+    window.dispatchEvent(new CustomEvent('sigma-voice-timeout-updated', { detail: seconds }));
+  } catch (e) {}
+}
+
 /**
- * Initialize Web Speech API Speech Recognition for Voice Commands (STT).
+ * Initialize Web Speech API Speech Recognition for Voice Commands (STT)
+ * con supporto per rilevamento del silenzio e auto-invio configurabile.
  */
-export function initSpeechRecognition({ onResult, onError, onEnd, lang = 'it-IT' }) {
+export function initSpeechRecognition({ onResult, onError, onEnd, onSilence, silenceTimeoutMs, lang = 'it-IT' }) {
   if (typeof window === 'undefined') return null;
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1624,6 +1648,16 @@ export function initSpeechRecognition({ onResult, onError, onEnd, lang = 'it-IT'
   recognition.interimResults = true;
   recognition.lang = lang;
 
+  let silenceTimer = null;
+  const timeoutMs = silenceTimeoutMs !== undefined ? silenceTimeoutMs : (getVoiceSilenceTimeout() * 1000);
+
+  const clearSilence = () => {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+  };
+
   recognition.onresult = (event) => {
     let accumulatedText = '';
     for (let i = 0; i < event.results.length; ++i) {
@@ -1633,10 +1667,26 @@ export function initSpeechRecognition({ onResult, onError, onEnd, lang = 'it-IT'
     if (onResult) {
       onResult(accumulatedText);
     }
+
+    // Se l'utente smette di parlare per oltre timeoutMs, invia automaticamente
+    if (onSilence && timeoutMs > 0 && accumulatedText.trim().length > 0) {
+      clearSilence();
+      silenceTimer = setTimeout(() => {
+        try { recognition.stop(); } catch (e) {}
+        onSilence(accumulatedText.trim());
+      }, timeoutMs);
+    }
   };
 
-  if (onError) recognition.onerror = onError;
-  if (onEnd) recognition.onend = onEnd;
+  recognition.onerror = (e) => {
+    clearSilence();
+    if (onError) onError(e);
+  };
+
+  recognition.onend = (e) => {
+    clearSilence();
+    if (onEnd) onEnd(e);
+  };
 
   return recognition;
 }
@@ -1705,7 +1755,7 @@ export function playWakeWordAcknowledge() {
  */
 export function createWakeWordMic({
   wakeWord = WAKE_WORD,
-  silenceMs = SILENCE_MS,
+  silenceMs = null,
   lang = 'it-IT',
   onState = null,
   onTranscript = null,
@@ -1713,6 +1763,10 @@ export function createWakeWordMic({
   onError = null,
 } = {}) {
   if (typeof window === 'undefined') return null;
+
+  const effectiveSilenceMs = silenceMs !== null && silenceMs !== undefined 
+    ? silenceMs 
+    : Math.max(1000, getVoiceSilenceTimeout() * 1000);
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
@@ -1814,7 +1868,7 @@ export function createWakeWordMic({
 
     if (onTranscript) onTranscript(captured);
     clearSilence();
-    silenceTimer = setTimeout(submitCaptured, silenceMs);
+    silenceTimer = setTimeout(submitCaptured, effectiveSilenceMs);
   };
 
   recognition.onerror = (event) => {

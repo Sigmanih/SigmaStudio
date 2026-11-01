@@ -324,9 +324,13 @@ export function AppProvider({ children }) {
 }
 
 export function useApp() {
-  const context = useContext(AppContext);
+  const context = useOptionalApp();
   if (!context) {
     throw new Error('useApp must be used within an AppProvider');
   }
   return context;
+}
+
+export function useOptionalApp() {
+  return useContext(AppContext);
 }

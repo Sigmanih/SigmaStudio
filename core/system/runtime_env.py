@@ -26,11 +26,11 @@ _applied = False
 
 def _config() -> dict:
     try:
-        from core.model_paths import project_root
-        path = os.path.join(project_root(), "config.json")
-        if not os.path.exists(path):
+        from core.paths import config_file
+        path = config_file()
+        if not path.is_file():
             return {}
-        with open(path, "r", encoding="utf-8") as fh:
+        with path.open("r", encoding="utf-8") as fh:
             return json.load(fh)
     except Exception as exc:
         log.debug("[RuntimeEnv] config.json non leggibile: %s", exc)

@@ -1050,7 +1050,9 @@ export default function Sidebar({
                       badge="VRAM"
                       badgeColor="rgba(0,242,254,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('hardware_lab')}
-                      onClick={() => openTab({ name: 'Monitor Hardware' }, 'hardware_lab')}
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('sigma-quick-tool', { detail: { id: 'hardware' } }));
+                      }}
                     />
                   )}
 

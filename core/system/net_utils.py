@@ -1,14 +1,10 @@
 # ==============================================================================
-# core/net_utils.py — Robust network utilities with automatic SSL resilience
-#
-# Resolves Windows certificate chain errors (e.g. "Missing Authority Key Identifier",
-# missing root certificates, corporate proxies/antivirus TLS interception) by
-# cascading from certifi -> default SSL context -> unverified fallback.
+# Utilità di rete: una CA non valida deve produrre un errore verificabile,
+# senza disabilitare implicitamente la verifica TLS dell'intero processo.
 # ==============================================================================
 from __future__ import annotations
 
 import json
-import logging
 import os
 import shutil
 import ssl
@@ -17,16 +13,13 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Union
+from core.logger import get_logger
 
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 def setup_resilient_ssl() -> None:
-    """Configures resilient SSL globally for local usage, corporate PCs, and proxies.
-    
-    Bypasses strict OpenSSL Authority Key Identifier and certificate verification failures
-    so local development and downloads work without interruption on work machines.
-    """
+    """Usa le CA disponibili senza indebolire la verifica TLS del processo."""
     try:
         import certifi
         ca = certifi.where()
@@ -36,33 +29,13 @@ def setup_resilient_ssl() -> None:
     except Exception:
         pass
 
-    try:
-        # Bypass strict OpenSSL certificate validation for local/workstation usage
-        ssl._create_default_https_context = ssl._create_unverified_context
-    except Exception:
-        pass
-
-    try:
-        import urllib3
-        urllib3.disable_warnings()
-    except Exception:
-        pass
-
-    import warnings
-    warnings.filterwarnings("ignore", message=".*Unverified HTTPS request.*")
-    warnings.filterwarnings("ignore", message=".*certificate verify failed.*")
-
 
 # Auto-configure resilient SSL immediately on import
 setup_resilient_ssl()
 
 
 def get_ssl_context(verify: bool = True) -> ssl.SSLContext:
-    """Creates a robust SSL context.
-    
-    If verify is True, uses certifi CA bundle when available.
-    If verify is False or if verification cannot be configured, returns an unverified context.
-    """
+    """Verifica TLS attiva, salvo richiesta esplicita del chiamante."""
     if not verify:
         try:
             return ssl._create_unverified_context()
@@ -81,46 +54,19 @@ def get_ssl_context(verify: bool = True) -> ssl.SSLContext:
     except Exception:
         pass
 
-    # 2. Try default system context
-    try:
-        return ssl.create_default_context()
-    except Exception:
-        pass
-
-    # 3. Fallback to unverified context if system certificates are completely broken
-    try:
-        return ssl._create_unverified_context()
-    except Exception:
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        return ctx
+    # Una CA mancante deve emergere: ripiegare su CERT_NONE nasconde un attacco.
+    return ssl.create_default_context()
 
 
 def safe_urlopen(
     url_or_req: Union[str, urllib.request.Request],
     timeout: int = 30,
+    verify: bool = True,
     **kwargs
 ) -> Any:
-    """urllib.request.urlopen with automatic SSL certificate error recovery.
-    
-    If standard certificate verification fails (Missing Authority Key Identifier,
-    self-signed proxy, outdated Windows CA store), it seamlessly falls back to
-    an unverified context so operations never crash the application.
-    """
-    ctx = get_ssl_context(verify=True)
-    try:
-        return urllib.request.urlopen(url_or_req, timeout=timeout, context=ctx, **kwargs)
-    except (ssl.SSLError, urllib.error.URLError, Exception) as exc:
-        err_msg = str(exc).lower()
-        if any(keyword in err_msg for keyword in ("ssl", "certificate", "verify failed", "authority key identifier", "handshake")):
-            log.warning(
-                "[NetUtils] SSL verification failed (%s). Retrying with fallback SSL context...",
-                exc
-            )
-            unverified_ctx = get_ssl_context(verify=False)
-            return urllib.request.urlopen(url_or_req, timeout=timeout, context=unverified_ctx, **kwargs)
-        raise
+    """Propaga gli errori TLS al chiamante senza tentativi non verificati."""
+    ctx = get_ssl_context(verify=verify)
+    return urllib.request.urlopen(url_or_req, timeout=timeout, context=ctx, **kwargs)
 
 
 def fetch_json(

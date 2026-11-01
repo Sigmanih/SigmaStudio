@@ -8,6 +8,9 @@ dist-ssr/
 sigma_studio/dist/
 .node_runtime/
 
+# I pesi scaricati restano locali e non appartengono ai sorgenti del rilascio.
+/gfpgan/weights/
+
 
 # Python cache
 __pycache__/

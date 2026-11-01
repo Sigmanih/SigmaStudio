@@ -209,57 +209,43 @@ export default function ModelSelector({
     }
   };
 
+  const modelTooltip = [
+    effectiveModelName ? `Modello: ${effectiveModelName}` : 'Scegli modello',
+    activeSpecs?.chatSpeed ? `Velocità: ${activeSpecs.chatSpeed} tok/s` : null,
+    activeSpecs?.params ? `Parametri: ${activeSpecs.params}` : null,
+    activeSpecs?.toolScore !== null && activeSpecs?.toolScore !== undefined ? `Benchmark: ${Math.round(activeSpecs.toolScore)}%` : null,
+    activeSpecs?.size ? `Dimensione: ${activeSpecs.size}` : null
+  ].filter(Boolean).join(' • ');
+
+  const primaryBadge = activeSpecs?.chatSpeed 
+    ? `⚡ ${activeSpecs.chatSpeed} t/s` 
+    : (activeSpecs?.params ? `⚡ ${activeSpecs.params}` : (activeSpecs?.size ? `💾 ${activeSpecs.size}` : null));
+
   return (
     <div className="model-selector-wrapper" ref={modelBtnRef}>
       <button
         className={`model-selector-btn ${!effectiveModelName ? 'no-model' : ''}`}
         onClick={onToggle}
-        title={`Modello attivo: ${effectiveModelName || 'Nessuno'}`}
+        title={modelTooltip}
       >
-        <Cpu size={12} />
-        <span className="model-selector-name" title={effectiveModelName || 'Scegli modello'}>
-          {effectiveModelName || 'Scegli modello'}
-        </span>
+        <div className="model-selector-btn-left">
+          <Cpu size={13} className="model-selector-cpu-icon" />
+          <span className="model-selector-name">
+            {effectiveModelName || 'Scegli modello'}
+          </span>
+        </div>
         
-        {activeSpecs?.chatSpeed !== null && activeSpecs?.chatSpeed !== undefined && (
-          <span
-            className="model-spec-badge"
-            title={`Velocità live misurata: ${activeSpecs.chatSpeed} tok/s`}
-            style={{
-              fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-              background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800,
-              display: 'inline-flex', alignItems: 'center', gap: '2px', whiteSpace: 'nowrap'
-            }}
-          >
-            ⚡ {activeSpecs.chatSpeed} t/s
-          </span>
-        )}
-
-        {activeSpecs?.params && (
-          <span className="model-spec-badge" style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800, whiteSpace: 'nowrap' }}>
-            ⚡ {activeSpecs.params}
-          </span>
-        )}
-        {activeSpecs?.toolScore !== null && activeSpecs?.toolScore !== undefined && (
-          <span
-            className="model-spec-badge"
-            title={`Benchmark Tools (Aderenza Protocollo & Tool Use): ${Math.round(activeSpecs.toolScore)}%${activeSpecs.toolStats ? ` (${activeSpecs.toolStats.passed}/${activeSpecs.toolStats.total} prove superate)` : ''}`}
-            style={{
-              fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px',
-              background: 'rgba(0, 210, 255, 0.16)', color: '#00d2ff', fontWeight: 800,
-              display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap'
-            }}
-          >
-            <Wrench size={10} color="#00d2ff" />
-            <span>{Math.round(activeSpecs.toolScore)}%</span>
-          </span>
-        )}
-        {activeSpecs?.size && (
-          <span className="model-spec-badge" style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255, 184, 108, 0.15)', color: '#ffb86c', fontWeight: 800, whiteSpace: 'nowrap' }}>
-            💾 {activeSpecs.size}
-          </span>
-        )}
-        <ChevronDown size={10} className={`model-selector-chevron ${showDropdown ? 'open' : ''}`} />
+        <div className="model-selector-btn-right">
+          {primaryBadge && (
+            <span
+              className="model-spec-badge"
+              title={modelTooltip}
+            >
+              {primaryBadge}
+            </span>
+          )}
+          <ChevronDown size={11} className={`model-selector-chevron ${showDropdown ? 'open' : ''}`} />
+        </div>
       </button>
 
       {showDropdown && (

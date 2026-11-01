@@ -246,6 +246,9 @@ def prepare_environment(solo_verifica: bool = False) -> dict:
     # soltanto a che punto e' l'installazione.
     try:
         from core.first_run import prepare as _primo_avvio
+        if not solo_verifica:
+            from core.module_loader import ModuleLoader
+            ModuleLoader().load_services()
         esiti["primo_avvio"] = _primo_avvio(
             progress=lambda t: log.info(t), scarica=not solo_verifica)
     except Exception as exc:
@@ -397,37 +400,14 @@ def _is_port_free(host: str, port: int) -> bool:
 
 
 def _resolve_available_port(host: str, desired_port: int, max_offset: int = 20) -> int:
-    """Verifica la disponibilita della porta e tenta di liberarla o usa la prima libera."""
-    if _is_port_free(host, desired_port):
-        return desired_port
-
-    # Tenta di terminare processi python orfani che occupano la porta
-    try:
-        import psutil
-        my_pid = os.getpid()
-        for p in psutil.process_iter(['pid', 'name']):
-            if p.info['name'] and 'python' in p.info['name'].lower() and p.info['pid'] != my_pid:
-                try:
-                    for c in p.net_connections(kind='inet'):
-                        if c.laddr and c.laddr.port == desired_port:
-                            p.kill()
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    import time
-    for attempt in range(6):
-        time.sleep(0.5)
-        if _is_port_free(host, desired_port):
-            return desired_port
-
-    for offset in range(1, max_offset + 1):
+    """Sceglie una porta libera senza interrompere processi gia' in esecuzione."""
+    for offset in range(max_offset + 1):
         candidate = desired_port + offset
         if _is_port_free(host, candidate):
-            log.warning("[Server] Porta %d occupata: fallback automatico su porta libera %d.", desired_port, candidate)
+            if offset:
+                log.warning("Porta %d occupata: uso la porta libera %d.", desired_port, candidate)
             return candidate
-    return desired_port
+    raise OSError(f"Nessuna porta libera fra {desired_port} e {desired_port + max_offset}.")
 
 
 def serve(host: str | None = None, port: int | None = None, ssl: bool | None = None) -> None:

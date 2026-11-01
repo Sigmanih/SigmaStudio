@@ -7,7 +7,7 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, 'codex/**']
   pull_request:
     branches: [main, develop]
 
@@ -19,7 +19,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.11', '3.12']
+        python-version: ['3.10', '3.11', '3.12']
+        include:
+          - os: ubuntu-24.04-arm
+            python-version: '3.12'
     
     steps:
       - uses: actions/checkout@v4
@@ -35,15 +38,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements/base.txt
+          pip install httpx pytest-asyncio
       
-      - name: Run tests (if present)
-        shell: bash
-        run: |
-          if [ -d "tests" ]; then
-            pytest -m base -v --tb=short
-          else
-            echo "No tests directory in repository — skipping pytest."
-          fi
+      - name: Run kernel tests
+        run: python -m tests.run_lotti base harness chat mcp
       
       - name: Verify capability manager
         run: |
@@ -64,7 +62,14 @@ jobs:
           cache-dependency-path: 'sigma_studio/package-lock.json'
       
       - name: Install frontend dependencies
-        run: npm --prefix sigma_studio install
+        run: npm --prefix sigma_studio ci
+
+      - name: Check references and React hooks
+        run: |
+          npm --prefix sigma_studio run lint:undef
+          cd sigma_studio
+          npx --no-install eslint -c eslint.config.hooks.js --no-inline-config src/
+          node --test tests/*.test.mjs
       
       - name: Build frontend
         run: npm --prefix sigma_studio run build
@@ -94,21 +99,4 @@ jobs:
       
       - name: Run launcher --info
         run: python sigma_launcher.py --info
-
-  test-rust-kernel:
-    name: Rust Kernel Workspace Check & Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Cargo check workspace
-        run: |
-          if [ -d "projects/sigma_engine_rust" ]; then
-            cd projects/sigma_engine_rust && cargo check --workspace --all-targets
-          fi
-      - name: Cargo test workspace
-        run: |
-          if [ -d "projects/sigma_engine_rust" ]; then
-            cd projects/sigma_engine_rust && cargo test --workspace --quiet
-          fi
 

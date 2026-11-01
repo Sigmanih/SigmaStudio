@@ -2,6 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { MAX_ATTACHMENTS, createSession, MAX_HISTORY } from '../chatStorage';
 import { getModelRoutingInfo } from '../modelProviderMap';
 import { getAgentStyle } from '../AgentMessage';
+import { modelHistory } from '../../../services/workspaceNavigation';
+import { modelName } from '../../../services/modelIdentity';
 import { recordModelChatSpeed, removeModelChatSpeed, isErrorMessage } from './modelSpecsHelper';
 import {
   speakAgentMessage, stopSpeech,
@@ -89,6 +91,7 @@ export function useChatStreaming({
   openFiles: externalOpenFiles,
   onTasksUpdated,
   addToast,
+  onWorkspaceRequest,
   sessions,
   activeSessionId,
   setActiveSessionId,
@@ -423,9 +426,6 @@ export function useChatStreaming({
             const p = JSON.parse(raw);
 
             // Normalizzazione eventi provenienti dall'Harness Developer Lab (/api/developer/agent/chat)
-            if (p.type === 'token' && p.token) {
-              p.token = p.token;
-            }
             if (p.type === 'thinking' && p.thought) {
               p.thinking = p.thought;
             }
@@ -801,7 +801,7 @@ export function useChatStreaming({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               message: "Continua esattamente da dove ti sei fermato nell'ultimo messaggio, senza ripetere il testo già scritto.",
-              history: sessionRefs.sessionMessages.current[sessionId] || [],
+              history: modelHistory(sessionRefs.sessionMessages.current[sessionId] || []),
               stream: true,
               model: selectedModel,
               manifesto: activeManifesto?.path
@@ -1044,7 +1044,7 @@ export function useChatStreaming({
   };
 
   // --- Send Message (unified: chat + plan) ---
-  const sendMessage = useCallback(async (textOverride, extraParams = {}) => {
+  const performSend = useCallback(async (textOverride, extraParams = {}) => {
     if (loading) return;
     const currentSessionId = sessionRefs.activeSessionId.current;
     if (!currentSessionId) return;
@@ -1053,8 +1053,24 @@ export function useChatStreaming({
     const messageText = typeof rawText === 'string' ? rawText.trim() : '';
     if (!messageText && attachedFiles.length === 0) return;
 
+    if (onWorkspaceRequest && activeMode === 'chat' && !devModeEnabled && !attachedFiles.length && !pcFiles.length) {
+      const navigation = await onWorkspaceRequest(messageText);
+      if (navigation) {
+        const timestamp = new Date().toISOString();
+        const messages = [...(sessionRefs.sessionMessages.current[currentSessionId] || []),
+          { role: 'user', content: messageText, timestamp, localOnly: true },
+          { role: 'assistant', content: navigation.message, timestamp, localOnly: true,
+            agentName: 'Sigma Studio', agentRole: 'Navigazione', agent_id: 'sigma_navigation',
+            workspaceChoices: navigation.type === 'choose' ? navigation.options : [] }];
+        setMessagesForSession(currentSessionId, messages);
+        saveMessagesImmediately(currentSessionId, messages);
+        if (sessionRefs.activeSessionId.current === currentSessionId) setInput('');
+        return;
+      }
+    }
+
     // Auto-resolve effective model: selectedModel -> last_selected -> first favorite -> first available
-    let effectiveModel = selectedModel;
+    let effectiveModel = modelName(selectedModel);
     if (!effectiveModel) {
       const lastUsed = (() => {
         try { return localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model') || ''; } catch (e) { return ''; }
@@ -1062,16 +1078,16 @@ export function useChatStreaming({
       if (lastUsed) {
         effectiveModel = lastUsed;
       } else if (favoriteModels && favoriteModels.length > 0) {
-        effectiveModel = favoriteModels[0];
+        effectiveModel = favoriteModels.map(modelName).find(Boolean) || '';
       } else if (availableModels && availableModels.length > 0) {
-        effectiveModel = availableModels[0]?.name || availableModels[0];
+        effectiveModel = availableModels.map(modelName).find(Boolean) || '';
       }
       if (effectiveModel && setSelectedModel) {
         setSelectedModel(effectiveModel);
       }
     }
 
-    if (!effectiveModel && (!availableModels || availableModels.length === 0)) {
+    if (!effectiveModel) {
       const alertMsg = {
         role: 'assistant',
         content: `⚠️ **Nessun modello AI locale attivo o scaricato.**\n\nPer iniziare a chattare con **Sigma Studio**:\n\n1. **Scarica un Modello Locale**: Apri la scheda **Model Hub** (nella barra laterale sinistra) e scarica o avvia un modello raccomandato come **Qwen 3.6 27B Q4_K_M** o **DeepSeek-R1 14B**.\n2. **Oppure Configura un Provider Cloud**: Clicca su **Impostazioni** (⚙️) ed inserisci la tua API Key per DeepSeek, OpenAI, Anthropic o Groq.\n3. **Seleziona il Modello**: Scegli il modello preferito dal menu in alto a sinistra nella chat.`,
@@ -1148,7 +1164,7 @@ export function useChatStreaming({
       let res;
       if (devModeEnabled) {
         const devBody = {
-          messages: updatedMessages.map(m => ({
+          messages: modelHistory(updatedMessages).map(m => ({
             role: m.role,
             content: m.content,
             attachments: m.attachments
@@ -1182,7 +1198,7 @@ export function useChatStreaming({
           user_title: userProfile.title || '',
           user_profile: userProfile,
           target_hardware: selectedHardware || 'auto',
-          context: { open_files: contextFiles, history: updatedMessages.slice(-10).map(m => ({ role: m.role, content: m.content })) },
+          context: { open_files: contextFiles, history: modelHistory(updatedMessages).slice(-10).map(m => ({ role: m.role, content: m.content })) },
           uploaded_files: pcFiles.length > 0 ? pcFiles : undefined
         };
         if (selectedManifestoPath) body.manifesto_path = selectedManifestoPath;
@@ -1240,7 +1256,18 @@ export function useChatStreaming({
       globalAbortController = null;
       streamingSessionIdRef.current = null;
     }
-  }, [input, loading, selectedModel, providerConfigs, quickConfig, loopMaxIterations, webSearch, attachedFiles, pcFiles, activeMode, selectedManifestoPath, externalOpenFiles, refreshConfig, saveSessionsState, setMessagesForSession, saveMessagesImmediately, sessionRefs, setActiveSessionId, devModeEnabled, devRole, workspaceRoot]);
+  }, [input, loading, selectedModel, providerConfigs, quickConfig, loopMaxIterations, webSearch, attachedFiles, pcFiles, activeMode, selectedManifestoPath, externalOpenFiles, refreshConfig, saveSessionsState, setMessagesForSession, saveMessagesImmediately, sessionRefs, setActiveSessionId, devModeEnabled, devRole, workspaceRoot, onWorkspaceRequest]);
+
+  const sendPendingRef = useRef(false);
+  const sendMessage = useCallback(async (...args) => {
+    if (sendPendingRef.current) return;
+    sendPendingRef.current = true;
+    try {
+      return await performSend(...args);
+    } finally {
+      sendPendingRef.current = false;
+    }
+  }, [performSend]);
 
   const dragCounterRef = useRef(0);
 

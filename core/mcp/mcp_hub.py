@@ -206,7 +206,7 @@ class MCPHub:
                 entry["server"] = srv_name
                 entry["enabled"] = enabled
                 entry["external"] = isinstance(server, ExternalMCPServer)
-                entry.setdefault("safety", governance.SAFE)
+                entry.setdefault("safety", governance.SENSITIVE)
                 try:
                     entry["ready"] = server.is_configured() if hasattr(server, "is_configured") else True
                 except Exception:
@@ -230,9 +230,13 @@ class MCPHub:
                 resources.append(entry)
         return resources
 
-    def find_tool(self, tool_name: str) -> Optional[Dict[str, Any]]:
+    def find_tool(self, tool_name: str, server_name: str = "") -> Optional[Dict[str, Any]]:
         """Locate a tool and the server that owns it."""
+        if not isinstance(tool_name, str):
+            return None
         for server in self._all_servers():
+            if server_name and server.name != server_name:
+                continue
             if tool_name in server._tool_handlers:
                 meta = dict(server._tools.get(tool_name, {}))
                 meta["server"] = server.name
@@ -243,7 +247,8 @@ class MCPHub:
     # --- guarded execution ---------------------------------------------------
 
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any] = None,
-                     approval_id: str = "", client: str = "") -> Dict[str, Any]:
+                     approval_id: str = "", client: str = "",
+                     server_name: str = "") -> Dict[str, Any]:
         """Run a tool through the policy gate.
 
         Returns one of three shapes:
@@ -257,6 +262,8 @@ class MCPHub:
         leggere e attendere.
         """
         arguments = arguments or {}
+        if not isinstance(arguments, dict):
+            return {"status": "error", "error": "Gli argomenti del tool devono essere un oggetto JSON."}
 
         # An approval names the call it approved; the arguments come from the
         # parked record, never from the caller, so nothing can be swapped in
@@ -280,13 +287,14 @@ class MCPHub:
                 return {"status": "error", "error": "Richiesta di conferma scaduta o già usata."}
             tool_name = record["tool"]
             arguments = record["arguments"]
+            server_name = record["server"]
 
-        meta = self.find_tool(tool_name)
+        meta = self.find_tool(tool_name, server_name)
         if not meta:
             return {"status": "error", "error": f"Strumento '{tool_name}' inesistente."}
 
         server = meta["_server_obj"]
-        safety = meta.get("safety", governance.SAFE)
+        safety = meta.get("safety", governance.SENSITIVE)
 
         if not governance.is_tool_enabled(tool_name, server.name):
             return {"status": "error",
@@ -324,15 +332,27 @@ class MCPHub:
 
     def dispatch_rpc(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Route a JSON-RPC 2.0 request to the target MCP server."""
-        params = request.get("params", {})
+        params = request.get("params") or {}
         method = request.get("method")
         rpc_id = request.get("id")
+        if not isinstance(params, dict):
+            return {"jsonrpc": "2.0", "id": rpc_id,
+                    "error": {"code": -32602, "message": "Parametri RPC non validi."}}
         server_name = params.get("server")
+        if server_name is not None and not isinstance(server_name, str):
+            return {"jsonrpc": "2.0", "id": rpc_id,
+                    "error": {"code": -32602, "message": "Nome del server non valido."}}
 
-        if server_name and method not in ("mcp/servers",):
+        # Anche la chiamata indirizzata a un server attraversa la governance.
+        if server_name and method not in ("mcp/servers", "tools/call"):
             server = self.get_server(server_name)
             if server:
+                if method == "resources/read" and not governance.is_tool_enabled("", server.name):
+                    return {"jsonrpc": "2.0", "id": rpc_id,
+                            "error": {"code": -32000, "message": "Server disattivato."}}
                 return server.handle_json_rpc(request)
+            return {"jsonrpc": "2.0", "id": rpc_id,
+                    "error": {"code": -32602, "message": "Server MCP inesistente."}}
 
         if method == "mcp/servers":
             return {"jsonrpc": "2.0", "id": rpc_id, "result": {"servers": self.list_all_servers()}}
@@ -348,7 +368,8 @@ class MCPHub:
             # The gate lives here too: the RPC endpoint is reachable from the
             # browser, so it must not be a way around the switches.
             outcome = self.execute_tool(params.get("name"), params.get("arguments", {}),
-                                        params.get("approval_id", ""))
+                                        params.get("approval_id", ""),
+                                        server_name=server_name or "")
             if outcome["status"] == "ok":
                 return {"jsonrpc": "2.0", "id": rpc_id, "result": outcome["result"]}
             if outcome["status"] == "confirmation_required":

@@ -27,6 +27,9 @@ un pomeriggio.
 from __future__ import annotations
 
 import time
+import uuid
+import contextvars
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -38,6 +41,25 @@ log = get_logger(__name__)
 #: Il progetto su cui si sta lavorando: risolto una volta, poi implicito.
 _progetto: Dict[str, Any] = {"pcb": None, "sch": None, "pro": None,
                              "root": None, "quando": 0.0}
+_request_project = contextvars.ContextVar("kicad_request_project", default=None)
+
+
+def _project():
+    current = _request_project.get()
+    return current if current is not None else _progetto
+
+
+@contextmanager
+def project_scope(path):
+    """La richiesta HTTP non deve cambiare il progetto di un altro chiamante."""
+    token = _request_project.set({"pcb": None, "sch": None, "pro": None, "root": None, "quando": 0.0})
+    try:
+        opened = kicad_open(str(path))
+        if not opened.get("success"):
+            raise KicadToolError(opened.get("error", "Progetto non disponibile."))
+        yield
+    finally:
+        _request_project.reset(token)
 
 #: L'ultima copia di sicurezza per file, per poter tornare indietro di un passo.
 _ultimo_backup: Dict[str, str] = {}
@@ -60,6 +82,7 @@ def _esito(nome: str, riuscito: bool, **extra: Any) -> Dict[str, Any]:
     stessa cosa prima o poi si contraddicono.
     """
     extra.pop("ok", None)
+    riuscito = bool(riuscito and extra.pop("success", True))
     return {"tool": nome, "success": riuscito, **extra}
 
 
@@ -84,245 +107,61 @@ def _esito_dal_ponte(nome: str, esito: Dict[str, Any]) -> Dict[str, Any]:
 # --- contesto ------------------------------------------------------------------
 
 def _pcb() -> Path:
-    if not _progetto["pcb"]:
+    if not _project()["pcb"]:
         raise KicadToolError(
             "Nessun progetto KiCad aperto. Chiama prima kicad_open_project indicando "
             "la cartella del progetto o un file .kicad_pro/.kicad_pcb."
         )
-    return Path(_progetto["pcb"])
+    return Path(_project()["pcb"])
 
 
 def _sch() -> Path:
-    if not _progetto["sch"]:
+    if not _project()["sch"]:
         raise KicadToolError(
             "Il progetto aperto non ha uno schematico (.kicad_sch): ERC, BOM e "
             "netlist non sono disponibili finche' non esiste."
         )
-    return Path(_progetto["sch"])
+    return Path(_project()["sch"])
 
 
-def kicad_open_project(path: str) -> Dict[str, Any]:
+def kicad_open(path: str) -> Dict[str, Any]:
     """Apre un progetto KiCad e lo rende quello corrente per i tool seguenti.
-    
+
     Crea una sessione attiva persistente: tutti i tool successivi useranno
     automaticamente questo progetto senza bisogno di specificare pcb_path.
     """
     try:
         from . import bridge
-        trovati = bridge.find_project_files(Path(path))
+        target = Path(path).expanduser().resolve()
+        trovati = bridge.find_project_files(target)
         if not trovati.get("pcb") and not trovati.get("sch"):
-            return _esito("kicad_open_project", False, path=path,
+            return _esito("kicad_open", False, path=path,
                           error=("In quel percorso non c'e' nessun file KiCad. "
                                  "Serve un .kicad_pcb o un .kicad_sch."))
-        _progetto.update({
+        _project().update({
             "pcb": str(trovati["pcb"]) if trovati.get("pcb") else None,
             "sch": str(trovati["sch"]) if trovati.get("sch") else None,
             "pro": str(trovati["pro"]) if trovati.get("pro") else None,
-            "root": str(Path(path)), "quando": time.time(),
+            "root": str(target if target.is_dir() else target.parent), "quando": time.time(),
         })
-        return _esito("kicad_open_project", True, **{k: _progetto[k]
+        return _esito("kicad_open", True, **{k: _project()[k]
                                                      for k in ("pcb", "sch", "pro")})
     except Exception as exc:
-        return _esito("kicad_open_project", False, path=path, error=str(exc))
+        return _esito("kicad_open", False, path=path, error=str(exc))
+
+
+def kicad_open_project(path: str) -> Dict[str, Any]:
+    """Mantiene il nome storico senza creare una seconda implementazione."""
+    return kicad_open(path)
 
 
 def kicad_close_project() -> Dict[str, Any]:
     """Chiude la sessione attiva e libera il progetto corrente."""
-    if not _progetto["pcb"] and not _progetto["sch"]:
+    if not _project()["pcb"] and not _project()["sch"]:
         return _esito("kicad_close_project", False,
                       error="Nessun progetto aperto da chiudere.")
-    _progetto.update({"pcb": None, "sch": None, "pro": None, "root": None, "quando": 0.0})
+    _project().update({"pcb": None, "sch": None, "pro": None, "root": None, "quando": 0.0})
     return _esito("kicad_close_project", True, message="Progetto chiuso con successo.")
-
-
-# --- costruzione topologia -----------------------------------------------------
-
-def kicad_add_component(symbol: str, value: str = "", footprint: str = "",
-                        designator: str = "") -> Dict[str, Any]:
-    """Aggiunge un componente allo schematico (.kicad_sch) con simbolo, valore e footprint.
-    
-    Usa la sessione attiva aperta con kicad_open_project. Se non c'è,
-    richiede il path esplicito.
-    """
-    try:
-        from . import kicad_parser as parser
-        sch_path = _sch()
-        if not designator:
-            # Genera un designator automatico basandosi sul prefisso del simbolo
-            prefisso = symbol[0].upper() if symbol else "U"
-            designator = f"{prefisso}{int(time.time()) % 1000}"
-        
-        # Verifica che il file schematico esista
-        if not sch_path.is_file():
-            return _esito("kicad_add_component", False,
-                          error=f"File schematico '{sch_path}' non trovato.")
-        
-        # Aggiungi il componente usando il parser
-        result = parser.add_component_to_schematic(
-            sch_path, symbol=symbol, value=value, 
-            footprint=footprint, designator=designator)
-        return _esito("kicad_add_component", True, **result)
-    except Exception as exc:
-        return _esito("kicad_add_component", False, error=str(exc))
-
-
-def kicad_remove_component(designator: str) -> Dict[str, Any]:
-    """Rimuove un componente dallo schematico (.kicad_sch)."""
-    try:
-        from . import kicad_parser as parser
-        sch_path = _sch()
-        if not sch_path.is_file():
-            return _esito("kicad_remove_component", False,
-                          error=f"File schematico '{sch_path}' non trovato.")
-        
-        result = parser.remove_component_from_schematic(sch_path, designator)
-        return _esito("kicad_remove_component", True, **result)
-    except Exception as exc:
-        return _esito("kicad_remove_component", False, error=str(exc))
-
-
-def kicad_modify_property(designator: str, property_name: str, 
-                          new_value: str) -> Dict[str, Any]:
-    """Modifica proprietà di un componente esistente (valore, footprint, designator)."""
-    try:
-        from . import kicad_parser as parser
-        sch_path = _sch()
-        if not sch_path.is_file():
-            return _esito("kicad_modify_property", False,
-                          error=f"File schematico '{sch_path}' non trovato.")
-        
-        result = parser.modify_component_property(
-            sch_path, designator=designator, 
-            property_name=property_name, new_value=new_value)
-        return _esito("kicad_modify_property", True, **result)
-    except Exception as exc:
-        return _esito("kicad_modify_property", False, error=str(exc))
-
-
-# --- gestione librerie ---------------------------------------------------------
-
-def kicad_import_library(library_path: str) -> Dict[str, Any]:
-    """Importa una libreria personalizzata (.kicad_sym o .pretty) nel progetto."""
-    try:
-        from . import kicad_parser as parser
-        lib_path = Path(library_path)
-        if not lib_path.is_file():
-            return _esito("kicad_import_library", False,
-                          error=f"File libreria '{lib_path}' non trovato.")
-        
-        # Determina il tipo di libreria
-        if lib_path.suffix == ".sym":
-            result = parser.import_symbol_library(lib_path)
-        elif lib_path.suffix == ".pretty":
-            result = parser.import_footprint_library(lib_path)
-        else:
-            return _esito("kicad_import_library", False,
-                          error="Formato libreria non supportato. Usa .kicad_sym o .pretty.")
-        
-        return _esito("kicad_import_library", True, **result)
-    except Exception as exc:
-        return _esito("kicad_import_library", False, error=str(exc))
-
-
-def kicad_export_library(output_path: str, library_type: str = "symbols") -> Dict[str, Any]:
-    """Esporta i simboli/footprint usati in una libreria riutilizzabile."""
-    try:
-        from . import kicad_parser as parser
-        sch_path = _sch()
-        if not sch_path.is_file():
-            return _esito("kicad_export_library", False,
-                          error=f"File schematico '{sch_path}' non trovato.")
-        
-        out_path = Path(output_path)
-        if library_type == "symbols":
-            result = parser.export_symbol_library(sch_path, out_path)
-        elif library_type == "footprints":
-            result = parser.export_footprint_library(sch_path, out_path)
-        else:
-            return _esito("kicad_export_library", False,
-                          error="Tipo libreria non valido. Usa 'symbols' o 'footprints'.")
-        
-        return _esito("kicad_export_library", True, **result)
-    except Exception as exc:
-        return _esito("kicad_export_library", False, error=str(exc))
-
-
-# --- netlist import/export -----------------------------------------------------
-
-def kicad_import_netlist(netlist_path: str) -> Dict[str, Any]:
-    """Importa una netlist esterna nel progetto KiCad."""
-    try:
-        from . import kicad_parser as parser
-        net_path = Path(netlist_path)
-        if not net_path.is_file():
-            return _esito("kicad_import_netlist", False,
-                          error=f"File netlist '{net_path}' non trovato.")
-        
-        result = parser.import_netlist(net_path)
-        return _esito("kicad_import_netlist", True, **result)
-    except Exception as exc:
-        return _esito("kicad_import_netlist", False, error=str(exc))
-
-
-def kicad_export_netlist(output_path: str) -> Dict[str, Any]:
-    """Esporta la netlist corrente del progetto."""
-    try:
-        from . import kicad_parser as parser
-        sch_path = _sch()
-        if not sch_path.is_file():
-            return _esito("kicad_export_netlist", False,
-                          error=f"File schematico '{sch_path}' non trovato.")
-        
-        out_path = Path(output_path)
-        result = parser.export_netlist(sch_path, out_path)
-        return _esito("kicad_export_netlist", True, **result)
-    except Exception as exc:
-        return _esito("kicad_export_netlist", False, error=str(exc))
-
-
-# --- version control -----------------------------------------------------------
-
-def kicad_git_commit(message: str = "") -> Dict[str, Any]:
-    """Crea un commit Git con i file KiCad modificati."""
-    try:
-        import subprocess
-        from . import bridge
-        
-        # Trova la cartella del progetto
-        project_dir = _progetto.get("root") or str(_pcb().parent)
-        
-        # Verifica che sia un repository Git
-        git_check = subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
-            cwd=project_dir, capture_output=True, text=True
-        )
-        if git_check.returncode != 0:
-            return _esito("kicad_git_commit", False,
-                          error=f"'{project_dir}' non è un repository Git.")
-        
-        # Stage i file KiCad
-        git_add = subprocess.run(
-            ["git", "add", "*.kicad_pcb", "*.kicad_sch", "*.kicad_pro"],
-            cwd=project_dir, capture_output=True, text=True
-        )
-        if git_add.returncode != 0:
-            return _esito("kicad_git_commit", False,
-                          error=f"Errore in git add: {git_add.stderr}")
-        
-        # Commit
-        msg = message or f"KiCad Lab: aggiornamento scheda {time.strftime('%Y-%m-%d %H:%M:%S')}"
-        git_commit = subprocess.run(
-            ["git", "commit", "-m", msg],
-            cwd=project_dir, capture_output=True, text=True
-        )
-        if git_commit.returncode != 0:
-            return _esito("kicad_git_commit", False,
-                          error=f"Errore in git commit: {git_commit.stderr}")
-        
-        return _esito("kicad_git_commit", True, message=msg, 
-                      commit_hash=git_commit.stdout.strip().split()[-1])
-    except Exception as exc:
-        return _esito("kicad_git_commit", False, error=str(exc))
 
 
 def kicad_status() -> Dict[str, Any]:
@@ -335,7 +174,7 @@ def kicad_status() -> Dict[str, Any]:
                       version=stato.get("version"),
                       cli=stato.get("kicad_cli_path"),
                       error=stato.get("error", ""),
-                      project={k: _progetto[k] for k in ("pcb", "sch", "pro")})
+                      project={k: _project()[k] for k in ("pcb", "sch", "pro")})
     except Exception as exc:
         return _esito("kicad_status", False, error=str(exc))
 
@@ -347,7 +186,7 @@ def kicad_board_read() -> Dict[str, Any]:
     try:
         from . import bridge
         scheda = bridge.read_board(_pcb(),
-                                   Path(_progetto["sch"]) if _progetto["sch"] else None)
+                                   Path(_project()["sch"]) if _project()["sch"] else None)
         return _esito("kicad_board_read", True,
                       width_mm=round(scheda.width, 3),
                       height_mm=round(scheda.height, 3),
@@ -439,7 +278,7 @@ def kicad_board_evaluate() -> Dict[str, Any]:
         from . import bridge
         from core.modules.sigma_eda_lab import evaluate as valutatore
         scheda = bridge.read_board(_pcb(),
-                                   Path(_progetto["sch"]) if _progetto["sch"] else None)
+                                   Path(_project()["sch"]) if _project()["sch"] else None)
         referto = valutatore.evaluate(scheda)
         return _esito("kicad_board_evaluate", True, **referto.to_dict())
     except Exception as exc:
@@ -455,7 +294,7 @@ def kicad_placement_optimize(iterations: int = 4000, seed: int = 20260920,
         from core.modules.sigma_eda_lab import evaluate as valutatore, placement
 
         scheda = bridge.read_board(_pcb(),
-                                   Path(_progetto["sch"]) if _progetto["sch"] else None)
+                                   Path(_project()["sch"]) if _project()["sch"] else None)
         if lock:
             fissati = [replace(scheda.components[d], locked=True)
                        for d in lock if d in scheda.components]
@@ -511,7 +350,9 @@ def kicad_placement_apply(moves: List[Dict[str, Any]],
 
 def _ricorda(esito) -> Dict[str, Any]:
     if esito.backup:
-        _ultimo_backup[str(_progetto["pcb"])] = esito.backup
+        _ultimo_backup[str(_project()["pcb"])] = esito.backup
+        if hasattr(kicad_redo, "_pila_redo"):
+            kicad_redo._pila_redo.pop(str(_project()["pcb"]), None)
     return esito.to_dict()
 
 
@@ -672,8 +513,8 @@ def kicad_undo() -> Dict[str, Any]:
         if not hasattr(kicad_redo, "_pila_redo"):
             kicad_redo._pila_redo = {}
         pila_redo = kicad_redo._pila_redo.setdefault(chiave, [])
-        pila_redo.append(copia)
         esito = pcb_writer.restore_backup(_pcb(), copia)
+        pila_redo.append(esito.backup)
         _ultimo_backup.pop(chiave, None)
         return _esito("kicad_undo", True, **esito.to_dict())
     except Exception as exc:
@@ -700,6 +541,7 @@ def kicad_redo() -> Dict[str, Any]:
                           error="Nessuna operazione da riapplicare in questa sessione.")
         copia = pila.pop()
         esito = pcb_writer.restore_backup(_pcb(), copia)
+        _ultimo_backup[chiave] = esito.backup
         return _esito("kicad_redo", True, **esito.to_dict())
     except Exception as exc:
         return _esito("kicad_redo", False, error=str(exc))
@@ -743,7 +585,8 @@ def kicad_export_gerbers(output_dir: str = "") -> Dict[str, Any]:
         out = Path(output_dir) if output_dir else None
         gerbers = cli.export_gerbers(_pcb(), out)
         drill = cli.export_drill(_pcb(), out or _pcb().parent / "gerbers")
-        return _esito("kicad_export_gerbers", True, gerbers=gerbers, drill=drill)
+        return _esito("kicad_export_gerbers", bool(gerbers.get("success") and drill.get("success")),
+                      gerbers=gerbers, drill=drill)
     except Exception as exc:
         return _esito("kicad_export_gerbers", False, error=str(exc))
 
@@ -765,8 +608,9 @@ def kicad_render(output_path: str = "", mode: str = "3d") -> Dict[str, Any]:
         if mode == "svg":
             out = Path(output_path) if output_path else None
             return _esito("kicad_render", True, **cli.export_svg(_pcb(), out))
+        from core import paths
         destinazione = Path(output_path) if output_path else (
-            Path("var") / "kicad" / f"board-{int(time.time())}.png")
+            paths.var_dir() / "kicad" / f"board-{uuid.uuid4().hex}.png")
         destinazione.parent.mkdir(parents=True, exist_ok=True)
         return _esito("kicad_render", True,
                       **cli.render_3d(_pcb(), destinazione))
@@ -836,7 +680,7 @@ def kicad_add_part(percorso: str = "", libreria: str = "", footprint: str = "",
                 percorso, libreria=libreria, footprint=footprint,
                 riferimento=riferimento, valore=valore,
                 x_mm=x_mm, y_mm=y_mm, rotazione=rotazione,
-                net_per_pad=net_per_pad or {"1": "GND"}, lato=lato))
+                net_per_pad=net_per_pad or {}, lato=lato))
     except Exception as exc:
         return _esito("kicad_add_part", False, error=str(exc))
 
@@ -855,21 +699,8 @@ def kicad_read_board_full(percorso: str = "") -> Dict[str, Any]:
 #: Nome canonico -> funzione. Il provider espone `esegui`, che li smista tutti.
 ESECUTORI = {
     "kicad_status": kicad_status,
-    "kicad_open": kicad_open_project,
-    "kicad_open_project": kicad_open_project,
+    "kicad_open": kicad_open,
     "kicad_close_project": kicad_close_project,
-    # costruzione topologia (schematico)
-    "kicad_add_component": kicad_add_component,
-    "kicad_remove_component": kicad_remove_component,
-    "kicad_modify_property": kicad_modify_property,
-    # gestione librerie
-    "kicad_import_library": kicad_import_library,
-    "kicad_export_library": kicad_export_library,
-    # netlist import/export
-    "kicad_import_netlist": kicad_import_netlist,
-    "kicad_export_netlist": kicad_export_netlist,
-    # version control
-    "kicad_git_commit": kicad_git_commit,
     "kicad_board_read": kicad_board_read,
     "kicad_list_parts": kicad_list_parts,
     "kicad_pads": kicad_pads,
@@ -903,18 +734,10 @@ ESECUTORI = {
     "kicad_new_board": kicad_new_board,
     "kicad_add_part": kicad_add_part,
     "kicad_read_board_full": kicad_read_board_full,
-    # task #6, la parte conclusa: l'annullamento bidirezionale.
-    #
-    # Gli altri endpoint chiesti dalla stessa UI (zone, netclass, rules,
-    # costruttori, bom, sync netlist, render 3d, export drill e pick&place)
-    # restano fuori di qui finche' non hanno una funzione che li esegue: il
-    # ponte pcbnew non offre ancora quelle primitive. Un nome citato in questo
-    # dizionario senza un `def` che lo definisca non e' un tool mancante, e'
-    # un `NameError` a livello di modulo: il modulo non si importa piu' e le
-    # prove che lo importano non si raccolgono nemmeno. Il controllo che lo
-    # impedisce sta in `tests/test_kicad_editor_contract.py`.
     "kicad_redo": kicad_redo,
 }
+from .advanced_tools import EXECUTORS as _ADVANCED_EXECUTORS
+ESECUTORI.update(_ADVANCED_EXECUTORS)
 
 #: Cosa tocca i file del progetto. Serve a `policy` per il cancello: le
 #: scritture non entrano mai fra i permessi di lettura, e un profilo in sola
@@ -928,6 +751,7 @@ WRITE_TOOLS = {
     # pcbnew bridge: questi due scrivono file di progetto
     "kicad_new_board", "kicad_add_part",
 }
+WRITE_TOOLS.update(_ADVANCED_EXECUTORS)
 READ_TOOLS = set(ESECUTORI) - WRITE_TOOLS
 
 
@@ -1077,4 +901,3 @@ def registra() -> List[str]:
     """
     from core.harness import tool_providers
     return tool_providers.register(provider())
-

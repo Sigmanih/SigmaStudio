@@ -773,6 +773,7 @@ class LlamaServerBackend(InferenceBackend):
         return {"success": True, "settings": self._settings, "model_name": facts.name}
 
     def unload(self) -> Dict[str, Any]:
+        previous = self._facts.name if self._facts else None
         with self._lock:
             processo, self._processo = self._processo, None
         if processo is None:
@@ -790,7 +791,7 @@ class LlamaServerBackend(InferenceBackend):
         self._porta = None
         self._facts = None
         self._settings = {}
-        return {"success": True}
+        return {"success": True, "unloaded": previous}
 
     # ------------------------------------------------------------ streaming
 
@@ -1009,23 +1010,6 @@ class LlamaServerBackend(InferenceBackend):
         except (TypeError, ValueError):
             return 1
 
-    def unload(self) -> Dict[str, Any]:
-        previous = self._facts.name if self._facts else None
-        if self._processo is not None:
-            try:
-                self._processo.terminate()
-                try:
-                    self._processo.wait(timeout=2.0)
-                except subprocess.TimeoutExpired:
-                    self._processo.kill()
-                    self._processo.wait(timeout=2.0)
-            except Exception as exc:
-                log.debug("[LlamaServer] Process termination skipped/failed: %s", exc)
-            self._processo = None
-        self._facts = None
-        self._settings = {}
-        self._porta = None
-        return {"unloaded": previous}
 
     def benchmark(self, prompt_tokens: int = 128, decode_tokens: int = 24) -> Dict[str, Any]:
         """Prefill e decode separati, misurati dal server stesso.

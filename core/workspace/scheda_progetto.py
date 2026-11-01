@@ -174,6 +174,9 @@ def _scheda_grezza(impronta: str) -> str:
             "sono: " + ", ".join(agenti) + ".",
             "",
         ]
+    else:
+        righe += ["**Gli agenti della chat** hanno un catalogo separato dai ruoli dell'harness; "
+                  "in questo ambiente il catalogo non è disponibile.", ""]
     if moduli:
         righe += ["**I moduli installati** sono: " + ", ".join(moduli) + ".", ""]
 

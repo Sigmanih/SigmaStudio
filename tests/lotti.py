@@ -77,6 +77,7 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "worktree",
     ),
     "mcp": (
+        "mcp_governance_routes",
         "assenso_client_esterno", "git_server", "ipc_client_transport",
         "mcp_developer_advanced", "mcp_developer_tools", "mcp_fs_server",
         "mcp_hub_stdio", "protocol_bench", "protocol_runner", "sandbox",
@@ -99,6 +100,9 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "mlx_weights", "gpu_lease",
     ),
     "moduli": (
+        "kicad_advanced",
+        "module_lifecycle",
+        "creative_audio_export", "creative_remaster", "creative_sigla",
         "capability_manager", "civitai_red", "creative_characters", "creative_cleanup", "creative_color_finish", "creative_judge", "creative_ltx", "creative_media", "creative_production", "creative_scene", "creative_speech_qa", "creative_storyboard", "creative_preproduction", "voice_engines", "creative_timeline", "video_agents_and_tools", "docker_fs", "dynamic_swarm", "eda_harness_tools",
         "eda_lab", "email_client", "frontend_diagnostics", "developer_graph",
         "fusione_a_tre_vie", "i18n_translator", "kicad_agent",
@@ -111,6 +115,7 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "visual_console_errors",
     ),
     "rete": (
+        "tls_verification",
         "ai_integration", "cloud_native_tool_calling", "dev_provider_routing",
         "cluster_zero_config_provider", "p2p_network_e2e", "sigma_network_ailo", "sigma_network_ailo_hub",
         "local_ca", "network_fetch_page", "network_research_note",
@@ -118,6 +123,11 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "sigma_network_lab",
     ),
     "base": (
+        "bootstrap_services",
+        "core_aliases",
+        "architecture_contracts",
+        "http_limits",
+        "http_access",
         "alias_powershell", "asyncio_windows_fix", "avviso_radice",
         "backup_restore", "catene_di_comandi", "comandi_non_interattivi",
         "confine_workspace", "dll_directories", "edit_file_vicino",

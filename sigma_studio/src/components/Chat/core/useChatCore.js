@@ -7,6 +7,10 @@ import { PROVIDER_COLORS, getModelRoutingInfo } from '../modelProviderMap';
 import { loadMessagesFromStorage, saveMessagesToStorage, createSession } from '../chatStorage';
 import { initSpeechRecognition, createWakeWordMic, stopSpeech } from '../audioSpeech';
 import { deriveAgentActivity, publishAgentActivity, releaseAgentActivity } from '../../common/agentActivity';
+import { findRoleManifesto } from '../../../services/chatNavigation';
+import { loadLocalModules } from '../../../services/moduleCatalog';
+import { useModuleState } from '../../../hooks/useModuleState';
+import { isNavigationRequest, resolveWorkspaceRequest, openAvailableWorkspace } from '../../../services/workspaceNavigation';
 const saveMessagesImmediately = saveMessagesToStorage;
 
 
@@ -18,7 +22,7 @@ import { useMcpAutoApprove } from './useMcpAutoApprove';
 import { useChatDevMode } from './useChatDevMode';
 
 export default function useChatCore(extraProps = {}) {
-  const { openFiles: externalOpenFiles, onTasksUpdated, addToast } = extraProps;
+  const { openFiles: externalOpenFiles, onTasksUpdated, addToast, openTab } = extraProps;
   
   // Dev Mode State (Developer Lab Harness integration)
   const devModeHook = useChatDevMode();
@@ -50,10 +54,15 @@ export default function useChatCore(extraProps = {}) {
   };
 
   // 1. Sessions State & Handlers
+  const sessionBindingsRef = useRef({});
+  const selectSessionModel = useCallback(model => sessionBindingsRef.current.selectModel?.(model), []);
+  const setSessionActions = useCallback(actions => sessionBindingsRef.current.setActions?.(actions), []);
+  const getSessionModel = useCallback(() => sessionBindingsRef.current.model || '', []);
   const sessionsHook = useChatSessions({
     selectedModel: '',
-    setSelectedModel: null, // will update post-config
-    setActionsLog: null,
+    getSelectedModel: getSessionModel,
+    setSelectedModel: selectSessionModel,
+    setActionsLog: setSessionActions,
     saveMessagesImmediately,
     loadMessagesFromStorage,
     welcomeMsg: welcomeMessageObj
@@ -64,15 +73,33 @@ export default function useChatCore(extraProps = {}) {
     saveSessionsState: sessionsHook.saveSessionsState,
     sessionRefs: sessionsHook.sessionRefs
   });
+  const workspaceCatalog = useModuleState();
 
-  // Connect sessions back to config selection
-  sessionsHook.setSelectedModel = configHook.setSelectedModel;
+  const onWorkspaceRequest = useCallback(async text => {
+    if (!isNavigationRequest(text)) return null;
+    const role = configHook.manifestos.find(entry => entry.path === configHook.activeManifesto?.path)
+      || configHook.activeManifesto;
+    const knownRequest = resolveWorkspaceRequest(text, role, workspaceCatalog.moduleCatalog);
+    if (!knownRequest && workspaceCatalog.isLoaded && !workspaceCatalog.error) return null;
+    try {
+      const { modules } = await loadLocalModules();
+      const result = resolveWorkspaceRequest(text, role, modules);
+      if (result?.type === 'open' && !openAvailableWorkspace(result.options[0], modules, openTab)) {
+        return { type: 'unavailable', options: [], message: 'Lo spazio di lavoro non è disponibile in questa vista.' };
+      }
+      return result;
+    } catch {
+      return knownRequest ? { type: 'unavailable', options: [],
+        message: 'Impossibile leggere gli spazi di lavoro disponibili. Riprova fra poco.' } : null;
+    }
+  }, [configHook.manifestos, configHook.activeManifesto, openTab, workspaceCatalog]);
 
   // 3. Streaming & Execution Loop Handlers
   const streamingHook = useChatStreaming({
     openFiles: externalOpenFiles,
     onTasksUpdated,
     addToast,
+    onWorkspaceRequest,
     speakerEnabled,
     
     // Sessions bindings
@@ -107,9 +134,16 @@ export default function useChatCore(extraProps = {}) {
 
   // Interruttore Auto Approve: stato condiviso con la tab MCP Tools.
   const mcpApproval = useMcpAutoApprove();
+  const smartMicRef = useRef(null);
+  const handleSendMessage = useCallback(async (textOverride, extraParams) => {
+    if (smartMicRef.current && smartMicRef.current.isActive()) smartMicRef.current.reset();
+    return streamingHook.sendMessage(textOverride, extraParams);
+  }, [streamingHook.sendMessage]);
 
-  // Connect actions log back to sessions switch
-  sessionsHook.setActionsLog = streamingHook.setActionsLog;
+  useEffect(() => {
+    sessionBindingsRef.current = { selectModel: configHook.setSelectedModel,
+      setActions: streamingHook.setActionsLog, model: configHook.selectedModel };
+  }, [configHook.setSelectedModel, configHook.selectedModel, streamingHook.setActionsLog]);
 
   // Load configuration, models and manifestos on mount
   useEffect(() => {
@@ -225,10 +259,13 @@ export default function useChatCore(extraProps = {}) {
         return;
       }
       if (!configHook.manifestos.length) return;
-      const match = configHook.manifestos.find(m =>
-        (m.filename || '').toLowerCase() === wanted ||
-        (m.path || '').toLowerCase().endsWith(`/${wanted}`)
-      );
+      const match = findRoleManifesto(configHook.manifestos, job.roleId);
+      if (!match) {
+        homeJobRef.current = null;
+        if (job.prompt) streamingHook.setInput(job.prompt);
+        addToast?.('Il ruolo richiesto non è disponibile. Scegli un ruolo prima di inviare.', 'warning');
+        return;
+      }
       job.stage = 'send';
       if (match) {
         job.rolePath = match.path;
@@ -248,11 +285,17 @@ export default function useChatCore(extraProps = {}) {
       }
       homeJobRef.current = null;
       if (!job.prompt) return;
+      if (!roleReady) {
+        streamingHook.setInput(job.prompt);
+        addToast?.('La selezione del ruolo non è pronta. Il messaggio resta nel campo di testo.', 'warning');
+        return;
+      }
       // Con una risposta gia' in corso il messaggio resta pronto nel campo invece di perdersi
       if (job.send && !streamingHook.loading) handleSendMessage(job.prompt);
       else streamingHook.setInput(job.prompt);
     }
-  }, [homeJobTick, configHook.manifestos, configHook.selectedManifestoPath, sessionsHook.activeSessionId]);
+  }, [homeJobTick, configHook.manifestos, configHook.selectedManifestoPath, sessionsHook.activeSessionId,
+    handleSendMessage, handleSelectManifesto, sessionsHook, streamingHook]);
 
   // Sync selected model and active manifesto when activeSessionId or selectedModel changes
   useEffect(() => {
@@ -415,7 +458,6 @@ export default function useChatCore(extraProps = {}) {
 
   // Wake-word microphone: 'off' | 'waiting' (listening for "Sigma") | 'listening'
   const [smartMicState, setSmartMicState] = useState('off');
-  const smartMicRef = useRef(null);
 
   const stopSmartMic = useCallback(() => {
     if (smartMicRef.current) {
@@ -449,6 +491,16 @@ export default function useChatCore(extraProps = {}) {
           streamingHook.setInput(newText);
         }
       },
+      onSilence: (finalText) => {
+        const prefix = initialInputRef.current ? initialInputRef.current.trim() : '';
+        const textToSend = prefix ? `${prefix} ${finalText}` : finalText;
+        if (textToSend && textToSend.trim()) {
+          setIsRecording(false);
+          streamingHook.setInput('');
+          handleSendMessage(textToSend.trim());
+          if (addToast) addToast('⚡ Messaggio vocale inviato automaticamente', 'info');
+        }
+      },
       onError: (err) => {
         console.warn('SpeechRecognition error:', err);
         setIsRecording(false);
@@ -474,13 +526,6 @@ export default function useChatCore(extraProps = {}) {
       setIsRecording(false);
     }
   }, [isRecording, streamingHook.input, streamingHook.setInput, addToast, stopSmartMic]);
-
-  const handleSendMessage = useCallback(async (textOverride, extraParams) => {
-    if (smartMicRef.current && smartMicRef.current.isActive()) {
-      smartMicRef.current.reset();
-    }
-    return streamingHook.sendMessage(textOverride, extraParams);
-  }, [streamingHook.sendMessage]);
 
   const toggleSmartMic = useCallback(() => {
     if (smartMicRef.current) {

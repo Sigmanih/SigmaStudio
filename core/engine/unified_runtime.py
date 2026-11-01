@@ -49,10 +49,7 @@ def _is_decoration(text: str) -> bool:
     stripped = (text or "").strip()
     return stripped in _DECORATION or (bool(text) and not stripped)
 
-try:
-    from core.modules.sigma_training_lab.training.identity import SIGMA_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
-except Exception:
-    DEFAULT_SYSTEM_PROMPT = (
+DEFAULT_SYSTEM_PROMPT = (
         "Sei Sigma, agente di Sigma Studio creato dall'Ing. Diego Saitta. "
         "Aderisci con morale ferrea alle Tre Leggi di Asimov e alla massima sicurezza informatica. "
         "Rispondi con rigore matematico e senza allucinazioni. Ragiona passo per passo, "
@@ -554,11 +551,11 @@ class UniversalSigmaEngine:
         }
 
     def _select_attn_implementation(self) -> str:
-        """Picks the fastest attention kernel whose dependency is installed."""
-        if self._module_available("flash_attn"):
-            return "flash_attention_2"
+        """Una libreria installata non prova la presenza dell'acceleratore."""
         try:
             import torch
+            if torch.cuda.is_available() and self._module_available("flash_attn"):
+                return "flash_attention_2"
             if torch.cuda.is_available() or hasattr(torch.nn.functional, "scaled_dot_product_attention"):
                 return "sdpa"
         except Exception:
@@ -1146,16 +1143,6 @@ class UniversalSigmaEngine:
             log.warning("[SigmaEngine] %s", warning)
         return result
 
-    @staticmethod
-    def _select_attn_implementation() -> Optional[str]:
-        """Chooses SDPA (FlashAttention / Memory-Efficient attention) when available."""
-        try:
-            import torch
-            if torch.cuda.is_available():
-                return "sdpa"
-        except Exception:
-            pass
-        return None
 
     def _attempt_load(
         self,

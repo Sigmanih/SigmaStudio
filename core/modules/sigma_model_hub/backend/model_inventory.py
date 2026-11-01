@@ -57,7 +57,7 @@ def _earliest_weight_time(folder: str, weight_files) -> float:
 def _extract_author_and_name(raw_name: str) -> tuple[str, str, bool]:
     """Extracts author/organization, clean model name, and official provider status."""
     try:
-        from core.modules.sigma_model_hub.backend.hf_client import is_official_provider
+        from .hf_client import is_official_provider
     except Exception:
         def is_official_provider(a, m): return False
 
@@ -835,7 +835,7 @@ def rename_local_model(model_path_or_id: str, new_name: str,
     # farebbe perdere il collegamento, e la pubblicazione successiva ne creerebbe
     # uno nuovo lasciando due copie senza indicazioni su quale sia quella buona.
     try:
-        from core.modules.sigma_model_hub.backend import publications
+        from . import publications
         publications.rename_local_reference(os.path.basename(origine), cartella)
     except Exception as err:
         log.debug("[ModelInventory] Legame di pubblicazione non aggiornato: %s", err)

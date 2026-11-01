@@ -11,7 +11,7 @@ from core.harness.roles import DEV_ROLES
 
 class TestRolesAPI(unittest.TestCase):
     def setUp(self):
-        self.client = TestClient(app)
+        self.client = TestClient(app, base_url="http://localhost", client=("127.0.0.1", 50000))
         role_registry.invalidate()
 
     def tearDown(self):

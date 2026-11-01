@@ -2,19 +2,14 @@
 # core/harness/protocol_bench.py — Ponte di retrocompatibilità
 # Sigma Studio v8 — Agent Harness (kernel)
 # ==============================================================================
-"""Ponte verso il modulo dedicato `core.modules.sigma_benchmark_lab.protocol`.
-
-La suite di benchmark, gli scenari graduati e la SandboxJail risiedono interamente
-all'interno del modulo `core.modules.sigma_benchmark_lab.protocol` per preservare
-il kernel snello e privo di logiche di test.
-"""
+"""Compatibilità per il valutatore condiviso in `core.harness.protocol`."""
 
 from __future__ import annotations
 
 import sys
 from typing import List, Optional
 
-from core.modules.sigma_benchmark_lab.protocol import (
+from core.harness.protocol import (
     SCENARI,
     EsitoScenario,
     Prova,
@@ -44,7 +39,7 @@ from core.modules.sigma_benchmark_lab.protocol import (
     prova_verifica_prima_di_chiudere,
     pulisci,
 )
-from core.modules.sigma_benchmark_lab.protocol.evaluator import (
+from core.harness.protocol.evaluator import (
     SCRITTURA_INLINE,
     SEGNAPOSTO_DEL_PROMPT,
 )

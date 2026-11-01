@@ -637,7 +637,7 @@ class TestGliScenariDiAutonomiaEsistonoESonoCollegati:
         di essere un metro."""
         import inspect
 
-        from core.modules.sigma_benchmark_lab.protocol import engine
+        from core.harness.protocol import engine
 
         sorgente = inspect.getsource(engine.esegui_scenario)
         assert "if scenario.livello >= 4:" in sorgente

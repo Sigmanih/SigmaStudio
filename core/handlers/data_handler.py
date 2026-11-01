@@ -64,7 +64,6 @@ def rebuild_modules_meta() -> dict:
     prefix = data_root.name
     if not os.path.isdir(data_dir):
         paths.ensure(data_root)
-        return {"topics": {}, "nodes": {}, "modules": {}}
 
     existing = modules_store.load()
     existing_topics = existing.get("topics", {})

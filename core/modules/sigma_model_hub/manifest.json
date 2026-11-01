@@ -1,5 +1,6 @@
 {
   "id": "sigma_model_hub",
+  "enabled_by_default": true,
   "name": "Model Hub & GGUF Forge",
   "version": "v1.0.0",
   "category": "Modelli & Pesi",

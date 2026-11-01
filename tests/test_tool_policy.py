@@ -138,10 +138,19 @@ class TestCoerenzaConIRuoli:
             for tool in role.tools:
                 assert engine.is_tool_allowed(role_id, tool), f"{role_id}/{tool}"
 
-    def test_il_file_di_configurazione_vince_sui_predefiniti(self):
+    def test_il_file_di_configurazione_vince_sui_predefiniti(self, tmp_path, monkeypatch):
         """La sovrapposizione e' una funzionalita': se smettesse di funzionare
         i ruoli del file tornerebbero silenziosamente ai valori di fabbrica."""
+        import json
+        from core.harness import role_registry
+        config = tmp_path / "roles.json"
+        config.write_text(json.dumps({"roles": {"dominio_prova": {
+            "name": "Specialista di prova", "system_prompt": "Analizza il dominio richiesto.",
+            "tools": ["read_file"]}}}), encoding="utf-8")
+        monkeypatch.setattr(role_registry, "roles_config_file", lambda: config)
+        role_registry.invalidate()
         engine = RoleEngine()
+        role_registry.invalidate()
         assert set(engine.roles) >= set(DEV_ROLES), "i predefiniti non spariscono"
         in_piu = set(engine.roles) - set(DEV_ROLES)
         assert in_piu, "config/roles.json deve poter aggiungere ruoli"

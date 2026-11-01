@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { saveLastModel } from '../chatStorage';
 import { registerLocalModels } from './modelSpecsHelper';
+import { modelName, modelNames } from '../../../services/modelIdentity';
 
 export function useChatConfig({ saveSessionsState, sessionRefs }) {
   const [favoriteModels, setFavoriteModels] = useState(() => {
@@ -8,7 +9,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       const stored = localStorage.getItem('sigma_favorite_models');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (modelNames(parsed).length > 0) return modelNames(parsed);
       }
       const single = localStorage.getItem('sigma_favorite_model');
       if (single) return [single];
@@ -26,7 +27,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       const stored = localStorage.getItem('sigma_favorite_models');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+        if (modelNames(parsed).length > 0) return modelNames(parsed)[0];
       }
       return localStorage.getItem('sigma_favorite_model') || '';
     } catch (e) {
@@ -132,7 +133,8 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           if (localJson.success && Array.isArray(localJson.models)) {
             registerLocalModels(localJson.models);
             localJson.models.forEach(m => {
-              const mName = m.display_name || m.filename || m.model_id;
+              const mName = modelName(m);
+              if (!mName) return;
               if (!known.has(mName)) {
                 models.unshift({
                   ...m,
@@ -278,13 +280,14 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
         const lastUsed = (() => {
           try { return localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model') || ''; } catch (e) { return ''; }
         })();
+        favs = modelNames(favs);
         let initialModel = '';
         if (lastUsed) {
           initialModel = lastUsed;
         } else if (favs.length > 0) {
           initialModel = favs[0];
         } else if (d.config?.model) {
-          initialModel = d.config.model;
+          initialModel = modelName(d.config.model);
         }
 
         if (favs.length > 0) {
@@ -360,7 +363,8 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           filename: f.filename,
           image: f.image || '/images/default.png',
           role: f.role || '',
-          domainColor: f.domainColor || '#00d2ff'
+          domainColor: f.domainColor || '#00d2ff',
+          workDomain: f.workDomain || f.work_domain || '', category: f.category || '', id: f.id
         }));
         setManifestos([
           { path: 'auto', name: 'auto', filename: 'auto.md', image: '/images/default.png', role: 'Centralino Automatico' },

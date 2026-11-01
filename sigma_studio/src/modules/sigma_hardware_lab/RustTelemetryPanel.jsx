@@ -25,7 +25,7 @@ import { useApp } from '../../contexts/AppContext';
  * l'efficienza della Radix Tree Paged KV-Cache e l'allocazione Dual-GPU/RAM.
  */
 export default function RustTelemetryPanel({ compact = false }) {
-  const { theme } = useApp ? useApp() : { theme: 'dark' };
+  const { theme } = useApp();
   const isLight = theme === 'light';
 
   const [metrics, setMetrics] = useState(null);

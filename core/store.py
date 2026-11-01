@@ -32,10 +32,14 @@ Usage:
 import json
 import os
 import threading
+import tempfile
+from pathlib import Path
 from typing import Any, Callable
 from core.logger import get_logger
 
 log = get_logger(__name__)
+_LOCKS: dict[str, Any] = {}
+_LOCKS_GUARD = threading.Lock()
 
 
 class JsonStore:
@@ -50,7 +54,8 @@ class JsonStore:
     def __init__(self, path: str, default: Any = None) -> None:
         self._path = path
         self._default = default if default is not None else {}
-        self._lock = threading.RLock()
+        with _LOCKS_GUARD:
+            self._lock = _LOCKS.setdefault(os.path.normcase(str(Path(path).resolve())), threading.RLock())
 
     # ------------------------------------------------------------------
     # Public API
@@ -108,18 +113,20 @@ class JsonStore:
             return self._default_copy()
 
     def _write(self, data: Any) -> None:
-        tmp = self._path + ".tmp"
+        destination = Path(self._path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        tmp = None
         try:
-            with open(tmp, "w", encoding="utf-8") as fh:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=destination.parent,
+                                             prefix=destination.name + ".", suffix=".tmp", delete=False) as fh:
+                tmp = fh.name
                 json.dump(data, fh, indent=4, ensure_ascii=False)
-            # Atomic replace (works on Windows too)
-            if os.path.exists(self._path):
-                os.replace(tmp, self._path)
-            else:
-                os.rename(tmp, self._path)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, destination)
         except OSError as exc:
             log.error("Failed to write %s: %s", self._path, exc)
-            if os.path.exists(tmp):
+            if tmp and os.path.exists(tmp):
                 try:
                     os.remove(tmp)
                 except OSError:

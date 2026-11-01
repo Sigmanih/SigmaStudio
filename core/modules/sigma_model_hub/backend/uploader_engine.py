@@ -1392,7 +1392,7 @@ def hf_repo_status(repo_id: str, token: Optional[str] = None) -> Dict[str, Any]:
     except ImportError:
         return {"success": False, "error": "huggingface_hub non installato"}
 
-    from core.modules.sigma_model_hub.backend.hf_client import get_effective_hf_token
+    from .hf_client import get_effective_hf_token
     effettivo = get_effective_hf_token(token)
     if not effettivo:
         return {"success": False, "error": "Token Hugging Face mancante"}
@@ -1439,7 +1439,7 @@ def discover_publications(local_models: List[Dict[str, Any]],
     except ImportError:
         return {"success": False, "error": "huggingface_hub non installato"}
 
-    from core.modules.sigma_model_hub.backend.hf_client import get_effective_hf_token
+    from .hf_client import get_effective_hf_token
 
     effettivo = get_effective_hf_token(token)
     if not effettivo:
@@ -1464,7 +1464,7 @@ def discover_publications(local_models: List[Dict[str, Any]],
         if "/" in repo:
             per_coda.setdefault(repo.split("/")[-1].lower(), []).append(repo)
 
-    from core.modules.sigma_model_hub.backend import publications
+    from . import publications
 
     proposte = []
     for locale in local_models:
@@ -1502,7 +1502,7 @@ def attach_publication(local_ref: str, repo_id: str,
     sbagliato non darebbe errore subito, lo darebbe al primo aggiornamento di
     scheda — mandato sul repository di qualcun altro, o su uno inesistente.
     """
-    from core.modules.sigma_model_hub.backend import publications
+    from . import publications
 
     if not local_ref or not repo_id:
         return {"success": False, "error": "Servono il modello locale e il repository"}
@@ -1551,8 +1551,8 @@ def update_model_card(local_ref: str, repo_id: Optional[str] = None,
     except ImportError:
         return {"success": False, "error": "huggingface_hub non installato"}
 
-    from core.modules.sigma_model_hub.backend import publications
-    from core.modules.sigma_model_hub.backend.hf_client import get_effective_hf_token
+    from . import publications
+    from .hf_client import get_effective_hf_token
 
     destinazione = (repo_id or "").strip()
     if not destinazione:
@@ -1613,8 +1613,8 @@ def batch_update_all_cards(token: Optional[str] = None,
     Questo fa riapparire i modelli fra i primi aggiornati su HF e ne stimola la
     visibilità e i download.
     """
-    from core.modules.sigma_model_hub.backend import publications
-    from core.modules.sigma_model_hub.backend.model_inventory import scan_local_models
+    from . import publications
+    from .model_inventory import scan_local_models
 
     local_models = models if models is not None else scan_local_models()
 
@@ -1634,7 +1634,7 @@ def batch_update_all_cards(token: Optional[str] = None,
 
     our_namespaces = {"sigmanih"}
     try:
-        from core.modules.sigma_model_hub.backend.uploader_engine import uploader_manager
+        from .uploader_engine import uploader_manager
         who = uploader_manager.get_whoami(token=token)
         if who.get("authenticated") and who.get("username"):
             our_namespaces.add(who["username"].lower())
@@ -1786,7 +1786,7 @@ def rename_hf_repo(from_id: str, to_id: str,
         return {"success": False,
                 "error": "Il nuovo nome deve essere completo, nella forma `autore/modello`"}
 
-    from core.modules.sigma_model_hub.backend.hf_client import get_effective_hf_token
+    from .hf_client import get_effective_hf_token
     effettivo = get_effective_hf_token(token)
     if not effettivo:
         return {"success": False, "error": "Token Hugging Face mancante"}
@@ -1805,14 +1805,14 @@ def rename_hf_repo(from_id: str, to_id: str,
 
     # Sincronizza il registro locale delle pubblicazioni con il nuovo repo_id
     try:
-        from core.modules.sigma_model_hub.backend import publications
+        from . import publications
         publications.update_repo_id(partenza, arrivo)
     except Exception as err:
         log.warning("[ModelUploader] Impossibile aggiornare registro dopo rinomina: %s", err)
 
     # Aggiorna la scheda README.md sul nuovo repository con il nuovo titolo e link
     try:
-        from core.modules.sigma_model_hub.backend import publications
+        from . import publications
         for k, v in publications.all_publications().items():
             if isinstance(v, dict) and v.get("repo_id") == arrivo:
                 loc_ref = v.get("local_ref") or k
@@ -2096,7 +2096,7 @@ class ModelUploaderManager:
             # pubblicato, e sbagliare l'identificativo non da' errore — crea un
             # secondo repository.
             try:
-                from core.modules.sigma_model_hub.backend import publications
+                from . import publications
                 publications.record_publication(
                     task.local_path or task.filename,
                     task.repo_id, task.hf_url, task.private,

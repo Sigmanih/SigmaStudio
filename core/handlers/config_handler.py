@@ -258,7 +258,7 @@ def handle_hf_token_config(self):
     path so neither can leave a stale copy behind.
     """
     try:
-        from core.modules.sigma_model_hub.backend.hf_client import persist_hf_token
+        from core.integrations.hf_credentials import persist_hf_token
 
         req = self.read_json_body() if hasattr(self, 'read_json_body') else {}
         token = (req.get('hf_token') or '').strip()
@@ -272,7 +272,7 @@ def handle_hf_token_config(self):
 def handle_hf_token_get(self):
     """GET /api/config/hf_token — Get HuggingFace token configured status and its origin."""
     try:
-        from core.modules.sigma_model_hub.backend.hf_client import resolve_hf_token
+        from core.integrations.hf_credentials import resolve_hf_token
         resolved = resolve_hf_token()
         return self.send_json_response({
             "success": True,

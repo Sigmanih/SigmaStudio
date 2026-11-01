@@ -10,6 +10,7 @@ import { useApp } from '../../contexts/AppContext';
 import RealtimeTelemetryChart from './RealtimeTelemetryChart';
 import RustTelemetryPanel from './RustTelemetryPanel';
 import TabHeader from '../../components/common/TabHeader';
+import TechSpaceCanvas from '../../components/common/TechSpaceCanvas';
 
 const INACTIVE_HARDWARE_NODES = [
   {
@@ -50,6 +51,7 @@ export default function HardwareLab({ addToast }) {
   const { theme } = useApp();
   const isLight = theme === 'light';
 
+  const [activeSubTab, setActiveSubTab] = useState('overview'); // 'overview' | 'advanced'
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -429,16 +431,25 @@ export default function HardwareLab({ addToast }) {
       flexDirection: 'column',
       width: '100%',
       height: '100%',
-      backgroundColor: isLight ? '#f4efe4' : '#07090e',
+      background: 'var(--bg)',
       color: textPrimary,
-      overflow: 'hidden'
+      overflow: 'hidden',
+      position: 'relative'
     }}>
+      {/* Background animato Cyber Space Canvas */}
+      <TechSpaceCanvas isLight={isLight} />
+
       {/* Intestazione Universale Kernel Sigma Studio */}
       <TabHeader
         icon={Zap}
+        iconColor="#3fb950"
         title="Hardware Lab"
-        highlight="CLUSTER TELEMETRY"
-        description="Telemetria in tempo reale: GPU, CPU, RAM, Hard Disk, Rete e tracciamento processi per modulo"
+        highlight="TELEMETRY HUB"
+        tabs={[
+          { id: 'overview', label: 'Panoramica Risorse', icon: Cpu, active: activeSubTab === 'overview', onClick: () => setActiveSubTab('overview') },
+          { id: 'advanced', label: 'Informazioni Avanzate', icon: Sliders, active: activeSubTab === 'advanced', onClick: () => setActiveSubTab('advanced') }
+        ]}
+        description={activeSubTab === 'overview' ? 'Monitoraggio in tempo reale di GPU, VRAM, CPU e processi attivi sulla macchina.' : 'Approfondimenti telemetrici avanzati: grafici multi-canale, kernel Rust e cluster nodi.'}
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{
@@ -447,7 +458,7 @@ export default function HardwareLab({ addToast }) {
               fontWeight: 800, display: 'flex', alignItems: 'center', gap: '5px'
             }}>
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-              {gpus.length} GPU • {ram.total_gb || 94} GB RAM • {disks.length} Dischi
+              {gpus.length} GPU • {ram.total_gb || 94} GB RAM
             </span>
 
             <button
@@ -494,15 +505,15 @@ export default function HardwareLab({ addToast }) {
       />
 
       {/* Main Content Area Scrollable */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 24px 32px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 24px 32px 24px', display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative', zIndex: 1 }}>
 
-      {/* RUST ENGINE & SCHEDULER CONTINUOUS BATCHING TELEMETRY PANEL */}
-      <RustTelemetryPanel />
+      {/* RUST ENGINE & SCHEDULER CONTINUOUS BATCHING TELEMETRY PANEL (INFORMAZIONI AVANZATE) */}
+      {activeSubTab === 'advanced' && <RustTelemetryPanel />}
 
-      {/* 2. ROW-BASED HARDWARE MASTER LIST (LEFT) + UX CHART INSPECTOR (RIGHT) */}
+      {/* 2. ROW-BASED HARDWARE MASTER LIST (LEFT) + UX CHART INSPECTOR (RIGHT, SOLO IN INFO AVANZATE) */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 0.85fr)',
+        gridTemplateColumns: activeSubTab === 'advanced' ? 'minmax(0, 1.15fr) minmax(0, 0.85fr)' : '1fr',
         gap: '18px'
       }}>
         {/* LEFT COLUMN: INTERACTIVE HARDWARE DEVICES (ROW-BY-ROW) */}
@@ -733,115 +744,169 @@ export default function HardwareLab({ addToast }) {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: HIGH-END UX INSPECTOR WITH DEDICATED GRAPH SELECTOR */}
-        <div style={{
-          padding: '18px 20px',
-          borderRadius: '16px',
-          background: cardBg,
-          border: cardBorder,
-          boxShadow: cardShadow,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '14px'
-        }}>
-          {selectedDevice ? (
-            <>
-              {/* Selected Device Header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: subCardBorder, paddingBottom: '10px' }}>
-                <div>
-                  <div style={{ fontSize: '0.64rem', color: '#00d2ff', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                    {selectedDevice.type} • ISPETTORE REALTIME
-                  </div>
-                  <h2 style={{ margin: '2px 0 0 0', fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
-                    {selectedDevice.name}
-                  </h2>
-                  <div style={{ fontSize: '0.7rem', color: textMuted, marginTop: '2px' }}>
-                    {selectedDevice.subtitle}
+        {/* RIGHT COLUMN: HIGH-END UX INSPECTOR WITH DEDICATED GRAPH SELECTOR (SOLO IN INFORMAZIONI AVANZATE) */}
+        {activeSubTab === 'advanced' && (
+          <div style={{
+            padding: '18px 20px',
+            borderRadius: '16px',
+            background: cardBg,
+            border: cardBorder,
+            boxShadow: cardShadow,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px'
+          }}>
+            {selectedDevice ? (
+              <>
+                {/* Selected Device Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: subCardBorder, paddingBottom: '10px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.64rem', color: '#00d2ff', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                      {selectedDevice.type} • ISPETTORE REALTIME
+                    </div>
+                    <h2 style={{ margin: '2px 0 0 0', fontSize: '1.05rem', fontWeight: 800, color: textPrimary }}>
+                      {selectedDevice.name}
+                    </h2>
+                    <div style={{ fontSize: '0.7rem', color: textMuted, marginTop: '2px' }}>
+                      {selectedDevice.subtitle}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Metrics Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                {selectedDevice.metrics.map((m, idx) => (
-                  <div key={idx} style={{
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    background: subCardBg,
-                    border: subCardBorder
-                  }}>
-                    <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
-                      {m.label}
-                    </div>
-                    <div style={{ fontSize: '0.98rem', fontWeight: 900, color: m.color, fontFamily: 'JetBrains Mono, monospace', margin: '3px 0' }}>
-                      {m.val}
-                    </div>
-                    {m.progress !== undefined && (
-                      <div style={{ height: '4px', borderRadius: '2px', background: 'rgba(0,0,0,0.15)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(100, m.progress)}%`, background: m.color, borderRadius: '2px', transition: 'width 0.3s ease' }} />
+                {/* Metrics Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  {selectedDevice.metrics.map((m, idx) => (
+                    <div key={idx} style={{
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      background: subCardBg,
+                      border: subCardBorder
+                    }}>
+                      <div style={{ fontSize: '0.64rem', color: textMuted, fontWeight: 700, textTransform: 'uppercase' }}>
+                        {m.label}
                       </div>
-                    )}
+                      <div style={{ fontSize: '0.98rem', fontWeight: 900, color: m.color, fontFamily: 'JetBrains Mono, monospace', margin: '3px 0' }}>
+                        {m.val}
+                      </div>
+                      {m.progress !== undefined && (
+                        <div style={{ height: '4px', borderRadius: '2px', background: 'rgba(0,0,0,0.15)', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.min(100, m.progress)}%`, background: m.color, borderRadius: '2px', transition: 'width 0.3s ease' }} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* UX DESIGN GRAPH SELECTOR (SELECT ONE CHART AT A TIME) */}
+                <div style={{ marginTop: '4px' }}>
+                  <div style={{ fontSize: '0.66rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>SELEZIONA TELEMETRIA GRAFICA</span>
+                    <span style={{ color: currentChart?.color, fontWeight: 900 }}>{currentChart?.label}</span>
                   </div>
-                ))}
+
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {selectedDevice.availableCharts.map(c => {
+                      const ChartIcon = c.icon;
+                      const isActive = activeChartType === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => setActiveChartType(c.id)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '5px',
+                            padding: '6px 12px', borderRadius: '8px',
+                            border: isActive ? `1.5px solid ${c.color}` : subCardBorder,
+                            background: isActive ? (isLight ? '#ffffff' : `${c.color}20`) : subCardBg,
+                            color: isActive ? (isLight ? '#111827' : '#ffffff') : textMuted,
+                            fontSize: '0.72rem', fontWeight: isActive ? 800 : 600,
+                            cursor: 'pointer', transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <ChartIcon size={13} color={c.color} />
+                          <span>{c.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* EXPANDED HD LIVE CHART */}
+                {currentChart && (
+                  <div style={{ marginTop: '6px' }}>
+                    <RealtimeTelemetryChart
+                      data={currentChart.data}
+                      label={`${currentChart.label} nel tempo`}
+                      icon={currentChart.icon}
+                      color={currentChart.color}
+                      unit={currentChart.unit}
+                      maxVal={currentChart.max}
+                      height={120}
+                      isLight={isLight}
+                      formatVal={currentChart.format}
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: textMuted }}>
+                Seleziona un dispositivo per visualizzarne i grafici in tempo reale.
               </div>
-
-              {/* UX DESIGN GRAPH SELECTOR (SELECT ONE CHART AT A TIME) */}
-              <div style={{ marginTop: '4px' }}>
-                <div style={{ fontSize: '0.66rem', fontWeight: 800, color: textMuted, textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>SELEZIONA TELEMETRIA GRAFICA</span>
-                  <span style={{ color: currentChart?.color, fontWeight: 900 }}>{currentChart?.label}</span>
-                </div>
-
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {selectedDevice.availableCharts.map(c => {
-                    const ChartIcon = c.icon;
-                    const isActive = activeChartType === c.id;
-                    return (
-                      <button
-                        key={c.id}
-                        onClick={() => setActiveChartType(c.id)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '5px',
-                          padding: '6px 12px', borderRadius: '8px',
-                          border: isActive ? `1.5px solid ${c.color}` : subCardBorder,
-                          background: isActive ? (isLight ? '#ffffff' : `${c.color}20`) : subCardBg,
-                          color: isActive ? (isLight ? '#111827' : '#ffffff') : textMuted,
-                          fontSize: '0.72rem', fontWeight: isActive ? 800 : 600,
-                          cursor: 'pointer', transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <ChartIcon size={13} color={c.color} />
-                        <span>{c.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* EXPANDED HD LIVE CHART */}
-              {currentChart && (
-                <div style={{ marginTop: '6px' }}>
-                  <RealtimeTelemetryChart
-                    data={currentChart.data}
-                    label={`${currentChart.label} nel tempo`}
-                    icon={currentChart.icon}
-                    color={currentChart.color}
-                    unit={currentChart.unit}
-                    maxVal={currentChart.max}
-                    height={120}
-                    isLight={isLight}
-                    formatVal={currentChart.format}
-                  />
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: textMuted }}>
-              Seleziona un dispositivo per visualizzarne i grafici in tempo reale.
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* BANNER CYBERPUNK INFORMATIVO PER OVERVIEW */}
+      {activeSubTab === 'overview' && (
+        <div style={{
+          padding: '14px 20px',
+          borderRadius: '14px',
+          background: isLight ? 'rgba(0,0,0,0.02)' : 'linear-gradient(135deg, rgba(0, 210, 255, 0.06) 0%, rgba(188, 140, 255, 0.06) 100%)',
+          border: isLight ? '1px dashed rgba(0,0,0,0.15)' : '1px dashed rgba(0, 210, 255, 0.3)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '36px', height: '36px', borderRadius: '10px',
+              background: 'rgba(0, 210, 255, 0.15)', border: '1px solid rgba(0, 210, 255, 0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <Sliders size={18} color="#00d2ff" />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.84rem', fontWeight: 800, color: textPrimary }}>
+                Telemetria Avanzata, Grafici Live & Scheduler Engine
+              </div>
+              <div style={{ fontSize: '0.7rem', color: textMuted }}>
+                Visualizzazione approfondita dei grafici multi-canale, telemetria batching Rust e cluster nodi distribuiti.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveSubTab('advanced')}
+            style={{
+              padding: '7px 16px',
+              borderRadius: '8px',
+              background: 'rgba(0, 210, 255, 0.15)',
+              border: '1px solid rgba(0, 210, 255, 0.4)',
+              color: '#00d2ff',
+              fontSize: '0.74rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            Apri Informazioni Avanzate <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
 
       {/* 3. FULL-WIDTH TASK MANAGER & PROCESSES CONSOLE WITH MODULE MAPPING */}
       <div style={{
@@ -1130,65 +1195,67 @@ export default function HardwareLab({ addToast }) {
         </div>
       </div>
 
-      {/* 4. STANDBY ACCELERATOR NODES */}
-      <div style={{
-        padding: '16px 20px',
-        borderRadius: '16px',
-        backgroundColor: cardBg,
-        border: cardBorder,
-        boxShadow: cardShadow,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Layers size={16} color="#bc8cff" />
-            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary }}>
-              Acceleratori Hardware Standby & Cluster Distribuito
-            </span>
-          </div>
-          <span style={{ fontSize: '0.66rem', color: textMuted }}>
-            {INACTIVE_HARDWARE_NODES.length} Moduli di Espansione
-          </span>
-        </div>
-
+      {/* 4. STANDBY ACCELERATOR NODES (SOLO IN INFORMAZIONI AVANZATE) */}
+      {activeSubTab === 'advanced' && (
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          padding: '16px 20px',
+          borderRadius: '16px',
+          backgroundColor: cardBg,
+          border: cardBorder,
+          boxShadow: cardShadow,
+          display: 'flex',
+          flexDirection: 'column',
           gap: '12px'
         }}>
-          {INACTIVE_HARDWARE_NODES.map(node => {
-            const NodeIcon = node.icon;
-            return (
-              <div key={node.id} style={{
-                padding: '12px 14px',
-                borderRadius: '12px',
-                background: subCardBg,
-                border: subCardBorder,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '6px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <NodeIcon size={16} color={node.color} />
-                    <span style={{ fontSize: '0.8rem', fontWeight: 800, color: textPrimary }}>
-                      {node.title}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Layers size={16} color="#bc8cff" />
+              <span style={{ fontSize: '0.88rem', fontWeight: 800, color: textPrimary }}>
+                Acceleratori Hardware Standby & Cluster Distribuito
+              </span>
+            </div>
+            <span style={{ fontSize: '0.66rem', color: textMuted }}>
+              {INACTIVE_HARDWARE_NODES.length} Moduli di Espansione
+            </span>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: '12px'
+          }}>
+            {INACTIVE_HARDWARE_NODES.map(node => {
+              const NodeIcon = node.icon;
+              return (
+                <div key={node.id} style={{
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  background: subCardBg,
+                  border: subCardBorder,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <NodeIcon size={16} color={node.color} />
+                      <span style={{ fontSize: '0.8rem', fontWeight: 800, color: textPrimary }}>
+                        {node.title}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', color: textMuted, fontWeight: 700 }}>
+                      {node.statusBadge}
                     </span>
                   </div>
-                  <span style={{ fontSize: '0.58rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', color: textMuted, fontWeight: 700 }}>
-                    {node.statusBadge}
-                  </span>
+                  <p style={{ margin: 0, fontSize: '0.68rem', color: textMuted, lineHeight: '1.4' }}>
+                    {node.subtitle}
+                  </p>
                 </div>
-                <p style={{ margin: 0, fontSize: '0.68rem', color: textMuted, lineHeight: '1.4' }}>
-                  {node.subtitle}
-                </p>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* CONFIRMATION ALERT MODAL */}
       </div>

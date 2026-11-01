@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Activity } from 'lucide-react';
-import { useApp } from '../../contexts/AppContext';
+import { useOptionalApp } from '../../contexts/AppContext';
 
 /**
  * Modern High-Definition Realtime Telemetry Chart
@@ -16,12 +16,7 @@ export default function RealtimeTelemetryChart({
   height = 100,
   isLight: propIsLight
 }) {
-  let appContext = null;
-  try {
-    appContext = useApp();
-  } catch (e) {
-    // context optional
-  }
+  const appContext = useOptionalApp();
   const isLight = propIsLight !== undefined ? propIsLight : (appContext?.theme === 'light');
   const [hoverIdx, setHoverIdx] = useState(null);
   const N = 30; // 30 points = 60 seconds history window

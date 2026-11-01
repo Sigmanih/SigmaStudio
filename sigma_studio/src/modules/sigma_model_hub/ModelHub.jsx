@@ -922,7 +922,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
                       setTokenTestResult(null);
                     }}
                     onKeyDown={e => { if (e.key === 'Enter') handleSaveToken(); }}
-                    placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    placeholder="hf_…"
                     style={{
                       width: '100%', padding: '10px 42px 10px 14px', borderRadius: '10px',
                       background: subBg, border: subBorder,

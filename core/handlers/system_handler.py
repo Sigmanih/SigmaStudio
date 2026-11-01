@@ -9,12 +9,13 @@ import subprocess
 import urllib.request
 import urllib.error
 from datetime import datetime
+from core import paths
 
-CURRENT_VERSION = "0.9.0"
+CURRENT_VERSION = "0.9.1"
 GITHUB_REPO = "Sigmanih/SigmaStudio"
 GITHUB_ROLES_REPO = "Sigmanih/SigmaStudio-Manifesti"
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = paths.project_root()
 
 _update_cache = {"data": None, "timestamp": 0}
 

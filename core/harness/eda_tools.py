@@ -68,7 +68,8 @@ def _chiama(tool: str, args: Dict[str, Any] = None, scrittura: bool = False,
     applicherebbe una seconda volta. Un componente piazzato due volte e' un
     problema che si scopre in fase di montaggio.
     """
-    from core.modules.sigma_eda_lab import bridge
+    from core.service_registry import require
+    bridge = require("electronics.bridge")
 
     payload = dict(args or {})
     if scrittura:
@@ -386,7 +387,8 @@ def eda_pcb_drc() -> Dict[str, Any]:
     """DRC nativo sul PCB: verifica piste disconnesse, cortocircuiti e distanze."""
     try:
         pid = _project_id()
-        from core.modules.sigma_eda_lab import routing
+        from core.service_registry import require
+        routing = require("electronics.routing")
         report = routing.run_drc_inspection(pid)
         return _esito("eda_pcb_drc", report["success"], **report)
     except Exception as exc:
@@ -397,7 +399,8 @@ def eda_pcb_unrouted() -> Dict[str, Any]:
     """Elenca tutte le net e i pad ancora da sbroccare sul PCB."""
     try:
         pid = _project_id()
-        from core.modules.sigma_eda_lab import routing
+        from core.service_registry import require
+        routing = require("electronics.routing")
         summary = routing.get_unrouted_summary(pid)
         return _esito("eda_pcb_unrouted", True, **summary)
     except Exception as exc:
@@ -408,7 +411,8 @@ def eda_pcb_route_net(net: str, width_mil: float = 10.0, layer: int = 1) -> Dict
     """Traccia le piste di rame a 45 gradi fra tutti i pad di una net."""
     try:
         pid = _project_id()
-        from core.modules.sigma_eda_lab import routing
+        from core.service_registry import require
+        routing = require("electronics.routing")
         res = routing.route_pads_of_net(pid, str(net), width_mil=float(width_mil), layer=int(layer))
         return _esito("eda_pcb_route_net", res.get("success", False), **res)
     except Exception as exc:
@@ -438,7 +442,8 @@ def eda_pcb_outline(width_mm: float = 100.0, height_mm: float = 80.0) -> Dict[st
     """Crea o assicura il contorno scheda rettangolare chiuso sul layer Board Outline (11)."""
     try:
         pid = _project_id()
-        from core.modules.sigma_eda_lab import bridge
+        from core.service_registry import require
+        bridge = require("electronics.bridge")
         res = bridge.create_board_outline(pid, width_mm=float(width_mm), height_mm=float(height_mm))
         return _esito("eda_pcb_outline", res.get("success", False), **res)
     except Exception as exc:
@@ -449,7 +454,8 @@ def eda_pcb_route_all(default_width_mil: float = 10.0, power_width_mil: float = 
     """Instrada automaticamente a 45 gradi tutte le net non ancora collegate sul PCB."""
     try:
         pid = _project_id()
-        from core.modules.sigma_eda_lab import routing
+        from core.service_registry import require
+        routing = require("electronics.routing")
         res = routing.route_all_unrouted(pid, default_width_mil=float(default_width_mil),
                                          power_width_mil=float(power_width_mil))
         return _esito("eda_pcb_route_all", res.get("success", False), **res)
@@ -462,7 +468,8 @@ def eda_pcb_mounting_holes(margin_mm: float = 5.0, hole_dia_mm: float = 3.2,
     """Posiziona 4 fori di fissaggio M3 nei quattro angoli della scheda."""
     try:
         pid = _project_id()
-        from core.modules.sigma_eda_lab import routing
+        from core.service_registry import require
+        routing = require("electronics.routing")
         res = routing.add_mounting_holes(pid, margin_mm=float(margin_mm),
                                          hole_dia_mm=float(hole_dia_mm),
                                          pad_dia_mm=float(pad_dia_mm))
