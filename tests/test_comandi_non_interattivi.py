@@ -41,7 +41,10 @@ class TestStdinChiuso:
 
 
 class TestLeDomandeDisinnescate:
-    def test_le_variabili_che_gli_strumenti_node_rispettano(self):
+    def test_le_variabili_che_gli_strumenti_node_rispettano(self, monkeypatch):
+        # La prova dei valori predefiniti deve ignorare le scelte del runner CI.
+        monkeypatch.delenv("CI", raising=False)
+        monkeypatch.delenv("npm_config_yes", raising=False)
         a = _ambiente_non_interattivo()
         assert a["CI"] == "1"
         assert a["npm_config_yes"] == "true"

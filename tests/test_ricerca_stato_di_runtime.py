@@ -18,6 +18,7 @@ cartelle del codice vengono prima.
 """
 
 import inspect
+from pathlib import Path
 
 import pytest
 
@@ -62,7 +63,7 @@ class TestLaContabilitaNonEntraNellAlbero:
         esito = search_workspace_files(str(progetto), TERMINE)
         percorsi = [r["path"] for r in esito["results"]]
         assert len(percorsi) == 2, percorsi
-        assert not [p for p in percorsi if "/var/" in p], percorsi
+        assert not [p for p in percorsi if "var" in Path(p).resolve().relative_to(progetto.resolve()).parts], percorsi
 
     def test_lo_dice_quali_cartelle_ha_saltato(self, progetto):
         esito = search_workspace_files(str(progetto), TERMINE)
