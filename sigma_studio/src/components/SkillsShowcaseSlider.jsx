@@ -154,12 +154,12 @@ export const SKILLS_CATALOG = [
     icon: Mic,
     color: '#ff79c6',
     tabType: 'voice_studio',
-    version: 'v1.2.0',
+    version: 'v1.3.0',
     size: '3 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_voice_studio',
     image: '/images/account_voice_banner.jpg',
     badge: 'MUSICA STRUMENTALE & VOCI',
-    objective: 'Crea basi lo-fi, ambient, piano e cyber ambient, ascolta le anteprime e prepara voci e narrazioni per i tuoi progetti.',
+    objective: 'Componi e monta audio su più tracce, aggiungi strumenti da prompt ed esporta il mix per il tuo video.',
     components: [
       {
         icon: '⚡',

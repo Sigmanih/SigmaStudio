@@ -1,0 +1,30 @@
+.ae-editor { padding: 20px; color: var(--text-primary); }
+.ae-toolbar,.ae-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+.ae-editor button,.ae-editor select,.ae-editor input,.ae-editor textarea { color:inherit; background:var(--bg-secondary,#121a2a); border:1px solid var(--border-color,#ffffff24); border-radius:7px; padding:9px; font:inherit; }
+.ae-editor button { display:inline-flex; gap:6px; align-items:center; cursor:pointer; }
+.ae-editor button:disabled { opacity:.4; cursor:default; }
+.ae-editor label { display:grid; gap:6px; font-size:12px; }
+.ae-editor textarea { box-sizing:border-box; width:100%; min-height:85px; margin:10px 0; resize:vertical; }
+.ae-workspace { display:grid; grid-template-columns:minmax(0,1fr) 280px; gap:20px; }
+.ae-timeline { min-width:0; overflow:hidden; border:1px solid var(--border-color,#ffffff24); border-radius:10px; padding:12px; background:var(--bg-secondary,#101827); }
+.ae-ruler { width:100%; height:30px; cursor:crosshair; }
+.ae-ruler text { fill:var(--text-secondary,#99aabb); font-size:11px; }
+.ae-track { border-bottom:1px solid var(--border-color,#ffffff18); padding:8px 0; }
+.ae-track-label { max-width:100%; font-size:11px!important; overflow:hidden; }
+.ae-track svg { width:100%; height:70px; touch-action:none; cursor:grab; }
+.ae-clip { fill:#1e555f; stroke:#48a7b9; }
+.ae-wave { stroke:#7ed9d4; stroke-width:1; fill:none; }
+.ae-track.selected .ae-clip { fill:#254978; stroke:#9ebcf4; }
+.ae-cursor { stroke:#ffc478; stroke-width:2; }
+.ae-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:12px 0; }
+.ae-fields input { width:100%; min-width:0; box-sizing:border-box; }
+.ae-inspector { padding:12px; border:1px solid var(--border-color,#ffffff24); border-radius:10px; }
+.ae-inspector h3 { margin-top:0; }
+.ae-actions { margin-top:12px; }
+.ae-panels { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; margin-top:20px; }
+.ae-panels>div { border:1px solid var(--border-color,#ffffff24); border-radius:10px; padding:16px; }
+.ae-panels h3 { display:flex; align-items:center; gap:8px; }
+.ae-export { display:grid; gap:10px; padding:15px 0; }
+.ae-export audio { width:100%; }
+.ae-editor :is(button,input,select,textarea):focus-visible { outline:2px solid #69bccf; outline-offset:2px; }
+@media(max-width:1000px) { .ae-workspace,.ae-panels { grid-template-columns:minmax(0,1fr); } }

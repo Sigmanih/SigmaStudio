@@ -180,8 +180,8 @@ const OPTIONAL_MODULES = [
     icon: Mic,
     color: '#ff79c6',
     tabType: 'voice_studio',
-    version: 'v1.2.0',
-    description: 'Composizione musicale locale con ACE-Step, quattro preset per lo studio, anteprime WAV/MP3 e strumenti per sintesi vocale e clonazione.',
+    version: 'v1.3.0',
+    description: 'Composizione musicale locale con ACE-Step, editor audio multitraccia con forme d’onda, aggiunte da prompt, mix WAV e passaggio a Video Studio.',
     highlights: [
       'Basi lo-fi, ambient, piano neoclassico e cyber ambient con anteprime di due minuti',
       'Clonazione vocale neurale zero-shot con Coqui XTTS-v2',
