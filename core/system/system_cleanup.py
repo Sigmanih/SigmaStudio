@@ -45,7 +45,8 @@ def shutdown_all_tasks():
 
     # 1. Cancel active Model Downloads
     try:
-        from core.modules.sigma_model_hub.backend.downloader_engine import downloader_manager
+        from core.service_registry import require
+        downloader_manager = require("artifacts.downloads")
         with downloader_manager.lock:
             for task in list(downloader_manager.tasks.values()):
                 if getattr(task, "status", None) in ("downloading", "queued"):
@@ -56,7 +57,8 @@ def shutdown_all_tasks():
 
     # 2. Cancel active Model Uploads
     try:
-        from core.modules.sigma_model_hub.backend.uploader_engine import uploader_manager
+        from core.service_registry import require
+        uploader_manager = require("artifacts.uploads")
         if uploader_manager:
             for task in list(uploader_manager.tasks.values()):
                 if getattr(task, "status", None) in ("uploading", "queued"):
@@ -395,7 +397,8 @@ def get_cleanup_stats() -> Dict[str, Any]:
     # 2. Background Tasks Count
     active_downloads = 0
     try:
-        from core.modules.sigma_model_hub.backend.downloader_engine import downloader_manager
+        from core.service_registry import require
+        downloader_manager = require("artifacts.downloads")
         with downloader_manager.lock:
             active_downloads = sum(1 for t in downloader_manager.tasks.values() if getattr(t, "status", None) in ("downloading", "queued"))
     except Exception:
@@ -603,7 +606,8 @@ def execute_selective_cleanup(options: Dict[str, Any]) -> Dict[str, Any]:
     # 2. Stop Background Tasks
     if do_stop_tasks:
         try:
-            from core.modules.sigma_model_hub.backend.downloader_engine import downloader_manager
+            from core.service_registry import require
+            downloader_manager = require("artifacts.downloads")
             with downloader_manager.lock:
                 for task in list(downloader_manager.tasks.values()):
                     if getattr(task, "status", None) in ("downloading", "queued"):

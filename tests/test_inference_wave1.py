@@ -9,6 +9,7 @@
 # ==============================================================================
 import hashlib
 import unittest
+from unittest import mock
 
 from core.engine.sampling import SamplingParams, FAMILY_RECIPES
 from core.engine.cancellation import CancellationToken, is_cancelled, stopping_criteria_for
@@ -181,7 +182,8 @@ class TestPromptPrefixStability(unittest.TestCase):
         original = cr._stream_chat_response
         cr._stream_chat_response = fake_stream
         try:
-            cr.handle_chat(FakeHandler())
+            with mock.patch.object(cr, "_build_filesystem_context", return_value="progetto/README.md"):
+                cr.handle_chat(FakeHandler())
         finally:
             cr._stream_chat_response = original
         return captured

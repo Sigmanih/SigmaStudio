@@ -66,7 +66,7 @@ export default function FanoutPanel({ workspaceRoot, isLight, inline = false }) 
 
   useEffect(() => () => {
     if (abortRef.current) {
-      try { abortRef.current.abort(); } catch (e) { /* già chiuso */ }
+      try { abortRef.current.abort(); } catch { /* già chiuso */ }
     }
   }, []);
 
@@ -139,7 +139,7 @@ export default function FanoutPanel({ workspaceRoot, isLight, inline = false }) 
           let evento;
           try {
             evento = JSON.parse(riga.slice(6).trim());
-          } catch (e) {
+          } catch {
             continue;
           }
 
@@ -164,7 +164,7 @@ export default function FanoutPanel({ workspaceRoot, isLight, inline = false }) 
 
   const ferma = () => {
     if (abortRef.current) {
-      try { abortRef.current.abort(); } catch (e) { /* già chiuso */ }
+      try { abortRef.current.abort(); } catch { /* già chiuso */ }
     }
   };
 

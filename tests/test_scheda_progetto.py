@@ -41,10 +41,14 @@ class TestLaSchedaVieneDalCodice:
 
     def test_nomina_i_tool_veri(self):
         from core.harness.tool_schema import TOOL_SCHEMAS
+        from core.harness import tool_providers
 
         testo = S.scheda()
         for schema in TOOL_SCHEMAS:
-            assert schema["function"]["name"] in testo
+            name = schema["function"]["name"]
+            if not tool_providers.owner(name):
+                assert name in testo
+        assert str(len(TOOL_SCHEMAS)) in testo
 
     def test_distingue_i_ruoli_dell_harness_dagli_agenti_della_chat(self):
         """Era la confusione al centro della risposta sbagliata."""
@@ -83,7 +87,7 @@ class TestLaConsultazione:
         esito = S.consulta()
         assert esito["ok"] is True
         nomi = [d["documento"] for d in esito["indice"]]
-        assert "STATO_HARNESS.md" in nomi
+        assert "ARCHITECTURE.md" in nomi
 
     def test_cerca_parola_per_parola_non_la_frase(self):
         """«sandbox docker» come frase compare solo dove qualcuno l'ha scritta

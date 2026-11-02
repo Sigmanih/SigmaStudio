@@ -43,7 +43,7 @@ class TestRuntimeCudaDistintoDalDriver(unittest.TestCase):
 
     def test_driver_con_runtime_mantiene_cuda(self):
         with mock.patch.object(gpu_vendors, "_libreria_apribile",
-                               self._sonda({"nvcuda.dll", "cudart64_12.dll"})), \
+                               self._sonda({"nvcuda.dll", "cudart64_12.dll", "cublas64_12.dll"})), \
              mock.patch.object(gpu_vendors.platform, "system", lambda: "Windows"):
             esiti = gpu_vendors.available_runtimes()
         self.assertTrue(esiti["cuda"])

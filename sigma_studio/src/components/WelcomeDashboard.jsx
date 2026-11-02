@@ -8,9 +8,14 @@ import {
 import { initSpeechRecognition, createWakeWordMic, getVoiceSilenceTimeout, setVoiceSilenceTimeout } from './Chat/audioSpeech';
 
 import { useApp } from '../contexts/AppContext';
+import { STUDIO_VERSION } from '../version';
 import { useModuleState } from '../hooks/useModuleState';
-import CyberSpace3DCanvas, { detectLowEndGpu } from './common/CyberSpace3DCanvas';
+import { detectLowEndGpu } from '../utils/graphicsQuality';
+import { groupWorkDomains } from '../utils/workDomains';
+import { prepareRoleChat } from '../services/chatNavigation';
+import WorkDomainActions from './Home/WorkDomainActions';
 import Plancia2D from './common/Plancia2D';
+const CyberSpace3DCanvas = React.lazy(() => import('./common/CyberSpace3DCanvas'));
 import { resolveRoleLucide, roleInitials } from './common/roleIcons';
 import { loadSessions, formatSessionTime, saveActiveSessionId } from './Chat/chatStorage';
 import { useAgentActivity, activityText } from './common/agentActivity';
@@ -42,15 +47,6 @@ const readViewPref = () => {
 // sulla plancia). Le immagini rendono riconoscibile ogni voce a colpo d'occhio.
 const FOOTER_TILES = [
   { key: 'chat', label: 'Chat AI', hint: 'Chat flottante', image: '/images/chat_swarm_banner.jpg', Icon: MessageSquare, color: '#bc8cff', tool: 'chat' },
-  { key: 'developer', label: 'Developer', hint: 'Studio di sviluppo', image: '/images/kernel_graphic.jpg', Icon: Terminal, color: '#eab308', tab: { id: 'developer_studio', name: 'Developer Sigma' } },
-  { key: 'creative', label: 'Creative', hint: 'Immagini e 3D', image: '/images/creative_lab_banner.jpg', Icon: Palette, color: '#ff5064', tab: { id: 'creative_studio', name: 'Creative Studio' } },
-  { key: 'video', label: 'Video', hint: 'Film e manga', image: '/images/regista_cinematografico.jpg', Icon: Clapperboard, color: '#ff007a', tab: { id: 'video_studio', name: 'Video Studio' } },
-  { key: 'kicad', label: 'KiCad', hint: 'Schemi e PCB', image: '/images/hardware_cluster_lab.jpg', Icon: CircuitBoard, color: '#10b981', tab: { id: 'kicad_lab', name: 'KiCad Lab' } },
-  { key: 'models', label: 'Modelli', hint: 'Model Hub', image: '/images/training_lab_hero.jpg', Icon: CloudDownload, color: '#38bdf8', tab: { id: 'model_hub', name: 'Modelli' } },
-  { key: 'graph', label: 'Grafo', hint: 'Dipendenze del codice', image: '/images/knowledge_graph_banner.jpg', Icon: Layers, color: '#06b6d4', tab: { id: 'developer_studio', name: 'Developer Sigma' }, event: 'sigma_dev_open_graph' },
-  { key: 'hardware', label: 'Hardware', hint: 'GPU e VRAM', image: '/images/hardware_nodes_cooling.jpg', Icon: Cpu, color: '#3fb950', tool: 'hardware' },
-  { key: 'roadmap', label: 'Pianificazione', hint: 'Task e calendario', image: '/images/roadmap_plan_banner.jpg', Icon: Calendar, color: '#00f2fe', tool: 'roadmap', module: 'sigma_roadmap' },
-  { key: 'music', label: 'Musica', hint: 'Focus lounge', image: '/images/account_voice_banner.jpg', Icon: Music, color: '#f472b6', tool: 'music', module: 'audio_studio' },
   { key: 'providers', label: 'Providers', hint: 'Modelli e API', image: '/images/mcp_protocol_hub.jpg', Icon: Settings, color: '#ffb86c', tool: 'providers' },
   { key: 'cleanup', label: 'Pulisci', hint: 'RAM e cronologia', image: '/images/swarm_graphic.jpg', Icon: Trash2, color: '#94a3b8', tool: 'cleanup' }
 ];
@@ -142,7 +138,7 @@ const loadRecentChats = () => loadSessions()
 
 export default function WelcomeDashboard({ modules = [], openTab }) {
   const { theme, manifesti: contextManifesti, aiChatOpen, setAiChatOpen, addToast } = useApp();
-  const { modulesState } = useModuleState();
+  const { moduleCatalog } = useModuleState();
   // Anche "cream" e' un tema chiaro: prima la plancia restava scura sotto un'interfaccia chiara
   const isLight = theme === 'light' || theme === 'cream';
 
@@ -246,7 +242,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
             return;
           }
         }
-      } catch (err) {}
+      } catch {}
 
       try {
         const resHub = await fetch('/api/ruoli/hub');
@@ -258,7 +254,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
             setLoadedRoles(installed);
           }
         }
-      } catch (e) {}
+      } catch {}
     };
 
     loadDynamicRoles();
@@ -276,7 +272,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         if (!res.ok) return;
         const data = await res.json();
         if (!cancel && data && data.success && data.hardware) setSystemStats(data.hardware);
-      } catch (e) {}
+      } catch {}
     };
     poll();
     const timer = setInterval(poll, 8000);
@@ -346,6 +342,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         color: r.domainColor || ROLE_PALETTE[i % ROLE_PALETTE.length],
         desc: r.description || r.desc || 'Agente intelligente con competenze verticali e tool dedicati.',
         category,
+        workDomain: r.workDomain || r.work_domain,
         prompt: resolveRolePrompt({ ...r, id }),
         // Personaggio 3D installato con il ruolo: senza, la plancia usa l'ufficiale procedurale
         character3d: r.character3d || null
@@ -353,6 +350,8 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       return enriched;
     });
   }, [loadedRoles]);
+
+  const homeRoles = useMemo(() => groupWorkDomains(enrichedRoles), [enrichedRoles]);
 
   useEffect(() => {
     if (selectedRole === 'auto') return;
@@ -382,7 +381,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     loading: true,
     checking: false,
     updateAvailable: false,
-    currentVersion: '0.9.0',
+    currentVersion: STUDIO_VERSION,
     commitsBehind: 0,
     newCommits: [],
     localCommit: '',
@@ -405,7 +404,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           loading: false,
           checking: false,
           updateAvailable: !!data.update_available,
-          currentVersion: data.current_version || '0.9.0',
+          currentVersion: data.current_version || STUDIO_VERSION,
           commitsBehind: data.commits_behind || 0,
           newCommits: Array.isArray(data.new_commits) ? data.new_commits : [],
           localCommit: data.local_commit || '',
@@ -415,7 +414,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       } else {
         setUpdateState(p => ({ ...p, loading: false, checking: false }));
       }
-    } catch (e) {
+    } catch {
       setUpdateState(p => ({ ...p, loading: false, checking: false }));
     }
   }, []);
@@ -484,7 +483,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     const next = QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(qualityPref) + 1) % QUALITY_CYCLE.length];
     setQualityPref(next);
     setResolvedQuality(null);
-    try { localStorage.setItem(QUALITY_KEY, next); } catch (e) {}
+    try { localStorage.setItem(QUALITY_KEY, next); } catch {}
   };
 
   const handleQualityResolved = useCallback((level) => setResolvedQuality(level), []);
@@ -492,7 +491,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   const toggleView = () => {
     const next = viewPref === '3d' ? '2d' : '3d';
     setViewPref(next);
-    try { localStorage.setItem(VIEW_KEY, next); } catch (e) {}
+    try { localStorage.setItem(VIEW_KEY, next); } catch {}
   };
 
   // Gestione selezione file di qualsiasi tipo
@@ -527,15 +526,11 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   // conversazione di quell'agente o aprirne una nuova.
   const handleStartChatWithRole = (roleId, customText = '', filesToSend = [], send = true) => {
     try {
-      if (roleId) localStorage.setItem('sigma_active_role', roleId);
-      if (customText && customText.trim()) {
-        localStorage.setItem('sigma_pending_chat_prompt', customText.trim());
-      }
-      if (Array.isArray(filesToSend) && filesToSend.length > 0) {
-        localStorage.setItem('sigma_pending_chat_files', JSON.stringify(filesToSend));
-      }
-      if (send) localStorage.setItem('sigma_pending_chat_send', '1');
-    } catch (e) {}
+      prepareRoleChat(localStorage, { roleId, text: customText, files: filesToSend, send });
+    } catch (error) {
+      addToast(`Impossibile preparare la chat: ${error.message}`, 'error');
+      return;
+    }
     // Se la chat e' gia' aperta riceve l'evento, altrimenti legge i valori al montaggio
     if (aiChatOpen) window.dispatchEvent(new CustomEvent('sigma-chat-select-role', { detail: roleId }));
     else setAiChatOpen(true);
@@ -552,7 +547,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   const toggleRecording = useCallback(() => {
     if (isRecording) {
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
+        try { recognitionRef.current.stop(); } catch {}
       }
       setIsRecording(false);
       return;
@@ -618,7 +613,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
 
     if (isRecording) {
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
+        try { recognitionRef.current.stop(); } catch {}
       }
       setIsRecording(false);
     }
@@ -658,10 +653,10 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   // Clean-up all'unmount dei microfoni
   useEffect(() => () => {
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (e) {}
+      try { recognitionRef.current.stop(); } catch {}
     }
     if (smartMicRef.current) {
-      try { smartMicRef.current.stop(); } catch (e) {}
+      try { smartMicRef.current.stop(); } catch {}
     }
   }, []);
 
@@ -680,7 +675,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     openTab?.({ name: tile.tab.name }, tile.tab.id);
   };
 
-  const footerTiles = FOOTER_TILES.filter(t => !t.module || modulesState?.[t.module] === true);
+  const footerTiles = FOOTER_TILES;
 
   const handleQuickPromptSubmit = (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -745,7 +740,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       {/* ── 0. Plancia 3D, plancia 2D, o sfondo statico quando la grafica e' spenta ── */}
       {viewPref === '2d' ? (
         <Plancia2D
-          roles={enrichedRoles}
+          roles={homeRoles}
           selectedAgentId={focusedAgent ? focusedAgent.id : ''}
           activity={agentActivity}
           onSelectAgent={(agent) => {
@@ -756,9 +751,10 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       ) : qualityPref === 'off' ? (
         <div className="holodeck-static-bg" aria-hidden="true" />
       ) : (
+        <React.Suspense fallback={<Plancia2D roles={homeRoles} onSelectAgent={focusRole} activity={agentActivity} />}>
         <CyberSpace3DCanvas
           isLight={isLight}
-          roles={enrichedRoles}
+          roles={homeRoles}
           selectedAgentId={focusedAgent ? focusedAgent.id : ''}
           quality={qualityPref}
           throttled={agentBusy}
@@ -769,6 +765,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           }}
           interactive={true}
         />
+        </React.Suspense>
       )}
 
       <div className="holodeck-hud-overlay">
@@ -776,11 +773,11 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         {/* Barra superiore: identita', stato reale del sistema, azioni */}
         <header className="holodeck-topbar">
           <div className="holodeck-hud-tag">
-            <img src="/images/SigmaStudio.png" alt="" className="holodeck-hud-logo" />
+            <img src="/images/sigma_logo_harmonic_flow.jpg" alt="" className="holodeck-hud-logo" />
             <span className="holodeck-brand">Sigma Studio</span>
             <span className="holodeck-version">v{updateState.currentVersion}</span>
             <span className="holodeck-hud-sep" aria-hidden="true" />
-            <span className="holodeck-hud-meta">{enrichedRoles.length} agenti</span>
+            <span className="holodeck-hud-meta">{homeRoles.length} campi · {enrichedRoles.length} specialisti</span>
           </div>
 
           {agentActivity.state !== 'idle' && (
@@ -951,6 +948,9 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
                 <span>Vista generale</span>
               </button>
             </div>
+
+            <WorkDomainActions agent={focusedAgent} catalog={moduleCatalog} onOpenTab={openTab}
+              onChat={() => handleStartChatWithRole(focusedAgent.id, '', [], false)} />
 
             {focusedAgent.prompt && quickPrompt !== focusedAgent.prompt && (
               <button

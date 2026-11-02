@@ -57,7 +57,7 @@ export default function AiCreateFileModal({
       } else {
         addToast?.(data.error || 'Errore durante la creazione del file', 'error');
       }
-    } catch (err) {
+    } catch {
       addToast?.('Errore di connessione al server', 'error');
     } finally {
       setLoading(false);

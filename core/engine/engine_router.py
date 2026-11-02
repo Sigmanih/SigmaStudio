@@ -37,7 +37,7 @@ def handle_engine_partition(self):
         if not model:
             # Try finding any model from local storage
             try:
-                from core.modules.sigma_model_hub.backend.model_inventory import scan_local_models
+                from core.engine.inventory import scan_local_models
                 local_models = scan_local_models()
                 if local_models:
                     model = local_models[0].get("path") or local_models[0].get("filename")

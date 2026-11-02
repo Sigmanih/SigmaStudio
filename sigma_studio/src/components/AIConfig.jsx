@@ -199,7 +199,7 @@ export default function AIConfig({ isOpen, onClose }) {
           num_ctx: cfg.num_ctx ?? 32768,
         }));
       }
-    } catch (e) {
+    } catch {
       setTestStatus({ ok: false, msg: `❌ Backend non raggiungibile. Avvia sigma_server.py su porta 8000.` });
     }
   };

@@ -1,6 +1,6 @@
 {
   "name": "sigma-studio",
-  "version": "6.0.0",
+  "version": "0.9.2",
   "license": "(AGPL-3.0-only OR LicenseRef-Commercial)",
   "private": false,
   "scripts": {

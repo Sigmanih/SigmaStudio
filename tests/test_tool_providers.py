@@ -196,13 +196,7 @@ VIETATO_NEL_KERNEL = ("kicad_", "sigma_kicad_lab", "kicad_tools")
 #: tool EDA — che sono lo stesso caso di KiCad, con sette import invece di
 #: ventinove. Vanno tolti uno per volta, e questo elenco e' la lista delle cose
 #: da fare: quando un file smette di comparire, la riga qui va cancellata.
-DEBITO_DI_IMPORT = {
-    "app_manager.py": "core/integrations: il ponte Blender di Creative Lab",
-    "eda_tools.py": "i tool EDA stanno ancora nel kernel, come stava KiCad",
-    "fastapi_app.py": "le route di Sigma Network accanto a quelle di Model Hub",
-    "loop.py": "il ponte MCP del Developer Studio, letto per comporre i tool",
-    "protocol_bench.py": "il valutatore del protocollo di Benchmark Lab",
-}
+DEBITO_DI_IMPORT = {}
 
 
 def test_il_kernel_non_nomina_il_modulo_kicad():
@@ -250,8 +244,7 @@ def test_il_kernel_non_importa_i_moduli():
             else:
                 continue
             for modulo in moduli:
-                if modulo.startswith("core.modules") and \
-                        not modulo.startswith("core.modules.sigma_model_hub"):
+                if modulo.startswith("core.modules"):
                     colpevoli.setdefault(percorso.name, set()).add(modulo)
     nuovi = {nome: moduli for nome, moduli in colpevoli.items()
              if nome not in DEBITO_DI_IMPORT}

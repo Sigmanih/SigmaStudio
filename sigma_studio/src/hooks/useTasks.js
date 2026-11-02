@@ -11,7 +11,8 @@ export function useTasks() {
     try {
       const res = await fetch('/api/tasks');
       const data = await res.json();
-      setTasks(data || []);
+      if (!res.ok) throw new Error(data.error || 'Caricamento task non riuscito.');
+      setTasks(Array.isArray(data.tasks) ? data.tasks : (Array.isArray(data) ? data : []));
     } catch (e) {
       console.error("Fetch tasks error:", e);
     }

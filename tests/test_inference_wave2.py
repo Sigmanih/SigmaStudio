@@ -27,7 +27,7 @@ from core.chat.history import (
 from core.engine.grammars import (
     tool_call_grammar, json_object_grammar, compile_for_llama_cpp,
 )
-from core.engine.prefix_cache import PrefixKVCache, MIN_REUSABLE_TOKENS
+from core.engine.prefix_cache import PrefixKVCache, MIN_REUSABLE_TOKENS, crop_cache_to_length
 from core.engine.model_inspector import ModelFacts
 from core.engine.backends.llamacpp_backend import LlamaCppBackend
 
@@ -89,6 +89,16 @@ class TestPrefixKVCache(unittest.TestCase):
         past, reused = cache.take(diverged, "model-a")
         self.assertIsNone(past)
         self.assertEqual(reused, 0)
+
+    def test_un_token_generato_non_ancora_nel_kv_non_si_dichiara_riusato(self):
+        class MeasuredCache(_FakeCache):
+            def get_seq_length(self):
+                return self.length
+
+        cache = self._cache()
+        cache.store(list(range(501)), MeasuredCache(500), "model-a")
+        _, reused = cache.take(list(range(502)), "model-a")
+        self.assertEqual(reused, 500)
 
     def test_a_different_model_is_never_reused(self):
         cache = self._cache()
@@ -174,7 +184,7 @@ class TestPrefixCacheAgainstRealTransformers(unittest.TestCase):
         self.assertTrue(hasattr(cache, "crop"),
                         "transformers no longer exposes crop(); prefix reuse "
                         "must fall back to a full prefill")
-        cache.crop(100)
+        crop_cache_to_length(cache, 100)
         self.assertEqual(cache.get_seq_length(), 100)
 
     def test_a_reused_cache_produces_the_identical_answer(self):

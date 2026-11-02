@@ -128,11 +128,6 @@ def _find_comfyui() -> str:
 
 def _find_blender() -> str:
     """Rileva l'eseguibile di Blender se installato."""
-    try:
-        from core.modules.sigma_creative_lab.backend.three_d.blender_bridge import BlenderBridge
-        return BlenderBridge('')._find_blender()
-    except Exception:
-        pass
     import shutil
     b = shutil.which("blender")
     if b:

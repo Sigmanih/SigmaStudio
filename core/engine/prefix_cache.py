@@ -168,7 +168,7 @@ class PrefixKVCache:
             self._slots.pop(slot, None)        # handed over, not shared
 
         try:
-            cache.crop(shared)
+            crop_cache_to_length(cache, shared)
         except Exception as exc:
             # A cache implementation without crop, or one that refuses: fall
             # back to a full prefill rather than feeding a mismatched cache,
@@ -195,6 +195,13 @@ class PrefixKVCache:
         """Keeps the cache left by a finished generation, for the next turn."""
         if cache is None or not sequence_ids:
             return
+        get_length = getattr(cache, "get_seq_length", None)
+        if callable(get_length):
+            # L'ultimo token generato non è necessariamente già passato nel KV.
+            cached_length = max(0, int(get_length()))
+            sequence_ids = sequence_ids[:cached_length]
+            if not sequence_ids:
+                return
         slot = slot or DEFAULT_SLOT
         if self._max_tokens and len(sequence_ids) > self._max_tokens:
             # Past the reserved window this stops being a saving and becomes a
@@ -306,6 +313,21 @@ class PrefixKVCache:
             ),
             "nvme_persistent": True,
         }
+
+
+def crop_cache_to_length(cache, length: int) -> None:
+    """La forma negativa di crop resta compatibile con entrambe le API HF."""
+    get_length = getattr(cache, "get_seq_length", None)
+    if callable(get_length):
+        current = int(get_length())
+        if length > current:
+            raise ValueError("La cache non contiene tutti i token richiesti.")
+        if length < current:
+            cache.crop(length - current)
+        if int(get_length()) != length:
+            raise ValueError("Il runtime non ha ritagliato la cache alla lunghezza richiesta.")
+    else:
+        cache.crop(length)
 
 
 def _common_prefix_length(a: List[int], b: List[int]) -> int:

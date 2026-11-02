@@ -72,7 +72,7 @@ export default function ModuleNotInstalled({ tabType, openTab }) {
           existing[moduleId] = true;
           if (moduleId === 'audio_studio') existing['sigma_audio_studio'] = true;
           localStorage.setItem('sigma_modules_state', JSON.stringify(existing));
-        } catch (e) {}
+        } catch {}
 
         // Dispatch events for real-time reactivity across all components
         window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId, installed: true } }));

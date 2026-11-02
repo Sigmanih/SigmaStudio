@@ -264,11 +264,11 @@ class SemanticMCPServer(BaseMCPServer):
             percorsi_indicizzati.add(rel)
             intero = base / rel
             try:
-                quando = intero.stat().st_mtime
+                stato = intero.stat()
             except OSError:
                 spariti += 1
                 continue
-            if costruito and quando > costruito:
+            if self._documento_cambiato(doc, stato, costruito):
                 modificati += 1
 
         nuovi = 0
@@ -309,13 +309,23 @@ class SemanticMCPServer(BaseMCPServer):
         costruito = self._quando_costruito()
         if not costruito:
             return risultati
+        documenti = {doc.get("path"): doc for doc in (self._index or {}).get("documents", [])}
         for voce in risultati:
             try:
-                if (base / str(voce.get("file") or "")).stat().st_mtime > costruito:
+                percorso = str(voce.get("file") or "")
+                if self._documento_cambiato(documenti.get(percorso, {}), (base / percorso).stat(), costruito):
                     voce["stale"] = True
             except OSError:
                 voce["mancante"] = True
         return risultati
+
+    @staticmethod
+    def _documento_cambiato(doc, stato, costruito):
+        # Il clock del filesystem puo' precedere o superare quello di Python:
+        # confrontiamo il file con la sua firma, non con l'ora dell'indicizzazione.
+        if "mtime_ns" in doc and "byte_size" in doc:
+            return stato.st_mtime_ns != doc["mtime_ns"] or stato.st_size != doc["byte_size"]
+        return bool(costruito and stato.st_mtime > costruito)
 
     def _explain_code(self, symbol: str, path_hint: Optional[str] = None) -> Dict[str, Any]:
         """Trova il simbolo nell'indice e restituisce contesto e snippet."""
@@ -391,6 +401,7 @@ class SemanticMCPServer(BaseMCPServer):
 
             # Legge il file
             try:
+                stato = file.stat()
                 content = file.read_text(encoding="utf-8", errors="ignore")
             except Exception:
                 continue
@@ -419,7 +430,9 @@ class SemanticMCPServer(BaseMCPServer):
                 "tokens": tokens,
                 "snippet": snippet,
                 "line_start": first_line,
-                "size": len(content)
+                "size": len(content),
+                "mtime_ns": stato.st_mtime_ns,
+                "byte_size": stato.st_size,
             }
             documents.append(doc)
             all_tokens.append(tokens)

@@ -21,7 +21,7 @@ function renderLatex(expr, displayMode = false) {
       strict: false,
       trust: true,
     });
-  } catch (e) {
+  } catch {
     // Fallback: wrap raw expression in a code-like span
     const escaped = expr.replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>');
     return `<span class="katex-error">${displayMode ? '$$' : '$'}${escaped}${displayMode ? '$$' : '$'}</span>`;
@@ -672,7 +672,7 @@ export function simpleMarkdownOnly(t) {
     }
 
     return s;
-  } catch (e) {
+  } catch {
     return String(t).replace(/\n/g, '<br>');
   }
 }

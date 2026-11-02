@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { saveLastModel } from '../chatStorage';
 import { registerLocalModels } from './modelSpecsHelper';
+import { modelName, modelNames } from '../../../services/modelIdentity';
 
 export function useChatConfig({ saveSessionsState, sessionRefs }) {
   const [favoriteModels, setFavoriteModels] = useState(() => {
@@ -8,12 +9,12 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       const stored = localStorage.getItem('sigma_favorite_models');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (modelNames(parsed).length > 0) return modelNames(parsed);
       }
       const single = localStorage.getItem('sigma_favorite_model');
       if (single) return [single];
       return [];
-    } catch (e) {
+    } catch {
       return [];
     }
   });
@@ -26,10 +27,10 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       const stored = localStorage.getItem('sigma_favorite_models');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed[0];
+        if (modelNames(parsed).length > 0) return modelNames(parsed)[0];
       }
       return localStorage.getItem('sigma_favorite_model') || '';
-    } catch (e) {
+    } catch {
       return '';
     }
   });
@@ -50,7 +51,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
   const [selectedHardware, setSelectedHardwareState] = useState(() => {
     try {
       return localStorage.getItem('sigma_selected_hardware') || 'auto';
-    } catch (e) {
+    } catch {
       return 'auto';
     }
   });
@@ -65,7 +66,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
     setSelectedHardwareState(hwId);
     try {
       localStorage.setItem('sigma_selected_hardware', hwId);
-    } catch (e) {}
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -132,7 +133,8 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           if (localJson.success && Array.isArray(localJson.models)) {
             registerLocalModels(localJson.models);
             localJson.models.forEach(m => {
-              const mName = m.display_name || m.filename || m.model_id;
+              const mName = modelName(m);
+              if (!mName) return;
               if (!known.has(mName)) {
                 models.unshift({
                   ...m,
@@ -267,7 +269,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
             const single = localStorage.getItem('sigma_favorite_model');
             if (single) favs = [single];
           }
-        } catch (e) {}
+        } catch {}
 
         if (favs.length === 0 && d.config?.favorite_models && Array.isArray(d.config.favorite_models) && d.config.favorite_models.length > 0) {
           favs = d.config.favorite_models;
@@ -276,15 +278,16 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
         }
 
         const lastUsed = (() => {
-          try { return localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model') || ''; } catch (e) { return ''; }
+          try { return localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model') || ''; } catch { return ''; }
         })();
+        favs = modelNames(favs);
         let initialModel = '';
         if (lastUsed) {
           initialModel = lastUsed;
         } else if (favs.length > 0) {
           initialModel = favs[0];
         } else if (d.config?.model) {
-          initialModel = d.config.model;
+          initialModel = modelName(d.config.model);
         }
 
         if (favs.length > 0) {
@@ -303,9 +306,9 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
       } else {
         await fetchOllamaModels();
       }
-    } catch (e) {
+    } catch {
       const fallback = (() => {
-        try { return localStorage.getItem('sigma_last_selected_model') || ''; } catch (e) { return ''; }
+        try { return localStorage.getItem('sigma_last_selected_model') || ''; } catch { return ''; }
       })();
       if (fallback) {
         setSelectedModel(prev => prev || fallback);
@@ -345,7 +348,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           setActiveManifesto({ ...m, image: m.image || '/images/default.png' });
         }
       }
-    } catch (e) {}
+    } catch {}
   }, []);
 
   const fetchManifestos = useCallback(async () => {
@@ -360,14 +363,15 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
           filename: f.filename,
           image: f.image || '/images/default.png',
           role: f.role || '',
-          domainColor: f.domainColor || '#00d2ff'
+          domainColor: f.domainColor || '#00d2ff',
+          workDomain: f.workDomain || f.work_domain || '', category: f.category || '', id: f.id
         }));
         setManifestos([
           { path: 'auto', name: 'auto', filename: 'auto.md', image: '/images/default.png', role: 'Centralino Automatico' },
           ...loaded
         ]);
       }
-    } catch (e) {}
+    } catch {}
   }, []);
 
   const saveQuickConfig = async (key, value) => {
@@ -379,7 +383,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
       });
-    } catch (e) {}
+    } catch {}
   };
 
   const handleToggleFavoriteModel = (modelName) => {
@@ -398,7 +402,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
         } else {
           localStorage.removeItem('sigma_favorite_model');
         }
-      } catch (e) {}
+      } catch {}
 
       (async () => {
         try {
@@ -416,7 +420,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
               })
             });
           }
-        } catch (e) {}
+        } catch {}
       })();
 
       return newFavs;
@@ -430,7 +434,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
     try {
       localStorage.setItem('sigma_last_selected_model', name);
       localStorage.setItem('sigma_selected_model', name);
-    } catch (e) {}
+    } catch {}
     if (sessionRefs && sessionRefs.activeSessionId?.current && saveSessionsState) {
       saveSessionsState(sessionRefs.sessions.current.map(s =>
         s.id === sessionRefs.activeSessionId.current
@@ -448,7 +452,7 @@ export function useChatConfig({ saveSessionsState, sessionRefs }) {
         });
       }
       await fetchOllamaModels();
-    } catch (e) {}
+    } catch {}
   };
 
   const handleToggleModelDropdown = useCallback((valOrFn) => {

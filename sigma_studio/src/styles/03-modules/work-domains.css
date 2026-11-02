@@ -1,0 +1,43 @@
+.work-domain-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.work-domain-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 10px;
+  color: var(--text-primary, #e2e8f0);
+  background: var(--bg-secondary, #111827);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.work-domain-actions button:hover,
+.work-domain-actions button:focus-visible {
+  border-color: var(--accent-color, #00d2ff);
+  background: var(--bg-tertiary, #1e293b);
+}
+
+.work-domain-actions button:focus-visible {
+  outline: 2px solid var(--accent-color, #00d2ff);
+  outline-offset: 3px;
+}
+
+.work-domain-actions span {
+  flex-basis: 100%;
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 600px) {
+  .work-domain-actions button { flex: 1 1 100%; }
+}

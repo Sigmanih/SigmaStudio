@@ -13,8 +13,8 @@ import { loadMessagesFromStorage } from '../chatStorage';
 import TechSpaceCanvas from '../../common/TechSpaceCanvas';
 
 export default function ChatWorkspaceTab() {
-  const { theme, setAiConfigOpen } = useApp();
-  const core = useChatCore({});
+  const { theme, setAiConfigOpen, openTab, addToast } = useApp();
+  const core = useChatCore({ openTab, addToast });
 
 
   const groupedSessions = core.sessions.reduce((acc, s) => {

@@ -4,7 +4,8 @@
 # ==============================================================================
 import sys
 import importlib
-from importlib.abc import MetaPathFinder
+from importlib.abc import MetaPathFinder, Loader
+from importlib.util import spec_from_loader
 
 # Mappatura dei moduli riorganizzati in sottocartelle
 _CORE_SUBMODULE_MAP = {
@@ -47,24 +48,34 @@ _CORE_SUBMODULE_MAP = {
 }
 
 
+class _CoreAliasLoader(Loader):
+    def __init__(self, target_name):
+        self.target_name = target_name
+        self.canonical_spec = None
+
+    def create_module(self, spec):
+        module = importlib.import_module(self.target_name)
+        self.canonical_spec = module.__spec__
+        return module
+
+    def exec_module(self, module):
+        # L'alias condivide lo stato del modulo originale, senza eseguirlo due volte.
+        module.__spec__ = self.canonical_spec
+
+
 class _CoreAliasFinder(MetaPathFinder):
     """Garantisce la retrocompatibilità per import legacy tipo 'from core.sandbox import ...'."""
+    _sigma_core_alias = True
     def find_spec(self, fullname, path, target=None):
         if fullname.startswith("core."):
             sub = fullname[5:]
             if sub in _CORE_SUBMODULE_MAP:
-                target_name = _CORE_SUBMODULE_MAP[sub]
-                try:
-                    mod = importlib.import_module(target_name)
-                    sys.modules[fullname] = mod
-                    return mod.__spec__
-                except Exception:
-                    return None
+                return spec_from_loader(fullname, _CoreAliasLoader(_CORE_SUBMODULE_MAP[sub]))
         return None
 
 
 # Registra il finder in cima a sys.meta_path se non già presente
-if not any(isinstance(f, _CoreAliasFinder) for f in sys.meta_path):
+if not any(getattr(f, "_sigma_core_alias", False) for f in sys.meta_path):
     sys.meta_path.insert(0, _CoreAliasFinder())
 
 # Inizializzazione SSL resiliente (ora da core.system.net_utils)

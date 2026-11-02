@@ -30,7 +30,7 @@ export default function ModulePublisher({ isLight }) {
         const res = await fetch('/api/modules/sync/config');
         const dati = await res.json();
         if (!annullato) setAbilitato(!!dati.show_publish_ui);
-      } catch (e) {
+      } catch {
         if (!annullato) setAbilitato(false);
       }
     })();

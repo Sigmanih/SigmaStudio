@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { Upload } from 'lucide-react';
 import useChatCore from '../core/useChatCore';
 import ChatHeader from '../ui/ChatHeader';
@@ -14,8 +14,8 @@ import { useApp } from '../../../contexts/AppContext';
 import TechSpaceCanvas from '../../common/TechSpaceCanvas';
 
 export default function ChatFloatingPanel({ openFiles, onClose, onOpenConfig, onTasksUpdated, addToast }) {
-  const { theme } = useApp();
-  const core = useChatCore({ openFiles, onTasksUpdated, addToast });
+  const { theme, openTab } = useApp();
+  const core = useChatCore({ openFiles, onTasksUpdated, addToast, openTab });
   const { panelPos, setPanelPos, isDragging, startDrag } = useChatDrag({ width: 800, height: 600 });
   const { panelSize, resizing, resizeHandles, handleResizeStart } = useChatResize(panelPos, setPanelPos);
 

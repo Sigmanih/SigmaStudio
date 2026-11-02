@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { GripVertical, Sparkles, X, Calendar, Cpu, MessageSquare, Settings, Music, Trash2, RefreshCw } from 'lucide-react';
 
 // Sub-components
 import Sidebar from './components/Sidebar';
 import Workspace from './components/Workspace';
-import ChatPanel from './components/Chat/ChatPanel';
-import AIConfig from './components/AIConfig';
+const ChatPanel = React.lazy(() => import('./components/Chat/ChatPanel'));
+const AIConfig = React.lazy(() => import('./components/AIConfig'));
 import ToastNotification from './components/ToastNotification';
 import MusicFloatingWidget from './components/Music/MusicFloatingWidget';
 import { ModuleModal, TaskModal, NewFileModal, SystemCleanupModal } from './components/modals';
@@ -17,6 +17,7 @@ import { MusicProvider } from './contexts/MusicContext';
 // Hooks
 import { useModuleState } from './hooks/useModuleState';
 import { getLazyHardwareFloating } from './modules/registry';
+const LazyHardwareFloating = getLazyHardwareFloating();
 
 
 // ==============================================================================
@@ -68,7 +69,7 @@ function AppContent() {
   } = useApp();
 
   const { modulesState, isLoaded: modulesLoaded } = useModuleState();
-  const isAudioInstalled = modulesState.audio_studio === true;
+  const isAudioInstalled = modulesState.sigma_audio_studio === true || modulesState.audio_studio === true;
   const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
   const isRoadmapInstalled = modulesState.sigma_roadmap === true;
 
@@ -77,12 +78,6 @@ function AppContent() {
   const [hardwarePanelOpen, setHardwarePanelOpen] = React.useState(false);
   const [dockMinimized, setDockMinimized] = React.useState(true);
 
-  const LazyHardwareFloating = React.useMemo(() => {
-    if (isHardwareInstalled) {
-      return getLazyHardwareFloating();
-    }
-    return null;
-  }, [isHardwareInstalled]);
 
 
   // Floating dock bar drag state
@@ -584,6 +579,7 @@ function AppContent() {
 
       {/* AI CHAT PANEL */}
       {aiChatOpen && (
+        <React.Suspense fallback={<div className="loading-screen" role="status">Apertura chat…</div>}>
         <ChatPanel
           manifesti={manifesti}
           openFiles={openTabs.filter(t => t.type !== 'module').map(t => t.path)}
@@ -592,6 +588,7 @@ function AppContent() {
           onTasksUpdated={fetchTasks}
           addToast={addToast}
         />
+        </React.Suspense>
       )}
 
       {/* HARDWARE MINI FLOATING PANEL */}
@@ -609,6 +606,7 @@ function AppContent() {
       )}
 
       {/* GLOBAL BOTTOM-RIGHT MUSIC WIDGET */}
+      {isAudioInstalled && (
       <div
         className="global-music-dock"
         style={{
@@ -620,15 +618,18 @@ function AppContent() {
       >
         <MusicFloatingWidget onOpenTab={(tabObj, tabId) => openTab(tabObj, tabId)} />
       </div>
+      )}
 
 
       {/* AI CONFIG MODAL */}
       {aiConfigOpen && (
+        <React.Suspense fallback={<div className="loading-screen" role="status">Caricamento impostazioni…</div>}>
         <AIConfig
           isOpen={aiConfigOpen}
           onClose={() => setAiConfigOpen(false)}
           addToast={addToast}
         />
+        </React.Suspense>
       )}
 
       {/* SYSTEM CLEANUP MODAL */}

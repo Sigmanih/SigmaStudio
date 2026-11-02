@@ -86,6 +86,7 @@ def _fondi_tre_testi(nostro: str, partenza: str, loro: str) -> tuple:
         esito = subprocess.run(
             ["git", "merge-file", "-p", "--diff3",
              percorsi["nostro"], percorsi["base"], percorsi["loro"]],
+            cwd=cartella,
             capture_output=True, text=True, encoding="utf-8",
             errors="replace", timeout=30.0,
         )

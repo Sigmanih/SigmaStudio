@@ -84,28 +84,7 @@ STATE_FILE = str(paths.installed_modules_file())
 _KERNEL_DEFAULTS = {}
 
 # Optional modules (downloadable from GitHub, isolated from kernel)
-_OPTIONAL_DEFAULTS = {
-    "sigma_creative_lab": False,   # Creative Lab 3D/2D
-    "audio_studio": False,         # Hi-Fi Sound & FM Radio Studio
-    "sigma_audio_studio": False,   # Hi-Fi Sound & FM Radio Studio Alias
-    "sigma_domotica": False,       # Domotica & Home Assistant IoT
-    "sigma_training_lab": False,   # Training Lab & SLM Forge
-    "sigma_hardware_lab": False,   # Hardware Lab & VRAM
-    "sigma_research_lab": False,   # Pipelines Lab & Dynamic Swarm
-    "sigma_knowledge": False,      # Knowledge Explorer
-    "sigma_mcp_hub": False,        # MCP Tools Hub
-    "sigma_roadmap": False,        # Pianificazione & Task Audit
-    "sigma_voice_studio": False,   # Voice Studio & Neural Speech
-    "sigma_developer_lab": False,  # Developer Lab & Sandbox
-    "sigma_network_lab": False,    # Network Explorer & Web Research
-    "sigma_email_client": False,   # Email Hub & Client
-    "sigma_messaging_hub": False,  # Messaging & Notification Hub
-    "sigma_network": False,        # Sigma Network P2P & Distributed Mesh
-    "sigma_kicad_lab": False,      # PCB Lab — KiCad 10 Native
-    "sigma_eda_lab": False,        # EDA Lab & EasyEDA Bridge
-    "sigma_benchmark_lab": False,  # Benchmark Lab & Model Evaluation
-    "sigma_model_hub": False,      # Model Hub & HF Downloader
-}
+_OPTIONAL_DEFAULTS = {}
 
 def _discovered_modules() -> dict:
     """Gli id dei moduli che hanno un manifest sotto core/modules/.
@@ -117,7 +96,7 @@ def _discovered_modules() -> dict:
     modulo malformato costa se stesso, non l'intero elenco.
     """
     trovati = {}
-    base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "modules")
+    base = str(paths.modules_backend_dir())
     if not os.path.isdir(base):
         return trovati
 
@@ -130,7 +109,7 @@ def _discovered_modules() -> dict:
                 dati = json.load(f)
             module_id = str(dati.get("id") or nome).strip()
             if module_id:
-                trovati[module_id] = False
+                trovati[module_id] = dati.get("enabled_by_default") is True
         except (OSError, ValueError) as exc:
             log.warning("[Marketplace] manifest di '%s' non leggibile: %s", nome, exc)
     return trovati
@@ -310,8 +289,7 @@ def handle_marketplace_install(self):
         module_path = data.get("module_path", f"modules/{module_id}")
         log.info(f"Marketplace install: {module_id} da {repo_url} (path: {module_path})")
         
-        from core.module_loader import ModuleLoader
-        loader = ModuleLoader()
+        from core.fastapi_app import module_loader as loader
         app = getattr(self, 'app', None)
         if app is None:
             try:
@@ -339,15 +317,8 @@ def handle_marketplace_uninstall(self):
         module_id = data.get("module_id", "")
         log.info(f"Marketplace uninstall: {module_id}")
         
-        try:
-            from core.module_loader import ModuleLoader
-            loader = ModuleLoader()
-            loader.uninstall(module_id)
-        except Exception as err:
-            log.warning(f"[Marketplace] Fallback local uninstall recording due to: {err}")
-            state = _get_installed_modules_state()
-            state[module_id] = False
-            _save_installed_modules_state(state)
+        from core.fastapi_app import module_loader as loader
+        loader.uninstall(module_id)
         
         self.send_json_response({
             "success": True,

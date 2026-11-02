@@ -2,6 +2,8 @@
 // MODEL-PROVIDER MAP | Associa ogni modello al provider di routing corretto
 // ==============================================================================
 
+import { modelName as normalizeModelName } from '../../services/modelIdentity.js';
+
 /**
  * Mappa modello → provider.
  * Ogni modello è associato al suo provider API per il routing.
@@ -178,7 +180,8 @@ export const PROVIDER_COLORS = {
  * @param {Object} providerConfigs - Configurazioni provider dal server
  * @returns {string} Chiave del provider
  */
-export function getProviderForModel(modelName, providerConfigs) {
+export function getProviderForModel(model, providerConfigs) {
+  const modelName = normalizeModelName(model);
   if (!modelName) return 'sigma_engine';
 
   const lower = modelName.toLowerCase();

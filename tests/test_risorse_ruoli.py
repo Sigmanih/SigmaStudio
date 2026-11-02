@@ -18,6 +18,17 @@ from unittest import mock
 from core.agents import manifests_catalog as MC
 
 
+def test_campo_di_lavoro_arriva_alla_chat_e_rispetta_i_ruoli_privati(tmp_path):
+    from core.handlers.data_handler import _parse_manifesto_file
+    official = tmp_path / "sigma_assistant.md"
+    official.write_text("# Role: Assistente\nFROM sigma\n", encoding="utf-8")
+    assert _parse_manifesto_file(str(official), official.name, {}, {})["workDomain"] == "general"
+    private = tmp_path / "Private" / official.name
+    private.parent.mkdir()
+    private.write_text("# WorkDomain: research\nFROM sigma\n", encoding="utf-8")
+    assert _parse_manifesto_file(str(private), private.name, {}, {})["workDomain"] == "research"
+
+
 class _Risposta:
     def __init__(self, dati: bytes):
         self._dati = dati
@@ -141,7 +152,7 @@ class TestElencoEServer(unittest.TestCase):
         from fastapi.testclient import TestClient
         from core import fastapi_app
         with mock.patch("core.paths.roles_dir", return_value=self.ruoli):
-            client = TestClient(fastapi_app.app)
+            client = TestClient(fastapi_app.app, base_url="http://localhost", client=("127.0.0.1", 50000))
             self.assertEqual(client.get("/ruoli/medico/personaggio.glb").content, b"rig")
             # Il manifesto c'e' su disco ma non e' una risorsa: non esce da /ruoli/,
             # nemmeno risalendo di cartella (a quel punto risponde la pagina della SPA)

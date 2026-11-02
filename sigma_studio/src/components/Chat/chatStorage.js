@@ -22,7 +22,7 @@ export function loadLastModel(defaultModel = '') {
 export function saveLastModel(modelName) {
   try {
     localStorage.setItem(LAST_MODEL_KEY, modelName);
-  } catch (e) {}
+  } catch {}
 }
 
 export function loadActiveSessionId() {
@@ -35,7 +35,7 @@ export function saveActiveSessionId(sessionId) {
   try {
     if (sessionId) localStorage.setItem(ACTIVE_SESSION_KEY, sessionId);
     else localStorage.removeItem(ACTIVE_SESSION_KEY);
-  } catch (e) {}
+  } catch {}
 }
 
 let pendingTitleGenerations = {};
@@ -73,7 +73,7 @@ export function saveSessions(sessions) {
     if (Array.isArray(sessions)) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions.slice(0, MAX_HISTORY)));
     }
-  } catch (e) {}
+  } catch {}
 }
 
 export function loadMessagesFromStorage(sessionId) {
@@ -123,7 +123,7 @@ export function loadMessagesFromStorage(sessionId) {
         return m;
       });
     }
-  } catch (e) {}
+  } catch {}
   return null;
 }
 
@@ -171,7 +171,7 @@ export function saveMessagesToStorage(sessionId, messages) {
     if (updated) {
       saveSessions(nextSessions);
     }
-  } catch (e) {}
+  } catch {}
 }
 
 export function getSessionStats(session, sessionMessages) {
@@ -281,7 +281,7 @@ export function savePosition(pos) {
       }
       localStorage.setItem(POS_KEY, JSON.stringify(saved));
     }
-  } catch (e) {}
+  } catch {}
 }
 
 export function loadSize(defaultWidth = 480, defaultHeight = 600) {
@@ -294,7 +294,7 @@ export function loadSize(defaultWidth = 480, defaultHeight = 600) {
 export function saveSize(size) {
   try {
     localStorage.setItem(SIZE_KEY, JSON.stringify(size));
-  } catch (e) {}
+  } catch {}
 }
 
 export function formatSessionDate(dateStr) {

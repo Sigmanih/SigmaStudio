@@ -99,7 +99,7 @@ export default function SystemCleanupModal({ isOpen, onClose }) {
                 localStorage.removeItem(k);
               }
             });
-          } catch (e) {}
+          } catch {}
           window.dispatchEvent(new CustomEvent('sigma-chat-cleared', { detail: { clear_history: true } }));
         }
         window.dispatchEvent(new CustomEvent('sigma-system-cleanup-done', { detail: options }));

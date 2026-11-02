@@ -254,7 +254,7 @@ export default function useLoopMode({
                 setLoopIteration(s.max_iterations || loopMaxIterationsRef.current);
                 break;
               }
-            } catch (e) {
+            } catch {
               // Skip malformed SSE lines
             }
           }

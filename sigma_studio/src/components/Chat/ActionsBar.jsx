@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 // ==============================================================================
 // ACTIONS BAR — 4 modalità operative ottimizzate + descrizione

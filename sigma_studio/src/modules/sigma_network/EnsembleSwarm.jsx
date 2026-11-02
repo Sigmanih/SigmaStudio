@@ -141,7 +141,7 @@ const EnsembleSwarm = ({ identity, onRefreshWallet }) => {
                       [key]: { ...prev[key], error: ev.error },
                     }));
                   }
-                } catch (e) {
+                } catch {
                   // ignore malformed SSE
                 }
               }

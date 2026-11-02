@@ -509,17 +509,15 @@ def _save_custom_workspace_roots(roots_list: list[dict]) -> None:
 async def handle_workspace_roots(request: Request):
     """GET /api/developer/workspace/roots — le cartelle su cui si puo' lavorare.
 
-    Di base Developer Studio si apre sulla cartella `data/` dell'utente
-    (la sandbox sicura di lavoro). Da qui l'utente puo' scegliere se passare
-    all'intero sorgente di Sigma Studio o aggiungere cartelle dal PC salvate
-    nella Developer Map.
+    I nuovi progetti partono dalla loro radice dedicata, per non affidare
+    implicitamente a un agente l'intero archivio personale o il programma.
     """
     from core import paths
     from core.progetti import elenca_progetti, radice_pericolosa, radice_progetti
 
     roots = []
 
-    # 1. Cartella base: Workspace Utente (data/) — SEMPRE PRIMA e di DEFAULT
+    # L'archivio personale resta disponibile come scelta esplicita.
     data_dir = paths.workspace_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     data_root_str = str(data_dir).replace("\\", "/")
@@ -527,7 +525,7 @@ async def handle_workspace_roots(request: Request):
         "label": f"📁 Workspace Utente ({data_dir.name}) — Cartella Dati & Progetti",
         "path": data_root_str,
         "kind": "data_workspace",
-        "is_default": True,
+        "is_default": False,
     })
 
     # 2. Cartelle personalizzate aggiunte dall'utente e salvate nella Developer Map
@@ -547,10 +545,11 @@ async def handle_workspace_roots(request: Request):
     try:
         radice = radice_progetti()
         if radice.exists():
-            roots.append({
+            roots.insert(0, {
                 "label": f"Progetti ({radice.name})",
                 "path": str(radice).replace("\\", "/"),
-                "kind": "projects_root"
+                "kind": "projects_root",
+                "is_default": True,
             })
             for progetto in elenca_progetti():
                 roots.append({
@@ -564,7 +563,7 @@ async def handle_workspace_roots(request: Request):
     # 4. Sorgente completo di Sigma Studio (opzione avanzata consapevole)
     studio_root = str(paths.project_root()).replace("\\", "/")
     roots.append({
-        "label": f"⚡ Sigma Studio ({Path(studio_root).name}) — Sorgente Completo",
+        "label": f"⚡ Sigma Studio ({Path(studio_root).name}) — il programma stesso",
         "path": studio_root,
         "kind": "studio"
     })

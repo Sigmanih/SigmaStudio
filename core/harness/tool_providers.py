@@ -34,6 +34,8 @@ from core.harness import policy, tool_schema
 from core.logger import get_logger
 
 log = get_logger("tool_providers")
+_BASE_ALIASES = dict(policy.ALIASES)
+_BASE_READ_ONLY = frozenset(policy.READ_ONLY_TOOLS)
 
 
 class ProviderError(RuntimeError):
@@ -163,8 +165,52 @@ def unregister(provider_id: str) -> bool:
     for nome in nomi:
         _proprietario.pop(nome, None)
     tool_schema.deregister_schemas(nomi)
+    for name, canonical in provider.aliases.items():
+        if policy.ALIASES.get(name) == canonical and not any(name in p.aliases for p in _provider.values()):
+            if name in _BASE_ALIASES:
+                policy.ALIASES[name] = _BASE_ALIASES[name]
+            else:
+                policy.ALIASES.pop(name, None)
+    for name in provider.read_only:
+        if name not in _BASE_READ_ONLY and not any(name in p.read_only for p in _provider.values()):
+            policy.READ_ONLY_TOOLS.discard(name)
+    from core.harness import roles
+    for role in provider.roles or ():
+        if roles.DEV_ROLES.get(role.id) is role:
+            roles.DEV_ROLES.pop(role.id, None)
     log.info("[Providers] '%s' rimosso: %d tool.", provider.id, len(nomi))
     return True
+
+
+def snapshot() -> dict:
+    """Stato delle registrazioni, per ripristinare un caricamento fallito."""
+    from core.harness import roles
+    return {"providers": dict(_provider), "owners": dict(_proprietario),
+            "schemas": list(tool_schema.TOOL_SCHEMAS), "by_name": dict(tool_schema._PER_NOME),
+            "aliases": dict(policy.ALIASES), "read_only": set(policy.READ_ONLY_TOOLS),
+            "roles": dict(roles.DEV_ROLES)}
+
+
+def restore(state: dict) -> None:
+    from core.harness import roles
+    for target, source in ((_provider, state["providers"]), (_proprietario, state["owners"]),
+                           (tool_schema._PER_NOME, state["by_name"]),
+                           (policy.ALIASES, state["aliases"]), (roles.DEV_ROLES, state["roles"])):
+        target.clear()
+        target.update(source)
+    tool_schema.TOOL_SCHEMAS[:] = state["schemas"]
+    policy.READ_ONLY_TOOLS.clear()
+    policy.READ_ONLY_TOOLS.update(state["read_only"])
+
+
+def remove_changes(before: dict, after: dict) -> None:
+    """Rimuove soltanto le registrazioni ancora appartenenti al modulo uscente."""
+    for name, provider in after["providers"].items():
+        previous = before["providers"].get(name)
+        if previous is not provider and _provider.get(name) is provider:
+            unregister(name)
+            if previous is not None:
+                register(previous)
 
 
 def clear() -> None:

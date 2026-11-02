@@ -142,7 +142,7 @@ export function AppProvider({ children }) {
       const res = await fetch('/api/topics');
       const data = await res.json();
       if (data.topics) setTopicsCount(data.topics.length);
-    } catch (e) {}
+    } catch {}
   };
 
   // Fetch manifesti list
@@ -213,7 +213,7 @@ export function AppProvider({ children }) {
               localStorage.removeItem(k);
             }
           });
-        } catch (e) {}
+        } catch {}
         window.dispatchEvent(new CustomEvent('sigma-chat-cleared', { detail: { clear_history: true } }));
       }
       window.dispatchEvent(new CustomEvent('sigma-system-cleanup-done', { detail: options }));
@@ -324,9 +324,13 @@ export function AppProvider({ children }) {
 }
 
 export function useApp() {
-  const context = useContext(AppContext);
+  const context = useOptionalApp();
   if (!context) {
     throw new Error('useApp must be used within an AppProvider');
   }
   return context;
+}
+
+export function useOptionalApp() {
+  return useContext(AppContext);
 }

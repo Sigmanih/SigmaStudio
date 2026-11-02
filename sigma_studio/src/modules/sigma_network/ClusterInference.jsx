@@ -131,7 +131,7 @@ const ClusterInference = ({ initialPeer, walletBalance, onReceiptCreated }) => {
               });
               if (onReceiptCreated) onReceiptCreated();
             }
-          } catch (pe) {
+          } catch {
             // frammento testo grezzo
             tokenCount++;
             setStreamedText(prev => prev + jsonStr);

@@ -4,24 +4,7 @@
 // ==============================================================================
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import {
-  DEFAULT_TRACKS,
-  BROADCASTERS,
-  GENRES,
-  INSTRUMENTS,
-  MOODS,
-  loadTasteProfile,
-  loadFavorites,
-  saveFavorites,
-  loadCustomTracks,
-  saveCustomTracks,
-  loadHistory,
-  recordListen,
-  getSmartRecommendations,
-  loadUserCategories,
-  saveUserCategories,
-  DEFAULT_USER_CATEGORIES
-} from '../services/musicRecommendation';
+import { DEFAULT_TRACKS, BROADCASTERS, GENRES, INSTRUMENTS, MOODS, loadFavorites, saveFavorites, loadCustomTracks, saveCustomTracks, loadHistory, recordListen, getSmartRecommendations, loadUserCategories, saveUserCategories, DEFAULT_USER_CATEGORIES } from '../services/musicRecommendation';
 
 const MusicContext = createContext(null);
 
@@ -42,7 +25,7 @@ export function MusicProvider({ children }) {
     try {
       const v = localStorage.getItem('sigma_music_volume');
       return v !== null ? parseFloat(v) : 0.75;
-    } catch (e) {
+    } catch {
       return 0.75;
     }
   });
@@ -68,7 +51,7 @@ export function MusicProvider({ children }) {
         const parsed = JSON.parse(saved);
         if (parsed.audio_studio !== undefined) return parsed.audio_studio === true;
       }
-    } catch(e) {}
+    } catch {}
     return true;
   });
 
@@ -154,11 +137,11 @@ export function MusicProvider({ children }) {
           func: 'setVolume',
           args: [volVal]
         }), '*');
-      } catch (e) {}
+      } catch {}
     }
     try {
       localStorage.setItem('sigma_music_volume', String(volume));
-    } catch (e) {}
+    } catch {}
   }, [volume, isMuted]);
 
   // Track listen duration for taste profiling
@@ -216,10 +199,10 @@ export function MusicProvider({ children }) {
     if (synthNodesRef.current) {
       try {
         synthNodesRef.current.oscs.forEach(o => {
-          try { o.stop(); } catch (e) {}
+          try { o.stop(); } catch {}
         });
         synthNodesRef.current.ctx.close();
-      } catch (e) {}
+      } catch {}
       synthNodesRef.current = null;
     }
   };
@@ -271,7 +254,7 @@ export function MusicProvider({ children }) {
             func: 'pauseVideo',
             args: []
           }), '*');
-        } catch (e) {}
+        } catch {}
       }
       stopProceduralSynth();
       setIsPlaying(false);
@@ -285,7 +268,7 @@ export function MusicProvider({ children }) {
                 func: 'playVideo',
                 args: []
               }), '*');
-            } catch (e) {}
+            } catch {}
           }
           setIsPlaying(true);
         } else if (currentTrack.engine === 'synth') {
@@ -299,7 +282,7 @@ export function MusicProvider({ children }) {
           try {
             await audioRef.current.play();
             setIsPlaying(true);
-          } catch (e) {
+          } catch {
             startProceduralSynth(currentTrack.genre);
             setIsPlaying(true);
           }
@@ -362,7 +345,7 @@ export function MusicProvider({ children }) {
     if (audioRef.current && currentTrack?.engine !== 'youtube') {
       try {
         audioRef.current.currentTime = clamped;
-      } catch (e) {}
+      } catch {}
     }
   };
 

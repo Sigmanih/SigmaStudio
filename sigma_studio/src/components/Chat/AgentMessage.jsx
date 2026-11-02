@@ -9,6 +9,7 @@ import { useApp } from '../../contexts/AppContext';
 import { useMusic } from '../../contexts/MusicContext';
 import { getModelSpecs, isErrorMessage } from './core/modelSpecsHelper';
 import ChatToolActionItem from './ui/ChatToolActionItem';
+import WorkspaceChoices from './ui/WorkspaceChoices';
 import { estraiRiepilogo, isToolObiettivo } from './ui/GoalCompletionCard';
 import 'katex/dist/katex.min.css';
 
@@ -353,7 +354,7 @@ export default function AgentMessage({
     if (!clean) return;
     try {
       localStorage.setItem('sigma_dev_pending_open_file', clean);
-    } catch (e) { }
+    } catch { }
     window.dispatchEvent(new CustomEvent('sigma_dev_open_file', { detail: { path: clean } }));
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('sigma_dev_open_file', { detail: { path: clean } }));
@@ -367,7 +368,7 @@ export default function AgentMessage({
     setLightboxSrc(imgUrl);
   };
 
-  const musicCtx = useMusic ? useMusic() : null;
+  const musicCtx = useMusic();
   const saveYouTubeFavorite = musicCtx?.saveYouTubeFavorite;
   const addCustomTrack = musicCtx?.addCustomTrack;
   const userCategories = musicCtx?.userCategories || [];
@@ -426,9 +427,7 @@ export default function AgentMessage({
   };
 
   const messages = groupedMessages || (msg ? [msg] : []);
-  if (messages.length === 0) return null;
-
-  const first = messages[0];
+  const first = messages[0] || {};
   const isUser = first.role === 'user';
   const isSystem = first.role === 'system';
   const agentId = first.agent_id || first.agentId;
@@ -441,7 +440,7 @@ export default function AgentMessage({
     try {
       const saved = localStorage.getItem('sigma_user_profile');
       if (saved) return JSON.parse(saved);
-    } catch (e) { }
+    } catch { }
     return { name: 'Tu', avatar: '/images/default.png' };
   });
 
@@ -494,6 +493,8 @@ export default function AgentMessage({
     }, 2800);
     return () => clearInterval(interval);
   }, [isLoading]);
+
+  if (messages.length === 0) return null;
 
   const isWelcome = Boolean(
     first.isWelcome || (
@@ -773,6 +774,8 @@ export default function AgentMessage({
 
         {/* Content area */}
         <div className="chat-msg-content">
+          {!isUser && first.localOnly && first.workspaceChoices?.length > 0
+            && <WorkspaceChoices choices={first.workspaceChoices} openTab={openTab} />}
           {isUser && first.attachments?.length > 0 && (
             <div className="chat-message-attachments">
               {first.attachments.map((p, idx) => {

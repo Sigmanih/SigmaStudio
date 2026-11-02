@@ -109,7 +109,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
     try {
       localStorage.setItem('sigma_model_hub_active_subtab', activeTab);
       window.dispatchEvent(new CustomEvent('sigma-model-hub-tab-changed', { detail: activeTab }));
-    } catch (e) {}
+    } catch {}
   }, [activeTab]);
 
 
@@ -179,7 +179,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
           setActiveDownloads(json.downloads || []);
         }
       }
-    } catch (e) {
+    } catch {
       // silent background poll
     }
   }, []);
@@ -234,7 +234,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
           setUploadTasks(json.tasks);
         }
       }
-    } catch (e) {
+    } catch {
       // silent background poll
     }
   }, []);
@@ -566,7 +566,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
         try {
           window.dispatchEvent(new CustomEvent('ai-config-updated'));
           window.dispatchEvent(new CustomEvent('models-updated'));
-        } catch (e) {}
+        } catch {}
       } else {
         if (addToast) addToast(`Cartella aggiunta: ${clean}.`, 'info');
       }
@@ -599,7 +599,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
         try {
           window.dispatchEvent(new CustomEvent('ai-config-updated'));
           window.dispatchEvent(new CustomEvent('models-updated'));
-        } catch (e) {}
+        } catch {}
       }
     } catch {
       if (addToast) addToast(`Percorso "${dirToRemove}" rimosso.`, 'info');
@@ -632,7 +632,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
         try {
           window.dispatchEvent(new CustomEvent('ai-config-updated'));
           window.dispatchEvent(new CustomEvent('models-updated'));
-        } catch (e) {}
+        } catch {}
       } else {
         if (addToast) addToast(`❌ Errore importazione: ${json.error || 'Errore'}`, 'error');
       }
@@ -667,7 +667,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
         try {
           window.dispatchEvent(new CustomEvent('ai-config-updated'));
           window.dispatchEvent(new CustomEvent('models-updated'));
-        } catch (e) {}
+        } catch {}
       } else {
         if (addToast) addToast(`❌ Errore salvataggio: ${json.error || 'Errore'}`, 'error');
       }
@@ -922,7 +922,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
                       setTokenTestResult(null);
                     }}
                     onKeyDown={e => { if (e.key === 'Enter') handleSaveToken(); }}
-                    placeholder="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    placeholder="hf_…"
                     style={{
                       width: '100%', padding: '10px 42px 10px 14px', borderRadius: '10px',
                       background: subBg, border: subBorder,
@@ -2018,14 +2018,14 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
             // with no type at all, which rendered an empty pane.
             try {
               window.dispatchEvent(new CustomEvent('ai-config-updated'));
-            } catch (e) { /* the chat refreshes on its own next mount */ }
+            } catch { /* the chat refreshes on its own next mount */ }
 
             if (openTab) {
               openTab({ name: 'Chat' }, 'chat');
             } else {
               try {
                 window.dispatchEvent(new CustomEvent('open_tab', { detail: { type: 'chat' } }));
-              } catch (e) {}
+              } catch {}
             }
           }}
         />

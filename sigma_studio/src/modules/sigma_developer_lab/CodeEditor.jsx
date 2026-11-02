@@ -119,7 +119,7 @@ export default function CodeEditor({
       try {
         const parsed = JSON.parse(activeFile.content);
         return `<pre style="font-family: monospace; font-size: 0.8rem; color: #58a6ff;">${JSON.stringify(parsed, null, 2)}</pre>`;
-      } catch (e) {
+      } catch {
         return `<pre style="font-family: monospace; font-size: 0.8rem;">${activeFile.content}</pre>`;
       }
     }

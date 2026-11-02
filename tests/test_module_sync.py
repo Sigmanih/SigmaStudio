@@ -21,6 +21,17 @@ from pathlib import Path
 import pytest
 
 from core import module_sync
+
+
+@pytest.fixture(autouse=True)
+def identita_git_di_prova(monkeypatch):
+    """I commit nei repository temporanei non dipendono dall'identità del PC."""
+    for key, value in (("GIT_AUTHOR_NAME", "Sigma Test"), ("GIT_COMMITTER_NAME", "Sigma Test"),
+                       ("GIT_AUTHOR_EMAIL", "test@example.invalid"),
+                       ("GIT_COMMITTER_EMAIL", "test@example.invalid")):
+        monkeypatch.setenv(key, value)
+
+
 from core.module_sync import (
     ModuloLocale,
     Rispecchiamento,

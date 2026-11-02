@@ -430,11 +430,14 @@ def _plan_settings(
                 if cand_c >= n_ctx:
                     continue
                 c_f16 = ModelInspector.estimate_kv_cache_gb(facts, cand_c)
+                l_plain = _layers_that_fit(weights_gb, layers, total_usable, c_f16)
                 l_q8 = _layers_that_fit(weights_gb, layers, total_usable, c_f16 / 2)
-                if l_q8 > miglior_l and (l_q8 - miglior_l >= max(3, int(layers * 0.10))):
-                    miglior_l = l_q8
+                candidate_quant = _KV_QUANT_TYPE if _kv_quant_pays_off(l_plain, l_q8, layers) else None
+                candidate_layers = l_q8 if candidate_quant else l_plain
+                if candidate_layers > miglior_l and (candidate_layers - miglior_l >= max(3, int(layers * 0.10))):
+                    miglior_l = candidate_layers
                     miglior_c = cand_c
-                    miglior_q = _KV_QUANT_TYPE
+                    miglior_q = candidate_quant
                     miglior_f16 = c_f16
 
             if miglior_l > (halved if kv_quant else plain):

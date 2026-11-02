@@ -182,7 +182,7 @@ const progressSubscribers = new Set();
 
 export function subscribeSpeechProgress(listener) {
   progressSubscribers.add(listener);
-  try { listener(speechProgressState); } catch (e) {}
+  try { listener(speechProgressState); } catch {}
   return () => progressSubscribers.delete(listener);
 }
 
@@ -192,7 +192,7 @@ export function getSpeechProgress() {
 
 function updateSpeechProgress(patch) {
   speechProgressState = { ...speechProgressState, ...patch };
-  progressSubscribers.forEach(fn => { try { fn(speechProgressState); } catch (e) {} });
+  progressSubscribers.forEach(fn => { try { fn(speechProgressState); } catch {} });
 }
 
 function setActiveSpeechId(id) {
@@ -201,7 +201,7 @@ function setActiveSpeechId(id) {
   if (!id) {
     updateSpeechProgress({ isSpeaking: false, paused: false, speechId: null, charIndex: 0, progress: 0 });
   }
-  speechListeners.forEach(fn => { try { fn(activeSpeechId); } catch (e) {} });
+  speechListeners.forEach(fn => { try { fn(activeSpeechId); } catch {} });
 }
 
 /** Subscribe to speech state changes. Returns an unsubscribe function. */
@@ -228,7 +228,7 @@ if (typeof window !== 'undefined' && window.speechSynthesis) {
   updateVoicesCache();
   try {
     window.speechSynthesis.addEventListener('voiceschanged', updateVoicesCache);
-  } catch (e) {
+  } catch {
     window.speechSynthesis.onvoiceschanged = updateVoicesCache;
   }
 }
@@ -266,14 +266,14 @@ export function getVoiceConfig() {
     if (!raw) return { ...DEFAULT_VOICE_CONFIG };
     const parsed = raw.startsWith('{') ? JSON.parse(raw) : { voiceURI: raw };
     return { ...DEFAULT_VOICE_CONFIG, ...parsed };
-  } catch (e) {
+  } catch {
     return { ...DEFAULT_VOICE_CONFIG };
   }
 }
 
 export function setVoiceConfig(patch) {
   const updated = { ...getVoiceConfig(), ...patch };
-  try { localStorage.setItem(VOICE_CONFIG_KEY, JSON.stringify(updated)); } catch (e) {}
+  try { localStorage.setItem(VOICE_CONFIG_KEY, JSON.stringify(updated)); } catch {}
 
   // Realtime volume update for active playing neural audio stream
   if (updated.volume !== undefined) {
@@ -316,7 +316,7 @@ export function loadTTSEngines(force = false) {
       serverEngines = [];
       return Promise.resolve([]);
     }
-  } catch (e) {
+  } catch {
     serverEngines = [];
     return Promise.resolve([]);
   }
@@ -508,10 +508,10 @@ export function pauseSpeech() {
   utteranceRecords.forEach(record => { record.finished = true; });
   utteranceRecords.clear();
 
-  try { window.speechSynthesis.cancel(); } catch (e) {}
+  try { window.speechSynthesis.cancel(); } catch {}
 
   // Broadcast paused state to all subscribers
-  progressSubscribers.forEach(fn => { try { fn(speechProgressState); } catch (e) {} });
+  progressSubscribers.forEach(fn => { try { fn(speechProgressState); } catch {} });
 }
 
 export function resumeSpeech() {
@@ -706,7 +706,7 @@ export function getLastSpeechIssue() {
 function reportSpeechIssue(code, message, detail = '') {
   lastSpeechIssue = { code, message, detail, at: Date.now() };
   console.warn(`[TTS] ${code} — ${message}`, detail || '');
-  speechIssueListeners.forEach(fn => { try { fn(lastSpeechIssue); } catch (e) {} });
+  speechIssueListeners.forEach(fn => { try { fn(lastSpeechIssue); } catch {} });
 }
 
 // --- Speaking speed calibration ---------------------------------------------
@@ -841,7 +841,7 @@ function watchdogTick() {
   // Chrome can latch into a paused state after a cancel(): speak() still queues
   // the utterance, onstart never fires, and the reading dies without a sound.
   if (synth.paused) {
-    try { synth.resume(); } catch (e) {}
+    try { synth.resume(); } catch {}
     reportSpeechIssue('synth-stuck-paused', 'Motore vocale bloccato in pausa, ripreso');
     stallTicks = 0;
     return;
@@ -857,7 +857,7 @@ function watchdogTick() {
     // Let go of a dead utterance only once nothing else depends on the engine:
     // a repair has already taken back whatever was queued behind it.
     if (synth.speaking && state.inFlight.length === 0) {
-      try { synth.cancel(); } catch (e) {}
+      try { synth.cancel(); } catch {}
     }
     return;
   }
@@ -1066,7 +1066,7 @@ function speakFallbackClip(state, entry, onDone) {
       // Neither event is guaranteed to fire. Without this the whole reading
       // would stop here instead of losing a single sentence.
       guard = setTimeout(step, (text.length / charsPerSec()) * 1000 * 2 + 4000);
-    } catch (err) {
+    } catch {
       step();
     }
   };
@@ -1111,7 +1111,7 @@ function requestClip(state, seq, clean, engine, voice, charOffset, charLen, atte
       const audio = new Audio();
       audio.preload = 'auto';
       audio.src = url;
-      try { audio.load(); } catch (e) {}
+      try { audio.load(); } catch {}
 
       state.queue.set(seq, { url, audio, text: clean, charOffset, charLength: charLen });
       playNextClip(state);
@@ -1248,7 +1248,7 @@ function speakQueueItem(state, item) {
     if (window.speechSynthesis.paused) window.speechSynthesis.resume();
     window.speechSynthesis.speak(utterance);
     startWatchdog();
-  } catch (err) {
+  } catch {
     finishUtterance(record, 'error', 'speak-threw');
   }
 }
@@ -1362,7 +1362,7 @@ function requeueFromFault(state, record, tail) {
 
   // Their utterances come back as 'interrupted', handled by the requeue flag.
   if (stranded.length > 0) {
-    try { window.speechSynthesis.cancel(); } catch (e) {}
+    try { window.speechSynthesis.cancel(); } catch {}
   }
   feedChromeQueue(state);
 }
@@ -1583,7 +1583,7 @@ export function stopSpeech() {
     state.inFlight = [];
     if (state.leadTimer) { clearTimeout(state.leadTimer); state.leadTimer = null; }
     if (state.browserQueue) state.browserQueue = [];
-    try { state.abort.abort(); } catch (e) {}
+    try { state.abort.abort(); } catch {}
     if (state.audio) {
       state.audio.onended = state.audio.onerror = null;
       state.audio.pause();
@@ -1618,7 +1618,7 @@ export function getVoiceSilenceTimeout() {
       const num = parseFloat(val);
       if (!isNaN(num)) return num;
     }
-  } catch (e) {}
+  } catch {}
   return DEFAULT_VOICE_SILENCE_SECONDS;
 }
 
@@ -1627,7 +1627,7 @@ export function setVoiceSilenceTimeout(seconds) {
   try {
     localStorage.setItem(VOICE_SILENCE_TIMEOUT_KEY, String(seconds));
     window.dispatchEvent(new CustomEvent('sigma-voice-timeout-updated', { detail: seconds }));
-  } catch (e) {}
+  } catch {}
 }
 
 /**
@@ -1672,7 +1672,7 @@ export function initSpeechRecognition({ onResult, onError, onEnd, onSilence, sil
     if (onSilence && timeoutMs > 0 && accumulatedText.trim().length > 0) {
       clearSilence();
       silenceTimer = setTimeout(() => {
-        try { recognition.stop(); } catch (e) {}
+        try { recognition.stop(); } catch {}
         onSilence(accumulatedText.trim());
       }, timeoutMs);
     }
@@ -1801,7 +1801,7 @@ export function createWakeWordMic({
     ignoreUntilRestart = true;
     if (active) {
       setState('waiting');
-      try { recognition.stop(); } catch (e) {}
+      try { recognition.stop(); } catch {}
     }
   };
 
@@ -1815,7 +1815,7 @@ export function createWakeWordMic({
     if (active) setState('waiting');
     if (phrase && onSubmit) onSubmit(phrase);
     if (active) {
-      try { recognition.stop(); } catch (e) {}
+      try { recognition.stop(); } catch {}
     }
   };
 
@@ -1887,11 +1887,11 @@ export function createWakeWordMic({
       if (!active) return;
       try {
         recognition.start();
-      } catch (e) {
+      } catch {
         // If Chrome is still releasing the previous session, retry seamlessly in 100ms
         restartTimer = setTimeout(() => {
           if (!active) return;
-          try { recognition.start(); } catch (err) {}
+          try { recognition.start(); } catch {}
         }, 100);
       }
     }, 50);
@@ -1923,7 +1923,7 @@ export function createWakeWordMic({
       ignoreUntilRestart = false;
       clearSilence();
       if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
-      try { recognition.stop(); } catch (e) {}
+      try { recognition.stop(); } catch {}
       setState('off');
     },
     reset() {

@@ -511,7 +511,7 @@ def get_all_available_models() -> List[Dict[str, Any]]:
 
     # 3. Local Models on Disk (data/models/ and extra directories)
     try:
-        from core.modules.sigma_model_hub.backend.model_inventory import scan_local_models
+        from core.engine.inventory import scan_local_models
         local_items = scan_local_models()
         for item in local_items:
             m_id = item.get("name") or item.get("clean_name") or item.get("filename") or os.path.basename(item.get("path", ""))
@@ -1322,158 +1322,8 @@ def stream_ollama_chat_generator(
     yield json.dumps(final_obj) + "\n"
 
 
-def execute_ollama_chat_non_stream(
-    messages: List[Dict[str, str]],
-    model: str = "sigmaengine",
-    temperature: float = 0.7,
-    max_tokens: int = 4096,
-) -> Dict[str, Any]:
-    """Generates non-streaming Ollama chat response JSON."""
-    start_time = time.perf_counter()
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-
-    if not is_provider_server_enabled():
-        return {"error": "SigmaEngine Provider Server è disabilitato."}
-
-    # The client's conversation, unchanged: no persona unless one is configured.
-    system_prompt, sanitized_messages = _split_conversation(messages)
-
-    prompt_text = sanitized_messages[-1].get("content", "")
-    resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
-    full_text = ""
-
-    if exec_mode == "cloud":
-        ai_cfg = load_ai_config()
-        p_name = prov_cfg.get("provider", "openai")
-        full_text, _, err = call_ai_model(
-            messages=sanitized_messages,
-            ai_cfg=ai_cfg,
-            model=resolved_model,
-            provider=p_name,
-            endpoint=prov_cfg.get("endpoint", ""),
-            api_url=prov_cfg.get("api_url", ""),
-            api_key=prov_cfg.get("api_key", ""),
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=0.9,
-            request_timeout=300
-        )
-        if err:
-            full_text = f"⚠️ {err}"
-    else:
-        tokens = []
-        for chunk in sigma_engine.generate_stream(
-            prompt=prompt_text,
-            system_prompt=system_prompt,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            model_name=resolved_model,
-            messages=sanitized_messages,
-        ):
-            t = chunk.get("token", "")
-            if is_notice(chunk) and not chunk.get("error"):
-                continue
-            if t:
-                tokens.append(t)
-        full_text = "".join(tokens)
-
-    total_dur_ns = int((time.perf_counter() - start_time) * 1e9)
-
-    return {
-        "model": model,
-        "created_at": now_iso,
-        "message": {
-            "role": "assistant",
-            "content": full_text
-        },
-        "done": True,
-        "total_duration": total_dur_ns,
-        "load_duration": 50000000,
-        "prompt_eval_count": max(1, len(prompt_text.split()) * 2),
-        "prompt_eval_duration": 100000000,
-        "eval_count": max(1, len(full_text.split())),
-        "eval_duration": max(1, total_dur_ns - 150000000)
-    }
 
 
-def stream_ollama_generate_generator(
-    prompt: str,
-    system: str = "",
-    model: str = "sigmaengine",
-    temperature: float = 0.7,
-    max_tokens: int = 4096,
-) -> Generator[str, None, None]:
-    """Streams NDJSON formatted line chunks for Ollama /api/generate."""
-    start_time = time.perf_counter()
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-
-    if not is_provider_server_enabled():
-        yield json.dumps({"error": "SigmaEngine Provider Server è disabilitato."}) + "\n"
-        return
-
-    resolved_model, exec_mode, prov_cfg = resolve_target_model(model)
-    token_count = 0
-
-    if exec_mode == "cloud":
-        ai_cfg = load_ai_config()
-        p_name = prov_cfg.get("provider", "openai")
-        try:
-            full_res, _, err = call_ai_model(
-                messages=[{"role": "user", "content": prompt}],
-                ai_cfg=ai_cfg,
-                model=resolved_model,
-                provider=p_name,
-                endpoint=prov_cfg.get("endpoint", ""),
-                api_url=prov_cfg.get("api_url", ""),
-                api_key=prov_cfg.get("api_key", ""),
-                temperature=temperature,
-                max_tokens=max_tokens,
-                top_p=0.9,
-                request_timeout=300
-            )
-            if full_res:
-                words = full_res.split(" ")
-                for i, w in enumerate(words):
-                    chunk_text = w + (" " if i < len(words) - 1 else "")
-                    token_count += 1
-                    yield json.dumps({"model": model, "created_at": now_iso, "response": chunk_text, "done": False}) + "\n"
-        except Exception as e:
-            yield json.dumps({"error": str(e)}) + "\n"
-    else:
-        for chunk in sigma_engine.generate_stream(
-            prompt=prompt,
-            system_prompt=system or serving_persona(),
-            temperature=temperature,
-            max_tokens=max_tokens,
-            model_name=resolved_model,
-            messages=[{"role": "user", "content": prompt}],
-        ):
-            token = chunk.get("token", "")
-            # Engine narration ("caricamento pesi...", queue notices) is UI
-            # text, not the model's answer: an Ollama client concatenates
-            # every delta it receives.
-            if is_notice(chunk) and not chunk.get("error"):
-                continue
-            if token:
-                token_count += 1
-                line_obj = {
-                    "model": model,
-                    "created_at": now_iso,
-                    "response": token,
-                    "done": False
-                }
-                yield json.dumps(line_obj) + "\n"
-
-    total_dur_ns = int((time.perf_counter() - start_time) * 1e9)
-    final_obj = {
-        "model": model,
-        "created_at": now_iso,
-        "response": "",
-        "done": True,
-        "total_duration": total_dur_ns,
-        "eval_count": max(1, token_count)
-    }
-    yield json.dumps(final_obj) + "\n"
 
 
 def execute_ollama_generate_non_stream(

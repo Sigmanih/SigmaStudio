@@ -176,7 +176,7 @@ export default function DeveloperStudio() {
       } else {
         addToast?.(data.error || 'Errore lettura file', 'error');
       }
-    } catch (e) {
+    } catch {
       addToast?.('Errore di connessione', 'error');
     }
   }, [addToast]);
@@ -198,7 +198,7 @@ export default function DeveloperStudio() {
           localStorage.removeItem('sigma_dev_pending_open_file');
           handleOpenFile(pending);
         }
-      } catch (e) {}
+      } catch {}
     };
 
     checkPending();
@@ -226,7 +226,7 @@ export default function DeveloperStudio() {
       } else {
         addToast?.(data.error || 'Errore salvataggio file', 'error');
       }
-    } catch (e) {
+    } catch {
       addToast?.('Errore durante il salvataggio', 'error');
     }
   };
@@ -251,7 +251,7 @@ export default function DeveloperStudio() {
       } else {
         addToast?.(data.error || 'Errore creazione file', 'error');
       }
-    } catch (e) {
+    } catch {
       addToast?.('Errore durante la creazione', 'error');
     }
   };
@@ -281,7 +281,7 @@ export default function DeveloperStudio() {
       } else {
         addToast?.(data.error || 'Errore eliminazione', 'error');
       }
-    } catch (e) {
+    } catch {
       addToast?.('Errore eliminazione', 'error');
     }
   };

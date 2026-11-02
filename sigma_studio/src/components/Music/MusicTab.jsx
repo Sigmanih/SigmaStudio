@@ -31,7 +31,7 @@ const EQ_PRESETS = [
 ];
 
 export default function MusicTab() {
-  const { theme } = useApp ? useApp() : { theme: 'dark' };
+  const { theme } = useApp();
   const isLight = theme === 'light';
 
   const {

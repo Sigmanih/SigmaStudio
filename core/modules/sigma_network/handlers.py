@@ -322,12 +322,6 @@ def _get_aggregator() -> FederatedAggregator:
         return _aggregator_instance
 
 
-def _provider() -> InferenceProvider:
-    global _provider_instance
-    with _lock:
-        if _provider_instance is None:
-            _provider_instance = InferenceProvider(_get_settings())
-        return _provider_instance
 
 
 
@@ -748,37 +742,8 @@ def p2p_handshake(body: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-@router.get("/cluster/models")
-def get_cluster_models(include_local: bool = False) -> Dict[str, Any]:
-    """Restituisce il catalogo aggregato dei modelli disponibili nel cluster P2P offerti da altri nodi."""
-    broker = _get_broker()
-    models = broker.get_cluster_models(include_local=include_local)
-    return {
-        "models": models,
-        "total": len(models),
-        "cluster_active": True,
-    }
 
 
-@router.post("/cluster/infer")
-def cluster_infer(body: Dict[str, Any]) -> StreamingResponse:
-    """Esegue inferenza distribuita nel cluster regolando il costo in AiloToken."""
-    prompt = body.get("prompt") or body.get("messages") or ""
-    model = str(body.get("model") or "")
-    max_tokens = int(body.get("max_tokens") or 1024)
-    preferred_peer_id = body.get("preferred_peer_id")
-
-    if not prompt or not model:
-        raise HTTPException(status_code=400, detail="prompt e model sono obbligatori")
-
-    broker = _get_broker()
-    generator = broker.execute_cluster_inference(
-        prompt=prompt,
-        model=model,
-        max_tokens=max_tokens,
-        preferred_peer_id=preferred_peer_id,
-    )
-    return StreamingResponse(generator, media_type="text/event-stream; charset=utf-8")
 
 
 @router.post("/cluster/sweep")
@@ -1967,3 +1932,19 @@ def _reset_ailo_hub_singletons() -> None:
             _ailo_ledger_instance.close()
         _ailo_ledger_instance = None
         _ailo_node_hub_instance = None
+
+
+def register_routes(app) -> None:
+    app.include_router(router, prefix="/api/sigma_network", tags=["Sigma Network"])
+
+
+def register_services(registry) -> None:
+    from .provider_stream import stream_cluster
+    for name in ("cluster", "sigma_network"):
+        registry.register(f"inference.provider.{name}", stream_cluster, owner=__package__)
+
+
+def register_mcp(hub) -> None:
+    from .network_server import SigmaNetworkMCPServer
+    if not hub.register_server(SigmaNetworkMCPServer):
+        raise RuntimeError("Server MCP del cluster non registrato.")

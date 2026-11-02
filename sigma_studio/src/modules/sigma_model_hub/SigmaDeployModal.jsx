@@ -49,7 +49,7 @@ export default function SigmaDeployModal({ model, onClose, onDeployed, onSuccess
         if (onDeployed) onDeployed(json);
         try {
           window.dispatchEvent(new CustomEvent('sigma_model_deployed', { detail: { model: model.filename || model.name } }));
-        } catch (e) {}
+        } catch {}
       } else {
         if (addToast) addToast(`❌ Errore deploy: ${json.error}`, 'error');
       }
@@ -66,7 +66,7 @@ export default function SigmaDeployModal({ model, onClose, onDeployed, onSuccess
     } else {
       try {
         window.dispatchEvent(new CustomEvent('open_tab', { detail: { type: 'chat' } }));
-      } catch (e) {}
+      } catch {}
     }
     onClose();
   };

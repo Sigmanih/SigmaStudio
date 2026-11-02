@@ -53,7 +53,7 @@ const sembraUnaChiamata = (corpo) => {
     if (dati && typeof dati === 'object' && !Array.isArray(dati)) {
       return Object.keys(dati).some((k) => CHIAVI_DI_CHIAMATA.includes(k));
     }
-  } catch (e) {
+  } catch {
     // Corpo non valido: si guarda il testo, che e' il caso delle virgolette
     // non protette - e li' `path` c'e' comunque.
   }
@@ -76,7 +76,7 @@ export const prosaDaCorpo = (corpo) => {
       (k) => dati && typeof dati[k] === 'string' && dati[k].trim()
     );
     if (chiave) return dati[chiave];
-  } catch (e) {
+  } catch {
     // JSON non valido: si prende la prosa fra la chiave e l'ultima virgoletta,
     // perche' una virgoletta dentro la prosa e' il motivo per cui siamo qui.
     const m = corpo.match(new RegExp(`"(${CHIAVI})"\\s*:\\s*"([\\s\\S]*)"\\s*\\}?\\s*$`));

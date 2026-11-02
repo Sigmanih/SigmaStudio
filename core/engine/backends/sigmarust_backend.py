@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 import os
 import socket
 import struct
@@ -739,16 +740,6 @@ class SigmaRustBackend(InferenceBackend):
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
 
-        # AD1 — Direct C-ABI In-Process FFI Binding
-        try:
-            from core.engine.backends.sigma_ffi import is_ffi_available, submit_tokens_ffi
-            if is_ffi_available() and prompt:
-                # Bypassa la serializzazione IPC per notifica immediata
-                sample_tokens = [ord(c) % 32000 for c in prompt[:128]]
-                submit_tokens_ffi(sample_tokens, task_id=int(time.time() * 1000) % 100000)
-        except Exception as ffi_exc:
-            log.debug("[SigmaRustBackend] FFI fast-path non invocabile: %s", ffi_exc)
-
         # SE1 — Micro-Chunked Prefill:
         # Se il prompt è molto esteso (> 2048 caratteri), genera un notice intermedio per evitare freeze TTFT
         tot_prompt_chars = sum(len(m.get("content", "")) for m in messages)
@@ -829,6 +820,7 @@ class SigmaRustBackend(InferenceBackend):
 
         # 4. Fallback via proxy HTTP OpenAI del kernel Rust
         req_body = {
+            "request_id": uuid.uuid4().hex,
             "model": self._loaded_model_id or "sigma_default",
             "messages": messages,
             "temperature": params.temperature if params else temperature,
@@ -857,7 +849,7 @@ class SigmaRustBackend(InferenceBackend):
                 if "text/event-stream" in content_type:
                     for raw_line in resp:
                         if cancel and cancel():
-                            self.cancel_request()
+                            self.cancel_request(request_id=req_body["request_id"])
                             break
                         line_str = raw_line.decode("utf-8", errors="replace").strip()
                         if not line_str or line_str.startswith(":"):
@@ -943,15 +935,6 @@ class SigmaRustBackend(InferenceBackend):
         self._placement_info = {}
         return {"success": True, "unloaded": old_model}
 
-    def cancel_request(self) -> None:
-        """Invia un segnale di cancellazione atomico immediato al micro-kernel Rust."""
-        try:
-            if self._ipc_client:
-                # Invia frame binario OP_CANCEL_REQUEST via Named Pipe
-                self._ipc_client._send_frame(OP_CANCEL_REQUEST, b"{\"op\":\"cancel_request\"}")
-                log.info("[SigmaRustBackend] Segnale di cancellazione atomica inviato via Named Pipe.")
-        except Exception:
-            pass
 
     @property
     def is_loaded(self) -> bool:
@@ -1034,13 +1017,19 @@ class SigmaRustBackend(InferenceBackend):
         except Exception as exc:
             return {"success": False, "error": str(exc)}
 
-    def cancel_request(self, session_id: int) -> Dict[str, Any]:
+    def cancel_request(self, session_id: Optional[int] = None,
+                       *, request_id: str = "") -> Dict[str, Any]:
         """Cancella immediatamente una sessione in-flight nel kernel Rust.
 
         Usa il canale IPC binario quando disponibile per la cancellazione atomica
         lock-free gestita dal continuous batching del micro-kernel.
         """
         client = self._get_ipc_client()
+        if request_id:
+            if client is not None:
+                return {"cancelled": client.cancel_generation(request_id)}
+        elif session_id is None:
+            return {"success": False, "error": "Identificativo della richiesta mancante."}
         if client is not None and client.transport in ("named_pipe", "unix_socket"):
             try:
                 return client.cancel_request(session_id)
@@ -1050,7 +1039,8 @@ class SigmaRustBackend(InferenceBackend):
         try:
             req = urllib.request.Request(
                 f"{self._url}/api/engine/cancel",
-                data=json.dumps({"session_id": session_id}).encode("utf-8"),
+                data=json.dumps({"request_id": request_id} if request_id else
+                                {"session_id": session_id}).encode("utf-8"),
                 headers=_intestazioni({"Content-Type": "application/json"}),
                 method="POST",
             )

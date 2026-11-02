@@ -234,8 +234,13 @@ class TestSupervisorMCPServer:
         assert "register_runtime_role" in names
         assert "run_supervisor_audit" in names
 
-    def test_evaluate_team_performance_perfect_100(self):
-        res = self.server.execute_tool("evaluate_team_performance", {"project_dir": "projects/sigma_engine_rust"})
+    def test_evaluate_team_performance_perfect_100(self, tmp_path):
+        for name in ("Cargo.toml", "Dockerfile", "src/mmap.rs", "src/tools.rs",
+                     "src/openai_compat.rs", "src/runtime.rs", "tests/test_engine.rs"):
+            filename = tmp_path / name
+            filename.parent.mkdir(parents=True, exist_ok=True)
+            filename.write_text("// Risorsa della prova\n", encoding="utf-8")
+        res = self.server.execute_tool("evaluate_team_performance", {"project_dir": str(tmp_path)})
         assert res["success"] is True
         assert res["total_score_percentage"] == 100.0
         assert res["is_perfect_100"] is True

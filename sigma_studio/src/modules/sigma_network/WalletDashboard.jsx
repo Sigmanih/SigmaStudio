@@ -67,7 +67,7 @@ const WalletDashboard = ({ walletData, identity, onRefresh }) => {
       } else {
         setFaucetNotice({ type: 'error', text: data.detail || 'Richiesta non riuscita' });
       }
-    } catch (e) {
+    } catch {
       setFaucetNotice({ type: 'error', text: 'Errore di comunicazione con il nodo' });
     } finally {
       setIsFauceting(false);
@@ -151,7 +151,7 @@ const WalletDashboard = ({ walletData, identity, onRefresh }) => {
       } else {
         setTransferFeedback({ error: true, msg: resData.detail || 'Trasferimento rifiutato.' });
       }
-    } catch (err) {
+    } catch {
       setTransferFeedback({ error: true, msg: 'Errore di connessione durante il trasferimento.' });
     } finally {
       setIsTransferring(false);

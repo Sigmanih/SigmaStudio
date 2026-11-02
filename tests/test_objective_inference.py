@@ -1721,7 +1721,7 @@ class TestSlotTokenBudget(unittest.TestCase):
 
     def test_a_request_cannot_exceed_its_slot(self):
         backend = self._backend(4096)
-        richiesta = [{"role": "user", "content": "x" * 1200}]
+        richiesta = [{"role": "user", "content": "x" * 12000}]
         concesso = backend._budget_token(3072, richiesta)
         self.assertLess(concesso, 3072)
         self.assertLess(concesso + 300, 4096)   # prompt e margine ci stanno
@@ -1941,6 +1941,10 @@ class TestPartialDownloadNeverShrinks(unittest.TestCase):
     """Un assaggio non si paga con la suite intera."""
 
     def test_an_existing_larger_cache_is_left_alone(self):
+        try:
+            import datasets
+        except ImportError:
+            self.skipTest("datasets non installato: integrazione training opzionale")
         from unittest import mock
         from core.modules.sigma_training_lab.training import benchmarks
 

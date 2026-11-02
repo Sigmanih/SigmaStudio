@@ -1,12 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { MAX_ATTACHMENTS, createSession, MAX_HISTORY } from '../chatStorage';
+import { MAX_ATTACHMENTS, MAX_HISTORY } from '../chatStorage';
 import { getModelRoutingInfo } from '../modelProviderMap';
 import { getAgentStyle } from '../AgentMessage';
+import { modelHistory } from '../../../services/workspaceNavigation';
+import { modelName } from '../../../services/modelIdentity';
 import { recordModelChatSpeed, removeModelChatSpeed, isErrorMessage } from './modelSpecsHelper';
-import {
-  speakAgentMessage, stopSpeech,
-  startSpeechStream, pushSpeechStream, endSpeechStream,
-} from '../audioSpeech';
+import { speakAgentMessage, stopSpeech, endSpeechStream } from '../audioSpeech';
 
 
 let globalAbortController = null;
@@ -14,7 +13,7 @@ let globalAbortController = null;
 function appendAndSave(sid, msg, setFn) {
   setFn(prev => {
     const updated = [...(prev[sid] || []), msg];
-    try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(updated)); } catch (e) {}
+    try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(updated)); } catch {}
     return { ...prev, [sid]: updated };
   });
 }
@@ -66,7 +65,7 @@ function cleanModelTags(text) {
       } else if (parsed.response && typeof parsed.response === 'string') {
         cleaned = parsed.response;
       }
-    } catch (e) {
+    } catch {
       const match = cleaned.match(/"(?:summary|response)"\s*:\s*"([\s\S]*?)"(?:\s*,\s*"(?:thinking|criteria|status)"|\s*\})/);
       if (match && match[1]) {
         cleaned = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
@@ -89,6 +88,7 @@ export function useChatStreaming({
   openFiles: externalOpenFiles,
   onTasksUpdated,
   addToast,
+  onWorkspaceRequest,
   sessions,
   activeSessionId,
   setActiveSessionId,
@@ -161,7 +161,7 @@ export function useChatStreaming({
 
   const stopInference = useCallback((e) => {
     if (e && typeof e.preventDefault === 'function') {
-      try { e.preventDefault(); } catch (err) {}
+      try { e.preventDefault(); } catch {}
     }
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     if (globalAbortController) { globalAbortController.abort(); globalAbortController = null; }
@@ -185,7 +185,7 @@ export function useChatStreaming({
             };
           }
           saveMessagesImmediately(sid, msgs);
-          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (err) {}
+          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch {}
         }
         return { ...prev, [sid]: msgs };
       });
@@ -362,7 +362,7 @@ export function useChatStreaming({
           if (Array.isArray(currentList) && currentList.length > 0) {
             localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(currentList));
           }
-        } catch (e) {}
+        } catch {}
       }
     };
 
@@ -423,9 +423,6 @@ export function useChatStreaming({
             const p = JSON.parse(raw);
 
             // Normalizzazione eventi provenienti dall'Harness Developer Lab (/api/developer/agent/chat)
-            if (p.type === 'token' && p.token) {
-              p.token = p.token;
-            }
             if (p.type === 'thinking' && p.thought) {
               p.thinking = p.thought;
             }
@@ -774,7 +771,7 @@ export function useChatStreaming({
 
 
             schedulePaint();
-          } catch (e) {}
+          } catch {}
         }
         if (streamDone) break;
       }
@@ -801,7 +798,7 @@ export function useChatStreaming({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               message: "Continua esattamente da dove ti sei fermato nell'ultimo messaggio, senza ripetere il testo già scritto.",
-              history: sessionRefs.sessionMessages.current[sessionId] || [],
+              history: modelHistory(sessionRefs.sessionMessages.current[sessionId] || []),
               stream: true,
               model: selectedModel,
               manifesto: activeManifesto?.path
@@ -913,7 +910,7 @@ export function useChatStreaming({
 
 
         saveMessagesImmediately(sessionId, n);
-        try { localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(n)); } catch (err) {}
+        try { localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(n)); } catch {}
         if (addToast && streamActionsLog.length > 0) {
           streamActionsLog.forEach(act => {
             if (act.type === 'create_file') {
@@ -941,7 +938,7 @@ export function useChatStreaming({
     } catch (e) {
       // Cancel any frame still queued: it would repaint a partial answer on
       // top of the error the user needs to read.
-      try { flushPaint(); } catch (_) {}
+      try { flushPaint(); } catch {}
       setLoading(false);
       stopSpeech();
       setSessionMessages(prev => {
@@ -1044,7 +1041,7 @@ export function useChatStreaming({
   };
 
   // --- Send Message (unified: chat + plan) ---
-  const sendMessage = useCallback(async (textOverride, extraParams = {}) => {
+  const performSend = useCallback(async (textOverride, extraParams = {}) => {
     if (loading) return;
     const currentSessionId = sessionRefs.activeSessionId.current;
     if (!currentSessionId) return;
@@ -1053,25 +1050,41 @@ export function useChatStreaming({
     const messageText = typeof rawText === 'string' ? rawText.trim() : '';
     if (!messageText && attachedFiles.length === 0) return;
 
+    if (onWorkspaceRequest && activeMode === 'chat' && !devModeEnabled && !attachedFiles.length && !pcFiles.length) {
+      const navigation = await onWorkspaceRequest(messageText);
+      if (navigation) {
+        const timestamp = new Date().toISOString();
+        const messages = [...(sessionRefs.sessionMessages.current[currentSessionId] || []),
+          { role: 'user', content: messageText, timestamp, localOnly: true },
+          { role: 'assistant', content: navigation.message, timestamp, localOnly: true,
+            agentName: 'Sigma Studio', agentRole: 'Navigazione', agent_id: 'sigma_navigation',
+            workspaceChoices: navigation.type === 'choose' ? navigation.options : [] }];
+        setMessagesForSession(currentSessionId, messages);
+        saveMessagesImmediately(currentSessionId, messages);
+        if (sessionRefs.activeSessionId.current === currentSessionId) setInput('');
+        return;
+      }
+    }
+
     // Auto-resolve effective model: selectedModel -> last_selected -> first favorite -> first available
-    let effectiveModel = selectedModel;
+    let effectiveModel = modelName(selectedModel);
     if (!effectiveModel) {
       const lastUsed = (() => {
-        try { return localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model') || ''; } catch (e) { return ''; }
+        try { return localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model') || ''; } catch { return ''; }
       })();
       if (lastUsed) {
         effectiveModel = lastUsed;
       } else if (favoriteModels && favoriteModels.length > 0) {
-        effectiveModel = favoriteModels[0];
+        effectiveModel = favoriteModels.map(modelName).find(Boolean) || '';
       } else if (availableModels && availableModels.length > 0) {
-        effectiveModel = availableModels[0]?.name || availableModels[0];
+        effectiveModel = availableModels.map(modelName).find(Boolean) || '';
       }
       if (effectiveModel && setSelectedModel) {
         setSelectedModel(effectiveModel);
       }
     }
 
-    if (!effectiveModel && (!availableModels || availableModels.length === 0)) {
+    if (!effectiveModel) {
       const alertMsg = {
         role: 'assistant',
         content: `⚠️ **Nessun modello AI locale attivo o scaricato.**\n\nPer iniziare a chattare con **Sigma Studio**:\n\n1. **Scarica un Modello Locale**: Apri la scheda **Model Hub** (nella barra laterale sinistra) e scarica o avvia un modello raccomandato come **Qwen 3.6 27B Q4_K_M** o **DeepSeek-R1 14B**.\n2. **Oppure Configura un Provider Cloud**: Clicca su **Impostazioni** (⚙️) ed inserisci la tua API Key per DeepSeek, OpenAI, Anthropic o Groq.\n3. **Seleziona il Modello**: Scegli il modello preferito dal menu in alto a sinistra nella chat.`,
@@ -1141,14 +1154,14 @@ export function useChatStreaming({
 
       const userProfile = (() => {
         try { return JSON.parse(localStorage.getItem('sigma_user_profile') || '{}'); }
-        catch(e) { return {}; }
+        catch { return {}; }
       })();
 
       const useStream = !isPlan;
       let res;
       if (devModeEnabled) {
         const devBody = {
-          messages: updatedMessages.map(m => ({
+          messages: modelHistory(updatedMessages).map(m => ({
             role: m.role,
             content: m.content,
             attachments: m.attachments
@@ -1182,7 +1195,7 @@ export function useChatStreaming({
           user_title: userProfile.title || '',
           user_profile: userProfile,
           target_hardware: selectedHardware || 'auto',
-          context: { open_files: contextFiles, history: updatedMessages.slice(-10).map(m => ({ role: m.role, content: m.content })) },
+          context: { open_files: contextFiles, history: modelHistory(updatedMessages).slice(-10).map(m => ({ role: m.role, content: m.content })) },
           uploaded_files: pcFiles.length > 0 ? pcFiles : undefined
         };
         if (selectedManifestoPath) body.manifesto_path = selectedManifestoPath;
@@ -1215,7 +1228,7 @@ export function useChatStreaming({
               };
             }
             saveMessagesImmediately(sid, msgs);
-            try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (err) {}
+            try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch {}
             return { ...prev, [sid]: msgs };
           });
         }
@@ -1232,7 +1245,7 @@ export function useChatStreaming({
       if (sid) {
         const msgs = sessionRefs.sessionMessages.current[sid];
         if (msgs && msgs.length > 0) {
-          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (e) {}
+          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch {}
         }
       }
       setLoading(false);
@@ -1240,7 +1253,18 @@ export function useChatStreaming({
       globalAbortController = null;
       streamingSessionIdRef.current = null;
     }
-  }, [input, loading, selectedModel, providerConfigs, quickConfig, loopMaxIterations, webSearch, attachedFiles, pcFiles, activeMode, selectedManifestoPath, externalOpenFiles, refreshConfig, saveSessionsState, setMessagesForSession, saveMessagesImmediately, sessionRefs, setActiveSessionId, devModeEnabled, devRole, workspaceRoot]);
+  }, [input, loading, selectedModel, providerConfigs, quickConfig, loopMaxIterations, webSearch, attachedFiles, pcFiles, activeMode, selectedManifestoPath, externalOpenFiles, refreshConfig, saveSessionsState, setMessagesForSession, saveMessagesImmediately, sessionRefs, setActiveSessionId, devModeEnabled, devRole, workspaceRoot, onWorkspaceRequest]);
+
+  const sendPendingRef = useRef(false);
+  const sendMessage = useCallback(async (...args) => {
+    if (sendPendingRef.current) return;
+    sendPendingRef.current = true;
+    try {
+      return await performSend(...args);
+    } finally {
+      sendPendingRef.current = false;
+    }
+  }, [performSend]);
 
   const dragCounterRef = useRef(0);
 

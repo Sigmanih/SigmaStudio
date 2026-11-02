@@ -1,21 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, CloudDownload, Settings, Sliders, Menu, Award, CircuitBoard, Clapperboard } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
-import SkillsHub from './SkillsHub';
-import StudioEditor from './Workspace/StudioEditor';
-import ImageViewer from './Workspace/ImageViewer';
-import ManifestiGallery from './Workspace/ManifestiGallery';
-import ModuleView from './Workspace/ModuleView';
-import { MarkdownPreview, SigmaLabEditor } from './SigmaLab';
-import ChatWorkspace from './Chat/ChatWorkspace';
+const SkillsHub = React.lazy(() => import('./SkillsHub'));
+const StudioEditor = React.lazy(() => import('./Workspace/StudioEditor'));
+const ImageViewer = React.lazy(() => import('./Workspace/ImageViewer'));
+const ManifestiGallery = React.lazy(() => import('./Workspace/ManifestiGallery'));
+const ModuleView = React.lazy(() => import('./Workspace/ModuleView'));
+const MarkdownPreview = React.lazy(() => import('./SigmaLab').then(module => ({ default: module.MarkdownPreview })));
+const SigmaLabEditor = React.lazy(() => import('./SigmaLab').then(module => ({ default: module.SigmaLabEditor })));
+const ChatWorkspace = React.lazy(() => import('./Chat/ChatWorkspace'));
 
-import ThemeTab from './ThemeTab';
-import AccountTab from './AccountTab';
-import McpHubTab from './McpHubTab';
-import DomoticaTab from './Workspace/DomoticaTab';
-import MarketplaceTab from './MarketplaceTab';
-import AIConfigTab from './AIConfigTab';
-import MusicTab from './Music/MusicTab';
+const ThemeTab = React.lazy(() => import('./ThemeTab'));
+const AccountTab = React.lazy(() => import('./AccountTab'));
+const McpHubTab = React.lazy(() => import('./McpHubTab'));
+const DomoticaTab = React.lazy(() => import('./Workspace/DomoticaTab'));
+const MarketplaceTab = React.lazy(() => import('./MarketplaceTab'));
+const AIConfigTab = React.lazy(() => import('./AIConfigTab'));
+const MusicTab = React.lazy(() => import('./Music/MusicTab'));
 import { useModuleState } from '../hooks/useModuleState';
 import { getLazyModule } from '../modules/registry';
 import ModuleNotInstalled from '../modules/ModuleNotInstalled';
@@ -432,7 +433,7 @@ export default function Workspace({
     return <div className="placeholder-content">Content type {tab.type} not implemented in preview.</div>;
   };
 
-  const { theme, toggleMobileSidebar } = useApp ? useApp() : { theme: 'dark', toggleMobileSidebar: () => {} };
+  const { theme, toggleMobileSidebar } = useApp();
   const isLight = theme === 'light';
 
   const activeTab = openTabs.find(t => t.id === activeTabId);
@@ -496,6 +497,7 @@ export default function Workspace({
         )}
       </div>
       <div className="content-area">
+        <React.Suspense fallback={<div className="loading-screen" role="status">Caricamento spazio di lavoro…</div>}>
         {hasChatTab && (
           <div
             key="workspace-persistent-chat"
@@ -512,6 +514,7 @@ export default function Workspace({
           </div>
         )}
         {!isChatActive && getActiveContent()}
+        </React.Suspense>
       </div>
     </main>
   );

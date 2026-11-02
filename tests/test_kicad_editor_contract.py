@@ -231,6 +231,10 @@ def test_ogni_chiave_di_esecutori_nomina_una_funzione_esistente():
     # se un giorno il dizionario si costruisce altrove, questo lo dice invece di
     # dichiarare verde un controllo che sta guardando il vuoto.
     vivi = sorted(funzione.__name__ for funzione in tools.ESECUTORI.values())
+    from core.modules.sigma_kicad_lab import advanced_tools
+    avanzati = _nomi_definiti(Path(advanced_tools.__file__).read_text(encoding="utf-8"))
+    orfani += [name for name in advanced_tools.EXECUTORS if name not in avanzati]
+    citati += [function.__name__ for function in advanced_tools.EXECUTORS.values()]
     print(f'SIGMA-CHECK {{"check": "esecutori-definiti", "checked": {len(citati)}, '
           f'"problems": {len(orfani)}}}')
     assert citati, "nessun nome letto da ESECUTORI: il controllo non guarda il file"

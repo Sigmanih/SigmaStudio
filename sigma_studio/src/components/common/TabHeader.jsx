@@ -30,7 +30,7 @@ export default function TabHeader({
   style = {},
   children
 }) {
-  const { theme } = useApp ? useApp() : { theme: 'dark' };
+  const { theme } = useApp();
   const isLight = theme === 'light';
 
   const descText = subtitle || description;

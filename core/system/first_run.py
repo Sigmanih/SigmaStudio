@@ -155,8 +155,8 @@ def _modello_pronto(avvisa: Callable[[str], None], scarica: bool) -> Dict[str, A
     # non si scarica niente e lo si dice, invece di riscrivere qui un
     # downloader che sarebbe la seconda copia dello stesso lavoro.
     try:
-        from core.modules.sigma_model_hub.backend.downloader_engine import (
-            downloader_manager)
+        from core.service_registry import require
+        downloader_manager = require("artifacts.downloads")
     except Exception as exc:
         return {"ok": False, "motivo": "hub_assente",
                 "dettaglio": f"Model Hub non disponibile: {exc}"}
@@ -166,8 +166,11 @@ def _modello_pronto(avvisa: Callable[[str], None], scarica: bool) -> Dict[str, A
     except Exception as exc:
         return {"ok": False, "motivo": "download_fallito", "dettaglio": str(exc)}
 
-    return {"ok": True, "avviato": esito if isinstance(esito, dict) else True,
-            "repo": scelto["repo"]}
+    if isinstance(esito, dict) and esito.get("success") is False:
+        return {"ok": False, "motivo": "download_fallito", "dettaglio": esito.get("error", "Download non avviato.")}
+    # Un job accodato non e' ancora un modello utilizzabile.
+    return {"ok": False, "motivo": "download_in_corso",
+            "avviato": esito if isinstance(esito, dict) else True, "repo": scelto["repo"]}
 
 
 # ==============================================================================

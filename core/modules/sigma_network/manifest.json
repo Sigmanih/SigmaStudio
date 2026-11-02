@@ -1,5 +1,6 @@
 {
   "id": "sigma_network",
+  "enabled_by_default": true,
   "name": "Sigma Network",
   "version": "v0.4.0",
   "category": "Rete & Inferenza Distribuita",

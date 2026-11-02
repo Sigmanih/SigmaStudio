@@ -13,7 +13,7 @@ import { useMusic } from '../../contexts/MusicContext';
 import { useApp } from '../../contexts/AppContext';
 
 export default function MusicFloatingWidget({ onOpenTab }) {
-  const { theme } = useApp ? useApp() : { theme: 'dark' };
+  const { theme } = useApp();
   const isLight = theme === 'light';
 
   const {

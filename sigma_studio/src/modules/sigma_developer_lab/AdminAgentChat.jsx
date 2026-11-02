@@ -38,7 +38,7 @@ try {
     securityLevel: 'loose',
     flowchart: { useMaxWidth: true, htmlLabels: true }
   });
-} catch (e) { }
+} catch { }
 
 const STORAGE_TASKS_KEY = 'sigma_dev_tasks_v2';
 const STORAGE_ACTIVE_TASK_KEY = 'sigma_dev_active_task_id_v2';
@@ -68,7 +68,7 @@ const getInitialModel = () => {
     }
     const lastSelected = localStorage.getItem('sigma_developer_last_model');
     if (lastSelected && lastSelected !== 'sigmaengine') return lastSelected;
-  } catch (e) {}
+  } catch {}
   return '';
 };
 
@@ -113,7 +113,7 @@ const formatMessageTimestamp = (isoString) => {
     const d = new Date(isoString);
     if (isNaN(d.getTime())) return '';
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  } catch (e) {
+  } catch {
     return '';
   }
 };
@@ -129,7 +129,7 @@ const formatTimeAgo = (isoString) => {
     if (diffHours < 24) return `${diffHours}h fa`;
     const diffDays = Math.floor(diffHours / 24);
     return `${diffDays}g fa`;
-  } catch (e) {
+  } catch {
     return '';
   }
 };
@@ -353,7 +353,7 @@ export default function AdminAgentChat({
     try {
       const savedActive = localStorage.getItem(STORAGE_ACTIVE_TASK_KEY);
       if (savedActive) return savedActive;
-    } catch (e) { }
+    } catch { }
     return tasks[0]?.id || '';
   });
 
@@ -563,7 +563,7 @@ export default function AdminAgentChat({
     if (abortControllerRef.current) {
       try {
         abortControllerRef.current.abort();
-      } catch (err) { }
+      } catch { }
       abortControllerRef.current = null;
     }
     setIsStreaming(false);
@@ -579,7 +579,7 @@ export default function AdminAgentChat({
     if (abortControllerRef.current) {
       try {
         abortControllerRef.current.abort();
-      } catch (err) { }
+      } catch { }
       abortControllerRef.current = null;
     }
     // 2. Stop Auto-Loop timer and permanently disable autoLoop
@@ -664,12 +664,12 @@ export default function AdminAgentChat({
       const sanitized = sanitizeTasksForLocalStorage(tasks);
       localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(sanitized));
       localStorage.setItem(STORAGE_ACTIVE_TASK_KEY, activeTask.id);
-    } catch (e) {
+    } catch {
       try {
         const minimal = sanitizeTasksForLocalStorage([activeTask]);
         localStorage.setItem(STORAGE_TASKS_KEY, JSON.stringify(minimal));
         localStorage.setItem(STORAGE_ACTIVE_TASK_KEY, activeTask.id);
-      } catch (innerErr) {
+      } catch {
         console.debug('LocalStorage quota reached; server persistence active.');
       }
     }
@@ -748,7 +748,7 @@ export default function AdminAgentChat({
             tool: prima.tool
           });
         }
-      } catch (e) {
+      } catch {
         // Server spento o rotta assente: non c'e' niente da recuperare.
       }
     })();
@@ -816,7 +816,7 @@ export default function AdminAgentChat({
       if (newModel && newModel !== 'sigmaengine') {
         localStorage.setItem('sigma_developer_last_model', newModel);
       }
-    } catch (e) {}
+    } catch {}
   };
 
   const handleToggleAutoExecute = (val) => {
@@ -962,7 +962,7 @@ export default function AdminAgentChat({
   const toggleVoiceInput = () => {
     if (isListening) {
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) { }
+        try { recognitionRef.current.stop(); } catch { }
       }
       setIsListening(false);
       return;
@@ -1026,7 +1026,7 @@ export default function AdminAgentChat({
     if (isStreaming) {
       if (isAuto) return;
       if (abortControllerRef.current) {
-        try { abortControllerRef.current.abort(); } catch (err) { }
+        try { abortControllerRef.current.abort(); } catch { }
         abortControllerRef.current = null;
       }
       setIsStreaming(false);
@@ -1038,7 +1038,7 @@ export default function AdminAgentChat({
     const currentAttachments = [...attachedFiles];
     setAttachedFiles([]);
     if (isListening && recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (e) { }
+      try { recognitionRef.current.stop(); } catch { }
       setIsListening(false);
     }
 
@@ -1111,7 +1111,7 @@ export default function AdminAgentChat({
     setAgentStatus(`⏳ Inizializzazione e caricamento pesi modello (${selectedModel})...`);
 
     if (abortControllerRef.current) {
-      try { abortControllerRef.current.abort(); } catch (e) { }
+      try { abortControllerRef.current.abort(); } catch { }
     }
     const controller = new AbortController();
     abortControllerRef.current = controller;

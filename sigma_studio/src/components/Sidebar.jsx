@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Home, FileText, Activity, PieChart, Layers, ChevronRight, ChevronDown, MessageSquare,
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, Clapperboard,
@@ -394,7 +394,7 @@ export default function Sidebar({
         } else {
           setChatCount(0);
         }
-      } catch (e) {
+      } catch {
         setChatCount(0);
       }
 
@@ -435,7 +435,7 @@ export default function Sidebar({
                 const parsed = JSON.parse(k);
                 if (Array.isArray(parsed)) setLocalTopicsCount(parsed.length);
               }
-            } catch (e) { }
+            } catch { }
           });
       }
 

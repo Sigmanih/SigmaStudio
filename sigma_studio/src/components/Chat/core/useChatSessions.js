@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { STORAGE_KEY, MAX_HISTORY, createSession, loadSessions, saveSessions,
          loadActiveSessionId, saveActiveSessionId } from '../chatStorage';
 
-export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog, saveMessagesImmediately, loadMessagesFromStorage, welcomeMsg }) {
+export function useChatSessions({ selectedModel, getSelectedModel, setSelectedModel, setActionsLog, saveMessagesImmediately, loadMessagesFromStorage, welcomeMsg }) {
   // Synchronously initialize sessions from localStorage
   const [sessions, setSessions] = useState(() => {
     const saved = loadSessions();
@@ -24,7 +24,7 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
       });
       return enriched;
     }
-    const s = createSession(selectedModel);
+    const s = createSession(getSelectedModel?.() || selectedModel);
     saveSessions([s]);
     return [s];
   });
@@ -68,32 +68,31 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
   const [editingSessionName, setEditingSessionName] = useState(null);
   const [editNameValue, setEditNameValue] = useState('');
 
-  const refs = {
-    sessions: useRef(sessions),
-    sessionMessages: useRef(sessionMessages),
-    activeSessionId: useRef(activeSessionId),
-  };
+  const sessionsRef = useRef(sessions);
+  const sessionMessagesRef = useRef(sessionMessages);
+  const activeSessionIdRef = useRef(activeSessionId);
+  const refs = { sessions: sessionsRef, sessionMessages: sessionMessagesRef, activeSessionId: activeSessionIdRef };
 
-  useEffect(() => { refs.sessions.current = sessions; }, [sessions]);
-  useEffect(() => { refs.sessionMessages.current = sessionMessages; }, [sessionMessages]);
-  useEffect(() => { refs.activeSessionId.current = activeSessionId; }, [activeSessionId]);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+  useEffect(() => { sessionMessagesRef.current = sessionMessages; }, [sessionMessages]);
+  useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
 
   const notifySessionsChanged = useCallback((ns, activeId) => {
     try {
       window.dispatchEvent(new CustomEvent('sigma-chat-sessions-updated', {
         detail: {
-          sessions: ns || refs.sessions.current,
-          activeSessionId: activeId || refs.activeSessionId.current
+          sessions: ns || sessionsRef.current,
+          activeSessionId: activeId || activeSessionIdRef.current
         }
       }));
-    } catch (e) {}
+    } catch {}
   }, []);
 
   // Keep active session saved in localStorage & notify
   useEffect(() => {
     if (activeSessionId) {
       saveActiveSessionId(activeSessionId);
-      notifySessionsChanged(refs.sessions.current, activeSessionId);
+      notifySessionsChanged(sessionsRef.current, activeSessionId);
     }
   }, [activeSessionId, notifySessionsChanged]);
 
@@ -103,27 +102,27 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
       if (e?.detail && e.detail.clear_history === false && e.detail.clearChat === false) {
         return;
       }
-      const s = createSession(selectedModel);
+      const s = createSession(getSelectedModel?.() || selectedModel);
       setSessions([s]);
-      refs.sessions.current = [s];
+      sessionsRef.current = [s];
       saveSessions([s]);
       setSessionMessages({ [s.id]: [welcomeMsg] });
-      refs.sessionMessages.current = { [s.id]: [welcomeMsg] };
+      sessionMessagesRef.current = { [s.id]: [welcomeMsg] };
       saveMessagesImmediately(s.id, [welcomeMsg]);
       setActiveSessionId(s.id);
-      refs.activeSessionId.current = s.id;
+      activeSessionIdRef.current = s.id;
       saveActiveSessionId(s.id);
       notifySessionsChanged([s], s.id);
     };
     window.addEventListener('sigma-chat-cleared', handleChatCleared);
     return () => window.removeEventListener('sigma-chat-cleared', handleChatCleared);
-  }, [selectedModel, welcomeMsg, saveMessagesImmediately, notifySessionsChanged]);
+  }, [selectedModel, getSelectedModel, welcomeMsg, saveMessagesImmediately, notifySessionsChanged]);
 
   const saveSessionsState = useCallback((ns) => {
     setSessions(ns);
-    refs.sessions.current = ns;
+    sessionsRef.current = ns;
     saveSessions(ns);
-    notifySessionsChanged(ns, refs.activeSessionId.current);
+    notifySessionsChanged(ns, activeSessionIdRef.current);
   }, [notifySessionsChanged]);
 
   const setMessagesForSession = useCallback((sessionId, msgsOrUpdater) => {
@@ -131,7 +130,7 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
       const existing = prev[sessionId] || loadMessagesFromStorage(sessionId) || [];
       const next = typeof msgsOrUpdater === 'function' ? msgsOrUpdater(existing) : msgsOrUpdater;
       const updated = { ...prev, [sessionId]: next };
-      refs.sessionMessages.current = updated;
+      sessionMessagesRef.current = updated;
       saveMessagesImmediately(sessionId, next);
 
       // Update session metadata in sessions state
@@ -165,7 +164,7 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
           }
           return s;
         });
-        refs.sessions.current = nextSessions;
+        sessionsRef.current = nextSessions;
         saveSessions(nextSessions);
         return nextSessions;
       });
@@ -175,40 +174,40 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
   }, [saveMessagesImmediately, loadMessagesFromStorage]);
 
   const switchToSession = useCallback((sid) => {
-    const curId = refs.activeSessionId.current;
-    const curMsgs = refs.sessionMessages.current[curId];
+    const curId = activeSessionIdRef.current;
+    const curMsgs = sessionMessagesRef.current[curId];
     if (curId && curMsgs && curMsgs.length > 0) {
       saveMessagesImmediately(curId, curMsgs);
     }
 
-    const s = refs.sessions.current.find(x => x.id === sid);
+    const s = sessionsRef.current.find(x => x.id === sid);
     if (s) {
-      let msgsForSession = refs.sessionMessages.current[sid];
+      let msgsForSession = sessionMessagesRef.current[sid];
       if (!msgsForSession || msgsForSession.length === 0) {
         const stored = loadMessagesFromStorage(sid);
         msgsForSession = stored && stored.length > 0 ? stored : [welcomeMsg];
         setSessionMessages(prev => ({ ...prev, [sid]: msgsForSession }));
-        refs.sessionMessages.current[sid] = msgsForSession;
+        sessionMessagesRef.current[sid] = msgsForSession;
       }
       if (setSelectedModel && s.model) {
         setSelectedModel(s.model);
       }
       setActiveSessionId(sid);
-      refs.activeSessionId.current = sid;
+      activeSessionIdRef.current = sid;
       saveActiveSessionId(sid);
     }
     if (setActionsLog) setActionsLog([]);
   }, [saveMessagesImmediately, loadMessagesFromStorage, welcomeMsg, setSelectedModel, setActionsLog]);
 
   const handleNewSession = () => {
-    const s = createSession(selectedModel);
+    const s = createSession(getSelectedModel?.() || selectedModel);
     const updated = [s, ...sessions].slice(0, MAX_HISTORY);
     saveSessionsState(updated);
     setSessionMessages(prev => ({ ...prev, [s.id]: [welcomeMsg] }));
-    refs.sessionMessages.current[s.id] = [welcomeMsg];
+    sessionMessagesRef.current[s.id] = [welcomeMsg];
     saveMessagesImmediately(s.id, [welcomeMsg]);
     setActiveSessionId(s.id);
-    refs.activeSessionId.current = s.id;
+    activeSessionIdRef.current = s.id;
     saveActiveSessionId(s.id);
     if (setActionsLog) setActionsLog([]);
     if (setSelectedModel && s.model) setSelectedModel(s.model);
@@ -222,16 +221,16 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
     try {
       localStorage.removeItem(`sigma_chat_msgs_${sid}`);
       localStorage.removeItem(`sigma_chat_session_${sid}`);
-    } catch (err) {}
+    } catch {}
 
     if (activeSessionId === sid) {
       if (ns.length > 0) {
         switchToSession(ns[0].id);
       } else {
-        const s = createSession(selectedModel);
+        const s = createSession(getSelectedModel?.() || selectedModel);
         saveSessionsState([s]);
         setSessionMessages({ [s.id]: [welcomeMsg] });
-        refs.sessionMessages.current[s.id] = [welcomeMsg];
+        sessionMessagesRef.current[s.id] = [welcomeMsg];
         saveMessagesImmediately(s.id, [welcomeMsg]);
         switchToSession(s.id);
       }
@@ -275,7 +274,7 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
 
     saveSessionsState(updated.slice(0, MAX_HISTORY));
     setSessionMessages(prev => ({ ...prev, [newId]: clonedMsgs }));
-    refs.sessionMessages.current[newId] = clonedMsgs;
+    sessionMessagesRef.current[newId] = clonedMsgs;
     saveMessagesImmediately(newId, clonedMsgs);
     switchToSession(newId);
   };
@@ -362,7 +361,7 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
 
     const newMsgs = currentMsgs.filter((_, idx) => !indices.includes(idx));
     setSessionMessages(prev => ({ ...prev, [activeSessionId]: newMsgs }));
-    refs.sessionMessages.current[activeSessionId] = newMsgs;
+    sessionMessagesRef.current[activeSessionId] = newMsgs;
     saveMessagesImmediately(activeSessionId, newMsgs);
 
     const nowIso = new Date().toISOString();
@@ -386,7 +385,7 @@ export function useChatSessions({ selectedModel, setSelectedModel, setActionsLog
         }
         return s;
       });
-      refs.sessions.current = nextSessions;
+      sessionsRef.current = nextSessions;
       saveSessions(nextSessions);
       notifySessionsChanged(nextSessions, activeSessionId);
       return nextSessions;

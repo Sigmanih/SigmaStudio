@@ -519,7 +519,7 @@ def handle_models_local_list(self):
         # funzionare anche senza quel modulo installato — i moduli sono
         # sganciabili — quindi la sua assenza significa "nessun benchmark", non
         # un errore.
-        from core.modules.sigma_model_hub.backend import publications as pubblicazioni
+        from . import publications as pubblicazioni
 
         referti = {}
         try:
@@ -536,7 +536,7 @@ def handle_models_local_list(self):
 
         our_namespaces = {"sigmanih"}
         try:
-            from core.modules.sigma_model_hub.backend.uploader_engine import uploader_manager
+            from .uploader_engine import uploader_manager
             whoami_info = uploader_manager.get_whoami()
             if whoami_info.get("authenticated") and whoami_info.get("username"):
                 our_namespaces.add(whoami_info["username"].lower())
@@ -605,7 +605,7 @@ def handle_models_local_list(self):
                 m["publisher"] = raw_author or "Altro"
 
             # Re-evaluate family, category and task_type with full publication context
-            from core.modules.sigma_model_hub.backend.model_inventory import detect_family_and_category, detect_task_type
+            from .model_inventory import detect_family_and_category, detect_task_type
             family, category = detect_family_and_category(
                 name=raw_name,
                 architecture=m.get("architecture") or "",
@@ -738,7 +738,7 @@ def handle_models_local_rename(self):
                  "error": "Servono il modello da rinominare e il nuovo nome"}, 400)
             return
 
-        from core.modules.sigma_model_hub.backend.model_inventory import rename_local_model
+        from .model_inventory import rename_local_model
         cfg = _load_hub_config()
         esito = rename_local_model(sorgente, nuovo, custom_dir=cfg.get("models_dir"))
         self.send_json_response(esito, 200 if esito.get("success") else 400)
@@ -751,7 +751,7 @@ def handle_models_hf_repo_discover(self):
     """POST /api/models/hf/repo/discover — Cerca i repository gia' pubblicati."""
     try:
         models = scan_local_models()
-        from core.modules.sigma_model_hub.backend.uploader_engine import discover_publications
+        from .uploader_engine import discover_publications
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
         esito = discover_publications(models, body.get("token"))
         self.send_json_response(esito, 200 if esito.get("success") else 400)
@@ -764,7 +764,7 @@ def handle_models_hf_repo_attach(self):
     """POST /api/models/hf/repo/attach — Collega un modello a un repository esistente."""
     try:
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
-        from core.modules.sigma_model_hub.backend.uploader_engine import attach_publication
+        from .uploader_engine import attach_publication
         esito = attach_publication(
             body.get("local_path") or body.get("local_ref") or body.get("model_id"),
             (body.get("repo_id") or "").strip(),
@@ -789,7 +789,7 @@ def handle_models_hf_card_update(self):
             self.send_json_response({"success": False,
                                      "error": "Modello non indicato"}, 400)
             return
-        from core.modules.sigma_model_hub.backend.uploader_engine import update_model_card
+        from .uploader_engine import update_model_card
         esito = update_model_card(
             local_ref,
             repo_id=body.get("repo_id"),
@@ -811,7 +811,7 @@ def handle_models_hf_batch_update_cards(self):
     """POST /api/models/hf/batch_update_cards — Riscrive e aggiorna le schede di tutti i modelli pubblicati su HF."""
     try:
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
-        from core.modules.sigma_model_hub.backend.uploader_engine import batch_update_all_cards
+        from .uploader_engine import batch_update_all_cards
         esito = batch_update_all_cards(token=body.get("token"))
         self.send_json_response(esito, 200 if esito.get("success") else 400)
     except Exception as e:
@@ -823,7 +823,7 @@ def handle_models_publication_forget(self):
     """POST /api/models/publication/forget — Dimentica il legame con HF."""
     try:
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
-        from core.modules.sigma_model_hub.backend import publications
+        from . import publications
         riferimento = (body.get("local_path") or body.get("model_id")
                        or body.get("filename") or "")
         # Solo il legame locale: su Hugging Face non tocca niente, e dirlo
@@ -845,7 +845,7 @@ def handle_models_hf_repo_status(self):
         if not repo_id:
             self.send_json_response({"success": False, "error": "repo_id mancante"}, 400)
             return
-        from core.modules.sigma_model_hub.backend.uploader_engine import hf_repo_status
+        from .uploader_engine import hf_repo_status
         self.send_json_response(hf_repo_status(repo_id, body.get("token")))
     except Exception as e:
         log.error("Error in handle_models_hf_repo_status: %s", e)
@@ -856,7 +856,7 @@ def handle_models_hf_repo_rename(self):
     """POST /api/models/hf/repo/rename — Sposta un repository a un altro nome."""
     try:
         body = self.read_json_body() if hasattr(self, 'read_json_body') else {}
-        from core.modules.sigma_model_hub.backend.uploader_engine import rename_hf_repo
+        from .uploader_engine import rename_hf_repo
         from_id = (body.get("from_id") or body.get("repo_id") or body.get("old_repo_id")
                    or body.get("old_name") or body.get("model_id") or "").strip()
         to_id = (body.get("to_id") or body.get("new_repo_id") or body.get("new_name")
@@ -865,7 +865,7 @@ def handle_models_hf_repo_rename(self):
 
         if from_id and "/" not in from_id:
             try:
-                from core.modules.sigma_model_hub.backend import publications
+                from . import publications
                 pub = publications.get_publication(from_id)
                 if pub and pub.get("repo_id") and "/" in pub["repo_id"]:
                     from_id = pub["repo_id"].strip()
@@ -1420,8 +1420,18 @@ def _list_drive_roots():
         return []
 
 
+def register_services(registry) -> None:
+    owner = __package__
+    registry.register("models.inventory", scan_local_models, owner=owner)
+    registry.register("artifacts.downloads", downloader_manager, owner=owner)
+    if uploader_manager is not None:
+        registry.register("artifacts.uploads", uploader_manager, owner=owner)
+
+
 def register_routes(app=None) -> None:
     """Registra tutte le route HTTP di Model Hub su FastAPI / Handler Adapter."""
+    from core import service_registry
+    register_services(service_registry)
     get_routes = {
         '/api/models/hf/search': handle_models_hf_search,
         '/api/models/hf/details': handle_models_hf_details,

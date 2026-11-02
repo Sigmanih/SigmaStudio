@@ -54,7 +54,7 @@ export default function AccountTab({ openTab }) {
     try {
       const saved = localStorage.getItem('sigma_user_profile');
       if (saved) return JSON.parse(saved);
-    } catch (e) {}
+    } catch {}
     return { name: 'Utente', title: 'AI Developer & Researcher', avatar: '/images/default.png' };
   });
 

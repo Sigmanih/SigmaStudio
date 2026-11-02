@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { roleInitials } from './roleIcons';
+import { STUDIO_VERSION } from '../../version';
 import { AGENT_ACTIVITY_EVENT, getAgentActivity } from './agentActivity';
 import { motionFor } from './agentMotion';
 
@@ -21,19 +22,7 @@ import { motionFor } from './agentMotion';
 // Le GPU del Raspberry Pi (VideoCore/V3D) e i renderer software non reggono
 // la plancia completa: lo si scopre prima di creare il renderer, perche'
 // l'antialias non si puo' cambiare dopo.
-export const detectLowEndGpu = () => {
-  try {
-    const probe = document.createElement('canvas');
-    const gl = probe.getContext('webgl2') || probe.getContext('webgl');
-    if (!gl) return true;
-    const info = gl.getExtension('WEBGL_debug_renderer_info');
-    const name = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || '') : '';
-    gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return /v3d|videocore|llvmpipe|swiftshader|softpipe|mali-4|adreno \(tm\) 3/i.test(name);
-  } catch {
-    return false;
-  }
-};
+import { detectLowEndGpu } from '../../utils/graphicsQuality';
 
 const prefersReducedMotion = () => {
   try {
@@ -623,7 +612,7 @@ export default function CyberSpace3DCanvas({
       // Scritte tecniche perimetrali
       cctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
       cctx.font = 'bold 22px monospace';
-      cctx.fillText('SIGMA STUDIO // COMMAND BRIDGE // CORE 0.9.0', cx, cy + 180);
+      cctx.fillText(`SIGMA STUDIO // COMMAND BRIDGE // CORE ${STUDIO_VERSION}`, cx, cy + 180);
     };
 
     renderBaseCarpet();
