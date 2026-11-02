@@ -2,7 +2,9 @@
 # tests/test_hooks_and_cli.py — Test per il sistema di Hook e CLI Headless
 # ==============================================================================
 import unittest
+import json
 from unittest.mock import patch
+import pytest
 
 from core.harness.hooks import (
     register_pre_hook,
@@ -42,6 +44,26 @@ class TestHooksAndCli(unittest.TestCase):
         run_post_hooks("terminal", {"command": "dir"}, {"success": True}, ".")
 
         self.assertIn("terminal", logged)
+
+
+@pytest.mark.parametrize("reached,expected", [(True, 0), (False, 2)])
+def test_cli_json_rispecchia_esito_reale(monkeypatch, capsys, tmp_path, reached, expected):
+    from core.harness import cli
+    monkeypatch.setattr("sys.argv", ["sigma", "--goal", "verifica", "--workspace", str(tmp_path), "--json"])
+    monkeypatch.setattr(cli, "stream_admin_agent_turn", lambda **kw: iter([
+        {"type": "run_metrics", "goal_reached": reached}, {"type": "done", "full_text": "fine"}]))
+    assert cli.main() == expected
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert [event["type"] for event in events] == ["run_metrics", "done"]
+
+
+def test_cli_non_dichiara_successo_se_consegna_fallisce(monkeypatch, capsys, tmp_path):
+    from core.harness import cli
+    monkeypatch.setattr("sys.argv", ["sigma", "--goal", "verifica", "--workspace", str(tmp_path)])
+    monkeypatch.setattr(cli, "stream_admin_agent_turn", lambda **kw: iter([
+        {"type": "run_metrics", "goal_reached": True}, {"type": "worktree_preserved", "apply_failed": True}]))
+    assert cli.main() == 2
+    assert "SUCCESSO" not in capsys.readouterr().out
 
 
 if __name__ == "__main__":

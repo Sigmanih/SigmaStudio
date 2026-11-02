@@ -36,9 +36,10 @@ def main() -> int:
     policy = ToolPolicy.for_profile(args.profile)
     allowed = list(policy.visible_tools()) if policy.restricted else None
 
-    print(f"\033[96m[Sigma CLI]\033[0m Avvio agente su '{workspace_path}'")
-    print(f"\033[96m[Sigma CLI]\033[0m Obiettivo: {args.goal}")
-    print(f"\033[96m[Sigma CLI]\033[0m Profilo: {args.profile} | Provider: {args.provider or 'default'}\n")
+    if not args.json:
+        print(f"\033[96m[Sigma CLI]\033[0m Avvio agente su '{workspace_path}'")
+        print(f"\033[96m[Sigma CLI]\033[0m Obiettivo: {args.goal}")
+        print(f"\033[96m[Sigma CLI]\033[0m Profilo: {args.profile} | Provider: {args.provider or 'default'}\n")
 
     messages = [{"role": "user", "content": args.goal}]
     success = False
@@ -57,6 +58,16 @@ def main() -> int:
 
         for event in gen:
             e_type = event.get("type")
+            if e_type == "turn_end":
+                turn_count += 1
+            if e_type == "run_metrics":
+                success = bool(event.get("goal_reached"))
+            elif e_type == "complete":
+                success = bool(event.get("success", True))
+            elif e_type == "done" and "success" in event:
+                success = bool(event["success"])
+            elif e_type == "error" or (e_type == "worktree_preserved" and event.get("apply_failed")):
+                success = False
 
             if args.json:
                 print(json.dumps(event, default=str))
@@ -78,22 +89,26 @@ def main() -> int:
                 ok = res.get("success", False)
                 sym = "\033[92m✔\033[0m" if ok else "\033[91m✖\033[0m"
                 print(f"{sym} [Tool Result] {event.get('tool')}: {'OK' if ok else res.get('error', 'failed')[:100]}")
-            elif e_type == "turn_end":
-                turn_count += 1
-            elif e_type == "complete" or (e_type == "done" and event.get("success")):
-                success = True
             elif e_type == "error":
                 print(f"\n\033[91m[Error]\033[0m {event.get('message') or event.get('error')}")
 
     except KeyboardInterrupt:
-        print("\n\033[91m[Sigma CLI]\033[0m Interrotto dall'utente.")
+        if args.json:
+            print(json.dumps({"type": "error", "error": "Interrotto dall'utente."}))
+        else:
+            print("\n\033[91m[Sigma CLI]\033[0m Interrotto dall'utente.")
         return 130
     except Exception as ex:
-        print(f"\n\033[91m[Sigma CLI Fatal Error]\033[0m {ex}")
+        if args.json:
+            print(json.dumps({"type": "error", "error": str(ex)}))
+        else:
+            print(f"\n\033[91m[Sigma CLI Fatal Error]\033[0m {ex}")
         return 1
 
-    print(f"\n\n\033[96m[Sigma CLI]\033[0m Run completato in {turn_count} turni. Esito: {'\033[92mSUCCESSO\033[0m' if success else '\033[93mTERMINATO\033[0m'}")
-    return 0 if success else 0
+    if not args.json:
+        outcome = "\033[92mSUCCESSO\033[0m" if success else "\033[93mTERMINATO\033[0m"
+        print(f"\n\n\033[96m[Sigma CLI]\033[0m Run completato in {turn_count} turni. Esito: {outcome}")
+    return 0 if success else 2
 
 
 if __name__ == "__main__":
