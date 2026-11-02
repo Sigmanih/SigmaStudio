@@ -103,3 +103,41 @@
 .cs-edit-toolbar label { font-size: .8rem; color: var(--text-dim); }
 .cs-edit-toolbar input[type="range"] { width: 80px; accent-color: var(--primary); }
 .cs-mask-canvas { cursor: crosshair; touch-action: none; }
+.cs-workspace .cs-downloads { display: grid; gap: 18px; padding: 22px; border: 1px solid var(--cs-line); border-radius: 16px; background: var(--cs-panel); }
+.cs-workspace .cs-downloads-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.cs-workspace .cs-downloads-head h3 { margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+.cs-workspace .cs-downloads-head .cs-hint { display: flex; align-items: center; gap: 7px; overflow-wrap: anywhere; }
+.cs-workspace .cs-download-list { display: grid; gap: 12px; }
+.cs-workspace .cs-download-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px; padding: 20px; border: 1px solid var(--cs-line); border-radius: 12px; background: var(--cs-bg); }
+.cs-workspace .cs-download-row.installed { border-left: 3px solid var(--cs-accent); }
+.cs-workspace .cs-download-info { min-width: 0; }
+.cs-workspace .cs-download-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.cs-workspace .cs-download-title > span:first-child { font-weight: 650; font-size: .95rem; margin-right: 5px; }
+.cs-workspace .cs-download-kind, .cs-workspace .cs-usage-tags > span { display: inline-flex; gap: 4px; align-items: center; padding: 4px 9px; border-radius: 20px; font-size: .72rem; font-weight: 500; color: var(--cs-muted); background: var(--cs-raised); border: 1px solid var(--cs-line); }
+.cs-workspace .cs-download-kind.usage, .cs-workspace .cs-usage-tags > span:first-child { color: var(--cs-accent); }
+.cs-workspace .cs-download-meta { margin: 9px 0 0; font-size: .73rem; line-height: 1.6; color: var(--cs-muted); overflow-wrap: anywhere; }
+.cs-workspace .cs-download-info .cs-hint { margin: 10px 0 0; line-height: 1.6; max-width: 80ch; }
+.cs-workspace .cs-download-done { display: inline-flex; align-items: center; gap: 7px; color: var(--cs-accent); font-size: .8rem; white-space: nowrap; }
+.cs-workspace .cs-download-action .cs-tool-btn { min-height: 40px; padding: 9px 16px; display: inline-flex; align-items: center; gap: 7px; border-radius: 9px; background: var(--cs-raised); color: var(--cs-ink); border: 1px solid var(--cs-line); cursor: pointer; }
+.cs-workspace .cs-download-action .cs-tool-btn:disabled { opacity: .5; cursor: default; }
+.cs-workspace .cs-download-progress { display: grid; gap: 7px; min-width: 180px; font-size: .75rem; color: var(--cs-muted); }
+.cs-workspace .cs-progress-bar { height: 5px; overflow: hidden; border-radius: 8px; background: var(--cs-raised); }
+.cs-workspace .cs-progress-fill { height: 100%; background: var(--cs-accent); }
+.cs-workspace .cs-usage-tags, .cs-workspace .cs-usage-filter { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.cs-workspace .cs-model-filters { display: grid; gap: 10px; margin: 20px 0; }
+.cs-workspace .cs-model-filters input { width: min(100%, 520px); box-sizing: border-box; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--cs-line); background: var(--cs-panel); color: var(--cs-ink); }
+.cs-workspace .cs-engine-notice { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 18px 0; padding: 16px; border: 1px solid var(--cs-line); border-radius: 12px; background: var(--cs-panel); }
+.cs-workspace .cs-engine-notice p { margin: 0; color: var(--cs-muted); font-size: .82rem; }
+.cs-workspace .cs-engine-start { margin-top: 10px; }
+.cs-workspace .cs-model-status { font-size: .8rem; color: var(--cs-accent); line-height: 1.5; }
+@media (max-width: 760px) {
+  .cs-workspace .cs-downloads { padding: 14px; }
+  .cs-workspace .cs-download-row { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 16px; }
+  .cs-workspace .cs-downloads-head { flex-direction: column; gap: 5px; }
+  .cs-workspace .cs-download-action { justify-self: start; }
+}
+.cs-workspace .cs-models-container { gap: 14px; padding: 20px 28px; }
+.cs-workspace .cs-model-sections { margin: 0; }
+.cs-workspace .cs-models-header .cs-hint { margin: 0; }
+.cs-workspace .cs-models-stats { max-width: 330px; }
+.cs-workspace .cs-model-components summary { cursor: pointer; padding: 14px 0; font-size: .85rem; color: var(--cs-muted); }
