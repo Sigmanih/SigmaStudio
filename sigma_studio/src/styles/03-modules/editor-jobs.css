@@ -38,3 +38,5 @@
   min-width: 0;
   box-sizing: border-box;
 }
+
+.cs-ed-publication-thumbnail { width: min(100%, 400px); height: auto; border-radius: 8px; }

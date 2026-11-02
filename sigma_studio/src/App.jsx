@@ -7,7 +7,6 @@ import Workspace from './components/Workspace';
 const ChatPanel = React.lazy(() => import('./components/Chat/ChatPanel'));
 const AIConfig = React.lazy(() => import('./components/AIConfig'));
 import ToastNotification from './components/ToastNotification';
-import MusicFloatingWidget from './components/Music/MusicFloatingWidget';
 import { ModuleModal, TaskModal, NewFileModal, SystemCleanupModal } from './components/modals';
 
 // Context
@@ -567,6 +566,11 @@ function AppContent() {
             >
               <GripVertical size={14} color="#00f2fe" />
               <span>Strumenti AI</span>
+              <button className="as-secondary" onPointerDown={event => event.stopPropagation()} onClick={event => {
+                event.stopPropagation(); window.sessionStorage.setItem('sigmaAudioStudioSection', 'radio');
+                openTab({ name: 'AudioStudio' }, 'voice_studio');
+                window.dispatchEvent(new CustomEvent('sigma_audio_studio_section', {detail: 'radio'}));
+              }}>Audio e radio</button>
               {tasks?.length > 0 && (
                 <span style={{ fontSize: '0.62rem', background: '#00f2fe', color: '#000', padding: '1px 6px', borderRadius: '10px', fontWeight: 800 }}>
                   {tasks.length}
@@ -605,20 +609,6 @@ function AppContent() {
         </React.Suspense>
       )}
 
-      {/* GLOBAL BOTTOM-RIGHT MUSIC WIDGET */}
-      {isAudioInstalled && (
-      <div
-        className="global-music-dock"
-        style={{
-          position: 'fixed',
-          bottom: '20px',
-          right: '20px',
-          zIndex: 9980
-        }}
-      >
-        <MusicFloatingWidget onOpenTab={(tabObj, tabId) => openTab(tabObj, tabId)} />
-      </div>
-      )}
 
 
       {/* AI CONFIG MODAL */}
