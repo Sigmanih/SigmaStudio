@@ -1,14 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { MAX_ATTACHMENTS, createSession, MAX_HISTORY } from '../chatStorage';
+import { MAX_ATTACHMENTS, MAX_HISTORY } from '../chatStorage';
 import { getModelRoutingInfo } from '../modelProviderMap';
 import { getAgentStyle } from '../AgentMessage';
 import { modelHistory } from '../../../services/workspaceNavigation';
 import { modelName } from '../../../services/modelIdentity';
 import { recordModelChatSpeed, removeModelChatSpeed, isErrorMessage } from './modelSpecsHelper';
-import {
-  speakAgentMessage, stopSpeech,
-  startSpeechStream, pushSpeechStream, endSpeechStream,
-} from '../audioSpeech';
+import { speakAgentMessage, stopSpeech, endSpeechStream } from '../audioSpeech';
 
 
 let globalAbortController = null;
@@ -16,7 +13,7 @@ let globalAbortController = null;
 function appendAndSave(sid, msg, setFn) {
   setFn(prev => {
     const updated = [...(prev[sid] || []), msg];
-    try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(updated)); } catch (e) {}
+    try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(updated)); } catch {}
     return { ...prev, [sid]: updated };
   });
 }
@@ -68,7 +65,7 @@ function cleanModelTags(text) {
       } else if (parsed.response && typeof parsed.response === 'string') {
         cleaned = parsed.response;
       }
-    } catch (e) {
+    } catch {
       const match = cleaned.match(/"(?:summary|response)"\s*:\s*"([\s\S]*?)"(?:\s*,\s*"(?:thinking|criteria|status)"|\s*\})/);
       if (match && match[1]) {
         cleaned = match[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
@@ -164,7 +161,7 @@ export function useChatStreaming({
 
   const stopInference = useCallback((e) => {
     if (e && typeof e.preventDefault === 'function') {
-      try { e.preventDefault(); } catch (err) {}
+      try { e.preventDefault(); } catch {}
     }
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     if (globalAbortController) { globalAbortController.abort(); globalAbortController = null; }
@@ -188,7 +185,7 @@ export function useChatStreaming({
             };
           }
           saveMessagesImmediately(sid, msgs);
-          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (err) {}
+          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch {}
         }
         return { ...prev, [sid]: msgs };
       });
@@ -365,7 +362,7 @@ export function useChatStreaming({
           if (Array.isArray(currentList) && currentList.length > 0) {
             localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(currentList));
           }
-        } catch (e) {}
+        } catch {}
       }
     };
 
@@ -774,7 +771,7 @@ export function useChatStreaming({
 
 
             schedulePaint();
-          } catch (e) {}
+          } catch {}
         }
         if (streamDone) break;
       }
@@ -913,7 +910,7 @@ export function useChatStreaming({
 
 
         saveMessagesImmediately(sessionId, n);
-        try { localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(n)); } catch (err) {}
+        try { localStorage.setItem(`sigma_chat_msgs_${sessionId}`, JSON.stringify(n)); } catch {}
         if (addToast && streamActionsLog.length > 0) {
           streamActionsLog.forEach(act => {
             if (act.type === 'create_file') {
@@ -941,7 +938,7 @@ export function useChatStreaming({
     } catch (e) {
       // Cancel any frame still queued: it would repaint a partial answer on
       // top of the error the user needs to read.
-      try { flushPaint(); } catch (_) {}
+      try { flushPaint(); } catch {}
       setLoading(false);
       stopSpeech();
       setSessionMessages(prev => {
@@ -1073,7 +1070,7 @@ export function useChatStreaming({
     let effectiveModel = modelName(selectedModel);
     if (!effectiveModel) {
       const lastUsed = (() => {
-        try { return localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model') || ''; } catch (e) { return ''; }
+        try { return localStorage.getItem('sigma_last_selected_model') || localStorage.getItem('sigma_selected_model') || ''; } catch { return ''; }
       })();
       if (lastUsed) {
         effectiveModel = lastUsed;
@@ -1157,7 +1154,7 @@ export function useChatStreaming({
 
       const userProfile = (() => {
         try { return JSON.parse(localStorage.getItem('sigma_user_profile') || '{}'); }
-        catch(e) { return {}; }
+        catch { return {}; }
       })();
 
       const useStream = !isPlan;
@@ -1231,7 +1228,7 @@ export function useChatStreaming({
               };
             }
             saveMessagesImmediately(sid, msgs);
-            try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (err) {}
+            try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch {}
             return { ...prev, [sid]: msgs };
           });
         }
@@ -1248,7 +1245,7 @@ export function useChatStreaming({
       if (sid) {
         const msgs = sessionRefs.sessionMessages.current[sid];
         if (msgs && msgs.length > 0) {
-          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch (e) {}
+          try { localStorage.setItem(`sigma_chat_msgs_${sid}`, JSON.stringify(msgs)); } catch {}
         }
       }
       setLoading(false);

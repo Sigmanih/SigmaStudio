@@ -8,6 +8,7 @@ import {
 import { initSpeechRecognition, createWakeWordMic, getVoiceSilenceTimeout, setVoiceSilenceTimeout } from './Chat/audioSpeech';
 
 import { useApp } from '../contexts/AppContext';
+import { STUDIO_VERSION } from '../version';
 import { useModuleState } from '../hooks/useModuleState';
 import { detectLowEndGpu } from '../utils/graphicsQuality';
 import { groupWorkDomains } from '../utils/workDomains';
@@ -241,7 +242,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
             return;
           }
         }
-      } catch (err) {}
+      } catch {}
 
       try {
         const resHub = await fetch('/api/ruoli/hub');
@@ -253,7 +254,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
             setLoadedRoles(installed);
           }
         }
-      } catch (e) {}
+      } catch {}
     };
 
     loadDynamicRoles();
@@ -271,7 +272,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
         if (!res.ok) return;
         const data = await res.json();
         if (!cancel && data && data.success && data.hardware) setSystemStats(data.hardware);
-      } catch (e) {}
+      } catch {}
     };
     poll();
     const timer = setInterval(poll, 8000);
@@ -380,7 +381,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     loading: true,
     checking: false,
     updateAvailable: false,
-    currentVersion: '0.9.1',
+    currentVersion: STUDIO_VERSION,
     commitsBehind: 0,
     newCommits: [],
     localCommit: '',
@@ -403,7 +404,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
           loading: false,
           checking: false,
           updateAvailable: !!data.update_available,
-          currentVersion: data.current_version || '0.9.1',
+          currentVersion: data.current_version || STUDIO_VERSION,
           commitsBehind: data.commits_behind || 0,
           newCommits: Array.isArray(data.new_commits) ? data.new_commits : [],
           localCommit: data.local_commit || '',
@@ -413,7 +414,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       } else {
         setUpdateState(p => ({ ...p, loading: false, checking: false }));
       }
-    } catch (e) {
+    } catch {
       setUpdateState(p => ({ ...p, loading: false, checking: false }));
     }
   }, []);
@@ -482,7 +483,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     const next = QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(qualityPref) + 1) % QUALITY_CYCLE.length];
     setQualityPref(next);
     setResolvedQuality(null);
-    try { localStorage.setItem(QUALITY_KEY, next); } catch (e) {}
+    try { localStorage.setItem(QUALITY_KEY, next); } catch {}
   };
 
   const handleQualityResolved = useCallback((level) => setResolvedQuality(level), []);
@@ -490,7 +491,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   const toggleView = () => {
     const next = viewPref === '3d' ? '2d' : '3d';
     setViewPref(next);
-    try { localStorage.setItem(VIEW_KEY, next); } catch (e) {}
+    try { localStorage.setItem(VIEW_KEY, next); } catch {}
   };
 
   // Gestione selezione file di qualsiasi tipo
@@ -546,7 +547,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   const toggleRecording = useCallback(() => {
     if (isRecording) {
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
+        try { recognitionRef.current.stop(); } catch {}
       }
       setIsRecording(false);
       return;
@@ -612,7 +613,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
 
     if (isRecording) {
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
+        try { recognitionRef.current.stop(); } catch {}
       }
       setIsRecording(false);
     }
@@ -652,10 +653,10 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   // Clean-up all'unmount dei microfoni
   useEffect(() => () => {
     if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (e) {}
+      try { recognitionRef.current.stop(); } catch {}
     }
     if (smartMicRef.current) {
-      try { smartMicRef.current.stop(); } catch (e) {}
+      try { smartMicRef.current.stop(); } catch {}
     }
   }, []);
 

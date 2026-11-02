@@ -56,7 +56,7 @@ export default function McpToolStrip({ calls = [], approvals = [] }) {
             if (parsed && parsed.url) {
               imageUrl = parsed.url;
             }
-          } catch (e) {
+          } catch {
             // Try regex fallback for URL in raw text
             const urlMatch = (call.output || '').match(/["']?url["']?\s*:\s*["']([^"']+\.(?:png|jpg|jpeg|webp|gif))["']/i);
             if (urlMatch) imageUrl = urlMatch[1];

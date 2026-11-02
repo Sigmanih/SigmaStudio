@@ -185,7 +185,7 @@ export default function DevGraphView({
             n.fy = saved[n.id].y;
           }
         });
-      } catch (_) {}
+      } catch {}
 
       // Disegno Links
       const link = g.append('g')
@@ -316,14 +316,14 @@ export default function DevGraphView({
     });
     try {
       localStorage.setItem('sigma_dev_graph_positions', JSON.stringify(positions));
-    } catch (_) {}
+    } catch {}
   };
 
   // Azioni Layout: Reset
   const handleResetPositions = () => {
     try {
       localStorage.removeItem('sigma_dev_graph_positions');
-    } catch (_) {}
+    } catch {}
     if (simulationRef.current) {
       simulationRef.current.nodes().forEach(n => {
         n.fx = null;
@@ -477,7 +477,7 @@ export default function DevGraphView({
               onChange={(e) => {
                 const v = parseInt(e.target.value, 10);
                 setFontSize(v);
-                try { localStorage.setItem('sigma_dev_graph_font_size', String(v)); } catch (_) {}
+                try { localStorage.setItem('sigma_dev_graph_font_size', String(v)); } catch {}
               }}
               style={{ width: '100%', marginTop: '3px' }}
             />
@@ -492,7 +492,7 @@ export default function DevGraphView({
               onChange={(e) => {
                 const v = parseInt(e.target.value, 10);
                 setBranchDist(v);
-                try { localStorage.setItem('sigma_dev_graph_branch_dist', String(v)); } catch (_) {}
+                try { localStorage.setItem('sigma_dev_graph_branch_dist', String(v)); } catch {}
               }}
               style={{ width: '100%', marginTop: '3px' }}
             />

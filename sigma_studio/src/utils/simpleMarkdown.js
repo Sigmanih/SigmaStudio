@@ -28,7 +28,7 @@ export function simpleMarkdown(t) {
     }
 
     return s;
-  } catch (e) {
+  } catch {
     return String(t).replace(/\n/g, '<br>');
   }
 }

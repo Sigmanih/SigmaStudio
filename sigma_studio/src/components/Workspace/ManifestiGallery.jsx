@@ -797,7 +797,7 @@ export default function ManifestiGallery({
         role: manifesto.role,
         temperature: manifesto.temperature
       }));
-    } catch (e) {}
+    } catch {}
 
     if (openTab) {
       openTab({ 
@@ -837,7 +837,7 @@ export default function ManifestiGallery({
       } else {
         setHubMessage({ type: 'error', text: data.error || 'Errore installazione' });
       }
-    } catch (e) {
+    } catch {
       setHubMessage({ type: 'error', text: 'Errore di connessione' });
     } finally {
       setInstallingId(null);
@@ -874,7 +874,7 @@ export default function ManifestiGallery({
       } else {
         setHubMessage({ type: 'error', text: data.error || 'Errore durante la disinstallazione' });
       }
-    } catch (e) {
+    } catch {
       setHubMessage({ type: 'error', text: 'Errore di connessione' });
     } finally {
       setUninstallingId(null);
@@ -906,7 +906,7 @@ export default function ManifestiGallery({
       } else {
         setHubMessage({ type: 'error', text: data.error || 'Errore importazione' });
       }
-    } catch (e) {
+    } catch {
       setHubMessage({ type: 'error', text: 'Errore di connessione' });
     } finally {
       setImportingCustom(false);
@@ -988,7 +988,7 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
       } else {
         setFormError(d.error || 'Errore durante la creazione');
       }
-    } catch (e) {
+    } catch {
       setFormError('Errore di rete');
     } finally {
       setCreating(false);

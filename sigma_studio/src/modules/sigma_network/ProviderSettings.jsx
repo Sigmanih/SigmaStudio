@@ -131,7 +131,7 @@ const ProviderSettings = ({ settings, onSaveSettings }) => {
         setNatNotice(`Avviso UPnP: ${data.message || 'Router UPnP non raggiungibile. Se sei dietro NAT/CGNAT, configura il port forwarding manuale o usa una VPN mesh.'}`);
       }
       await fetchNatStatus();
-    } catch (err) {
+    } catch {
       setNatNotice('Errore durante la richiesta di apertura porta UPnP.');
     } finally {
       setUpnpLoading(false);

@@ -1266,7 +1266,7 @@ export function loadTasteProfile() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.TASTE_PROFILE);
     if (raw) return JSON.parse(raw);
-  } catch (e) {}
+  } catch {}
   return {
     genreScores: {
       radio_fm: 18,
@@ -1302,7 +1302,7 @@ export function loadTasteProfile() {
 export function saveTasteProfile(profile) {
   try {
     localStorage.setItem(STORAGE_KEYS.TASTE_PROFILE, JSON.stringify(profile));
-  } catch (e) {}
+  } catch {}
 }
 
 /** Load favorite track IDs */
@@ -1310,7 +1310,7 @@ export function loadFavorites() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.FAVORITES);
     if (raw) return JSON.parse(raw);
-  } catch (e) {}
+  } catch {}
   return ['fm-virgin-1', 'fm-105-1', 'fm-rai-classica', 'lofi-live-1'];
 }
 
@@ -1318,7 +1318,7 @@ export function loadFavorites() {
 export function saveFavorites(favs) {
   try {
     localStorage.setItem(STORAGE_KEYS.FAVORITES, JSON.stringify(favs));
-  } catch (e) {}
+  } catch {}
 }
 
 /** Load custom added tracks / files */
@@ -1326,7 +1326,7 @@ export function loadCustomTracks() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.CUSTOM_TRACKS);
     if (raw) return JSON.parse(raw);
-  } catch (e) {}
+  } catch {}
   return [];
 }
 
@@ -1334,7 +1334,7 @@ export function loadCustomTracks() {
 export function saveCustomTracks(tracks) {
   try {
     localStorage.setItem(STORAGE_KEYS.CUSTOM_TRACKS, JSON.stringify(tracks));
-  } catch (e) {}
+  } catch {}
 }
 
 /** Load listening history */
@@ -1342,7 +1342,7 @@ export function loadHistory() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.HISTORY);
     if (raw) return JSON.parse(raw);
-  } catch (e) {}
+  } catch {}
   return [];
 }
 
@@ -1350,7 +1350,7 @@ export function loadHistory() {
 export function saveHistory(hist) {
   try {
     localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(hist.slice(0, 50)));
-  } catch (e) {}
+  } catch {}
 }
 
 /** Record a listening event and update user taste scores */
@@ -1494,13 +1494,13 @@ export function loadUserCategories() {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
-  } catch (e) {}
+  } catch {}
   return DEFAULT_USER_CATEGORIES;
 }
 
 export function saveUserCategories(categories) {
   try {
     localStorage.setItem('sigma_music_categories', JSON.stringify(categories));
-  } catch (e) {}
+  } catch {}
 }
 

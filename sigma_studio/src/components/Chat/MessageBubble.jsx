@@ -45,7 +45,7 @@ export default function MessageBubble({ msg, isLast, onStop, onFileLinkClick }) 
     try {
       const saved = localStorage.getItem('sigma_user_profile');
       if (saved) return JSON.parse(saved);
-    } catch (e) {}
+    } catch {}
     return { name: 'Tu', avatar: '/images/default.png' };
   });
 

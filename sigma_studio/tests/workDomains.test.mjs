@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { groupWorkDomains, modulesForDomain, workDomainFor } from '../src/utils/workDomains.js';
 import { prepareRoleChat, findRoleManifesto } from '../src/services/chatNavigation.js';
+
+test('il catalogo assegna esplicitamente i ruoli ai campi di lavoro', () => {
+  const catalog = JSON.parse(readFileSync(new URL('../../core/agents/catalog/catalog.json', import.meta.url), 'utf8'));
+  assert.ok(catalog.every(role => role.workDomain));
+  assert.equal(workDomainFor(catalog.find(role => role.id === 'sigma_assistant')).id, 'general');
+  assert.equal(workDomainFor(catalog.find(role => role.id === 'test_engineer')).id, 'development');
+  assert.equal(workDomainFor(catalog.find(role => role.id === 'regista_cinematografico')).id, 'creative');
+});
 
 test('lo sviluppo rappresenta anche i test senza perdere gli specialisti', () => {
   const roles = [{ id: 'test_engineer', name: 'Test Engineer', category: 'Sviluppo' },

@@ -59,7 +59,7 @@ const FederatedDashboard = ({ onRefreshWallet }) => {
         await fetchFederatedData();
         if (onRefreshWallet) onRefreshWallet();
       }
-    } catch (e) {
+    } catch {
       setStatusMessage('Errore durante la richiesta di aggregazione federata.');
     } finally {
       setIsAggregating(false);

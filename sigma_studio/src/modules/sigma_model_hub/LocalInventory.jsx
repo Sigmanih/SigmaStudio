@@ -269,7 +269,7 @@ export default function LocalInventory({
         try {
           window.dispatchEvent(new CustomEvent('ai-config-updated'));
           window.dispatchEvent(new CustomEvent('models-updated'));
-        } catch (e) {}
+        } catch {}
       } else if (addToast) {
         addToast(`❌ ${json.error || 'Rinomina non riuscita.'}`, 'error');
       }
@@ -303,7 +303,7 @@ export default function LocalInventory({
         try {
           window.dispatchEvent(new CustomEvent('ai-config-updated'));
           window.dispatchEvent(new CustomEvent('models-updated'));
-        } catch (e) {}
+        } catch {}
       } else {
         if (addToast) addToast(`❌ ${json.error}`, 'error');
       }

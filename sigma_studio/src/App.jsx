@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { GripVertical, Sparkles, X, Calendar, Cpu, MessageSquare, Settings, Music, Trash2, RefreshCw } from 'lucide-react';
 
 // Sub-components

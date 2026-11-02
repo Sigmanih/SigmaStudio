@@ -142,11 +142,11 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
   useEffect(() => {
     try {
       window.dispatchEvent(new CustomEvent('hf_publish_modal_visibility', { detail: { open: true, model } }));
-    } catch (_) {}
+    } catch {}
     return () => {
       try {
         window.dispatchEvent(new CustomEvent('hf_publish_modal_visibility', { detail: { open: false } }));
-      } catch (_) {}
+      } catch {}
     };
   }, [model]);
 
@@ -370,7 +370,7 @@ export default function HfPublishModal({ model, onClose, isLight, addToast }) {
         if (addToast) addToast(`🚀 Caricamento avviato verso ${fullRepoId}`, 'info');
         try {
           window.dispatchEvent(new CustomEvent('hf_upload_started', { detail: json.task }));
-        } catch (_) {}
+        } catch {}
       } else {
         setIsPublishing(false);
         setPublishError(json.error || 'Impossibile avviare il caricamento.');

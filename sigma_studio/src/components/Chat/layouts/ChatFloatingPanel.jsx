@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { Upload } from 'lucide-react';
 import useChatCore from '../core/useChatCore';
 import ChatHeader from '../ui/ChatHeader';

@@ -1222,7 +1222,7 @@ export default function MarketplaceTab({ openTab }) {
         });
         return state;
       }
-    } catch(e) {}
+    } catch {}
     const state = {};
     OPTIONAL_MODULES.forEach(m => { state[m.id] = false; });
     return state;
@@ -1252,7 +1252,7 @@ export default function MarketplaceTab({ openTab }) {
           try {
             const existing = JSON.parse(localStorage.getItem('sigma_modules_state') || '{}');
             localStorage.setItem('sigma_modules_state', JSON.stringify({ ...existing, ...data.modules_state }));
-          } catch(e) {}
+          } catch {}
         }
       }
     } catch (e) {
@@ -1331,7 +1331,7 @@ export default function MarketplaceTab({ openTab }) {
           try {
             const existing = JSON.parse(localStorage.getItem('sigma_modules_state') || '{}');
             localStorage.setItem('sigma_modules_state', JSON.stringify({ ...existing, [mod.id]: true }));
-          } catch(e) {}
+          } catch {}
           return nextState;
         });
         window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: true } }));
@@ -1379,7 +1379,7 @@ export default function MarketplaceTab({ openTab }) {
           try {
             const existing = JSON.parse(localStorage.getItem('sigma_modules_state') || '{}');
             localStorage.setItem('sigma_modules_state', JSON.stringify({ ...existing, [mod.id]: false }));
-          } catch(e) {}
+          } catch {}
           return nextState;
         });
         window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: mod.id, installed: false } }));
@@ -1424,7 +1424,7 @@ export default function MarketplaceTab({ openTab }) {
       } else {
         setRebuildStatus('Rebuild completato (modalità integrata)');
       }
-    } catch (e) {
+    } catch {
       setRebuildStatus('Rebuild completato');
     } finally {
       setIsRebuilding(false);

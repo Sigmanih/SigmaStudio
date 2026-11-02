@@ -14,7 +14,7 @@ export function useChatDevMode() {
   const [devModeEnabled, setDevModeEnabledState] = useState(() => {
     try {
       return localStorage.getItem('sigma_chat_dev_mode_enabled') === 'true';
-    } catch (e) {
+    } catch {
       return false;
     }
   });
@@ -31,7 +31,7 @@ export function useChatDevMode() {
         }
       }
       setDevModeAvailable(false);
-    } catch (err) {
+    } catch {
       // Modulo developer non presente o non installato
       setDevModeAvailable(false);
     }
@@ -52,7 +52,7 @@ export function useChatDevMode() {
     setDevModeEnabledState(enabled);
     try {
       localStorage.setItem('sigma_chat_dev_mode_enabled', String(enabled));
-    } catch (e) {}
+    } catch {}
   }, []);
 
   // I ruoli dell'harness (sviluppo e specialisti dei moduli). Prima la Dev Mode
@@ -62,7 +62,7 @@ export function useChatDevMode() {
   const [devRole, setDevRoleState] = useState(() => {
     try {
       return localStorage.getItem('sigma_chat_dev_role') || 'auto';
-    } catch (e) {
+    } catch {
       return 'auto';
     }
   });
@@ -82,7 +82,7 @@ export function useChatDevMode() {
             .map(r => ({ id: r.id, name: r.name || r.id, icon: r.icon || '🤖',
                          focus: (r.focus_areas || [])[0] || '' })));
         }
-      } catch (e) {
+      } catch {
         // Elenco ruoli non disponibile: resta "auto".
       }
     })();
@@ -94,7 +94,7 @@ export function useChatDevMode() {
     setDevRoleState(valore);
     try {
       localStorage.setItem('sigma_chat_dev_role', valore);
-    } catch (e) {}
+    } catch {}
   }, []);
 
   return {

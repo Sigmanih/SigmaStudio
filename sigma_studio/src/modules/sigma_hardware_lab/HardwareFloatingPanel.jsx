@@ -1113,7 +1113,7 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
                         fetchGpuProcesses();
                         fetchHardwareStatus();
                         if (addToast) addToast('Processi orfani terminati.', 'success');
-                      } catch (e) {}
+                      } catch {}
                     }}
                     style={{
                       padding: '4px 10px', borderRadius: '6px',
@@ -1198,7 +1198,7 @@ export default function HardwareFloatingPanel({ onClose, onOpenTab, addToast }) 
                         fetchGpuProcesses();
                         fetchHardwareStatus();
                         if (addToast) addToast('Processi orfani terminati.', 'success');
-                      } catch (e) {}
+                      } catch {}
                     }}
                     style={{
                       padding: '5px 12px', borderRadius: '6px',

@@ -121,7 +121,7 @@ export default function GoalCompletionCard({
       navigator.clipboard.writeText(testo);
       setCopiato(true);
       setTimeout(() => setCopiato(false), 2000);
-    } catch (e) { /* copia non disponibile: nessun danno */ }
+    } catch { /* copia non disponibile: nessun danno */ }
   }, [titolo, riepilogo, elencoCriteri]);
 
   const handleBodyClick = useCallback((e) => {

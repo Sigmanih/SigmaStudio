@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Home, Sun, Moon, Thermometer, Lock, Power, Lightbulb, RefreshCw, Send,
   Zap, Sliders, Palette, Plus, Minus, Key, AlertCircle, Search, Filter,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, CloudDownload, Settings, Sliders, Menu, Award, CircuitBoard, Clapperboard } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
 const SkillsHub = React.lazy(() => import('./SkillsHub'));

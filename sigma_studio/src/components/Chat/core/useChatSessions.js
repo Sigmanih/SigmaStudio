@@ -85,7 +85,7 @@ export function useChatSessions({ selectedModel, getSelectedModel, setSelectedMo
           activeSessionId: activeId || activeSessionIdRef.current
         }
       }));
-    } catch (e) {}
+    } catch {}
   }, []);
 
   // Keep active session saved in localStorage & notify
@@ -221,7 +221,7 @@ export function useChatSessions({ selectedModel, getSelectedModel, setSelectedMo
     try {
       localStorage.removeItem(`sigma_chat_msgs_${sid}`);
       localStorage.removeItem(`sigma_chat_session_${sid}`);
-    } catch (err) {}
+    } catch {}
 
     if (activeSessionId === sid) {
       if (ns.length > 0) {

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { roleInitials } from './roleIcons';
+import { STUDIO_VERSION } from '../../version';
 import { AGENT_ACTIVITY_EVENT, getAgentActivity } from './agentActivity';
 import { motionFor } from './agentMotion';
 
@@ -611,7 +612,7 @@ export default function CyberSpace3DCanvas({
       // Scritte tecniche perimetrali
       cctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
       cctx.font = 'bold 22px monospace';
-      cctx.fillText('SIGMA STUDIO // COMMAND BRIDGE // CORE 0.9.1', cx, cy + 180);
+      cctx.fillText(`SIGMA STUDIO // COMMAND BRIDGE // CORE ${STUDIO_VERSION}`, cx, cy + 180);
     };
 
     renderBaseCarpet();

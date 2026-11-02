@@ -4,7 +4,7 @@
 // ==============================================================================
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { PROVIDER_COLORS, getModelRoutingInfo } from '../modelProviderMap';
-import { loadMessagesFromStorage, saveMessagesToStorage, createSession } from '../chatStorage';
+import { loadMessagesFromStorage, saveMessagesToStorage } from '../chatStorage';
 import { initSpeechRecognition, createWakeWordMic, stopSpeech } from '../audioSpeech';
 import { deriveAgentActivity, publishAgentActivity, releaseAgentActivity } from '../../common/agentActivity';
 import { findRoleManifesto } from '../../../services/chatNavigation';
@@ -31,7 +31,7 @@ export default function useChatCore(extraProps = {}) {
   const [speakerEnabled, setSpeakerEnabledState] = useState(() => {
     try {
       return localStorage.getItem('sigma_speaker_agent_enabled') === 'true';
-    } catch (e) {
+    } catch {
       return false;
     }
   });
@@ -40,7 +40,7 @@ export default function useChatCore(extraProps = {}) {
     setSpeakerEnabledState(enabled);
     try {
       localStorage.setItem('sigma_speaker_agent_enabled', String(enabled));
-    } catch (e) {}
+    } catch {}
     if (!enabled) {
       stopSpeech();
     }
@@ -164,7 +164,7 @@ export default function useChatCore(extraProps = {}) {
         configHook.setSelectedManifestoPath(mObj.path);
         configHook.setManifestoManuallySelected(true);
       }
-    } catch (e) {}
+    } catch {}
   }, []);
 
   const handleSelectManifesto = useCallback((m) => {
@@ -173,7 +173,7 @@ export default function useChatCore(extraProps = {}) {
     configHook.setSelectedManifestoPath(m.path);
     configHook.setManifestoManuallySelected(true);
     configHook.setShowManifestoDropdown(false);
-    try { localStorage.setItem('sigma_selected_manifesto', JSON.stringify(manifesto)); } catch (e) {}
+    try { localStorage.setItem('sigma_selected_manifesto', JSON.stringify(manifesto)); } catch {}
 
     // Save selection in the current session
     if (sessionsHook.activeSessionId && sessionsHook.saveSessionsState) {
@@ -213,12 +213,12 @@ export default function useChatCore(extraProps = {}) {
             if (Array.isArray(parsedFiles) && parsedFiles.length > 0) {
               streamingHook.setPcFiles(parsedFiles);
             }
-          } catch (e) {}
+          } catch {}
         }
         if (!roleId && !prompt && !rawFiles) return;
         homeJobRef.current = { roleId, prompt, send, stage: roleId ? 'session' : 'send', rolePath: '', since: Date.now() };
         bumpHomeJob();
-      } catch (e) {}
+      } catch {}
     };
     takePending();
     window.addEventListener('sigma-chat-select-role', takePending);
@@ -470,7 +470,7 @@ export default function useChatCore(extraProps = {}) {
   const toggleRecording = useCallback(() => {
     if (isRecording) {
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
+        try { recognitionRef.current.stop(); } catch {}
       }
       setIsRecording(false);
       return;
@@ -536,7 +536,7 @@ export default function useChatCore(extraProps = {}) {
 
     if (isRecording) {
       if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch (e) {}
+        try { recognitionRef.current.stop(); } catch {}
       }
       setIsRecording(false);
     }

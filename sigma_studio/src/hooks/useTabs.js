@@ -57,7 +57,7 @@ export function useTabs() {
         try {
           localStorage.setItem('sigma_model_hub_active_subtab', 'inventory');
           window.dispatchEvent(new CustomEvent('sigma-model-hub-set-tab', { detail: 'inventory' }));
-        } catch (_) {}
+        } catch {}
       } else {
         normItem = { name: TITOLI_DA_URL[item] || item };
         normType = item;
@@ -109,7 +109,7 @@ export function useTabs() {
       const tipo = richiesta.trim();
       if (!/^[a-z0-9_]+$/i.test(tipo)) return;   // solo tipi plausibili
       openTab({ name: TITOLI_DA_URL[tipo] || tipo }, tipo);
-    } catch (e) {
+    } catch {
       // Un URL malformato non deve impedire l'avvio dell'applicazione.
     }
   }, [openTab]);

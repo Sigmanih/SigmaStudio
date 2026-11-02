@@ -272,7 +272,7 @@ export default function ModelSelector({
                 try {
                   window.dispatchEvent(new CustomEvent('models-updated'));
                   window.dispatchEvent(new CustomEvent('ai-config-updated'));
-                } catch (err) {}
+                } catch {}
               }}
               style={{
                 background: 'none',

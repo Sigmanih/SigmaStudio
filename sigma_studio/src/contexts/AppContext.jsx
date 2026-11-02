@@ -142,7 +142,7 @@ export function AppProvider({ children }) {
       const res = await fetch('/api/topics');
       const data = await res.json();
       if (data.topics) setTopicsCount(data.topics.length);
-    } catch (e) {}
+    } catch {}
   };
 
   // Fetch manifesti list
@@ -213,7 +213,7 @@ export function AppProvider({ children }) {
               localStorage.removeItem(k);
             }
           });
-        } catch (e) {}
+        } catch {}
         window.dispatchEvent(new CustomEvent('sigma-chat-cleared', { detail: { clear_history: true } }));
       }
       window.dispatchEvent(new CustomEvent('sigma-system-cleanup-done', { detail: options }));

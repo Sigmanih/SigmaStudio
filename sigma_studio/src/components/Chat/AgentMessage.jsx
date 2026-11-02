@@ -354,7 +354,7 @@ export default function AgentMessage({
     if (!clean) return;
     try {
       localStorage.setItem('sigma_dev_pending_open_file', clean);
-    } catch (e) { }
+    } catch { }
     window.dispatchEvent(new CustomEvent('sigma_dev_open_file', { detail: { path: clean } }));
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent('sigma_dev_open_file', { detail: { path: clean } }));
@@ -440,7 +440,7 @@ export default function AgentMessage({
     try {
       const saved = localStorage.getItem('sigma_user_profile');
       if (saved) return JSON.parse(saved);
-    } catch (e) { }
+    } catch { }
     return { name: 'Tu', avatar: '/images/default.png' };
   });
 

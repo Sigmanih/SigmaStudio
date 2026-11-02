@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, Save, Trash2, Eye, FileText, ChevronRight, X } from 'lucide-react';
 import { renderMarkdownLatex } from '../../utils/markdownLatex';
 import mermaid from 'mermaid';
@@ -233,7 +233,7 @@ export default function SigmaLabEditor({
   const highlightHtml = (code) => {
     if (code && languages.markup) {
       try { return highlight(code, languages.markup); }
-      catch(e) { return code; }
+      catch { return code; }
     }
     return code;
   };

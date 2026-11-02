@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Cpu, Key, ShieldCheck, Zap, RefreshCw, Save, CheckCircle2, 
   AlertCircle, Sliders, ExternalLink, Copy, Check, Eye, EyeOff, 
@@ -11,7 +11,7 @@ import {
 import { useApp } from '../contexts/AppContext';
 import CustomSelect from './common/CustomSelect';
 import TabHeader from './common/TabHeader';
-import { getModelSpecs, getModelChatSpeed, detectModelFamily, FAMILY_CONFIG, isSigmanihModel } from './Chat/core/modelSpecsHelper';
+import { getModelSpecs, getModelChatSpeed, detectModelFamily, FAMILY_CONFIG } from './Chat/core/modelSpecsHelper';
 
 // High-quality dedicated SVG brand icons for providers & GitHub engines
 export const ProviderIcons = {
@@ -866,7 +866,7 @@ export default function AIConfigTab() {
       if (data.success) {
         setHardwareProfile(data);
       }
-    } catch (e) {}
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -1034,7 +1034,7 @@ export default function AIConfigTab() {
               body: JSON.stringify(payload)
             });
             usedFallback = true;
-          } catch (fallbackErr) {
+          } catch {
             throw new Error(`Connessione rifiutata verso ${endpoint}. Verifica che il server sia attivo sulla porta ${serverPort}.`);
           }
         } else {
@@ -1070,7 +1070,7 @@ export default function AIConfigTab() {
                 fullText += parsed.message.content;
                 setLiveTestState(p => ({ ...p, outputText: fullText }));
               }
-            } catch (e) {}
+            } catch {}
           } else {
             if (line.startsWith('data: ')) {
               const dataStr = line.replace(/^data:\s*/, '').trim();
@@ -1082,7 +1082,7 @@ export default function AIConfigTab() {
                   fullText += delta;
                   setLiveTestState(p => ({ ...p, outputText: fullText }));
                 }
-              } catch (e) {}
+              } catch {}
             }
           }
         }
