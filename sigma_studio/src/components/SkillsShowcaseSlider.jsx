@@ -148,18 +148,18 @@ export const SKILLS_CATALOG = [
   },
   {
     id: 'sigma_voice_studio',
-    name: 'Voice Studio & Neural Speech Lab',
+    name: 'AudioStudio — Musica e Voci',
     category: 'Audio & Voce',
     categoryKey: 'audio_voice',
     icon: Mic,
     color: '#ff79c6',
     tabType: 'voice_studio',
-    version: 'v1.0.0',
+    version: 'v1.1.0',
     size: '3 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_voice_studio',
     image: '/images/account_voice_banner.jpg',
-    badge: 'KOKORO 82M & VOCE REAL-TIME',
-    objective: 'Sintesi vocale neurale real-time (<80ms) con Kokoro 82M e clonazione vocale zero-shot da 5s di audio per risposte parlate direttamente nella Chat AI.',
+    badge: 'MUSICA STRUMENTALE & VOCI',
+    objective: 'Crea basi lo-fi, ambient, piano e cyber ambient, ascolta le anteprime e prepara voci e narrazioni per i tuoi progetti.',
     components: [
       {
         icon: '⚡',

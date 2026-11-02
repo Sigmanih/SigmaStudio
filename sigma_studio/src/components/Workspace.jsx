@@ -332,7 +332,7 @@ export default function Workspace({
         return <ModuleNotInstalled tabType="voice_studio" openTab={openTab} />;
       }
       return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Voice Studio...</div>}>
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento AudioStudio...</div>}>
           <LazyVoice openTab={openTab} />
         </React.Suspense>
       );

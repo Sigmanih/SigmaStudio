@@ -174,16 +174,16 @@ const OPTIONAL_MODULES = [
   },
   {
     id: 'sigma_voice_studio',
-    name: 'Voice Studio & Neural Speech Lab',
+    name: 'AudioStudio — Musica e Voci',
     category: 'Multimodale & Creatività',
-    domain: 'Sintesi Vocale Neurale & TTS',
+    domain: 'Musica strumentale, voci e narrazione',
     icon: Mic,
     color: '#ff79c6',
     tabType: 'voice_studio',
-    version: 'v1.0.0',
-    description: 'Laboratorio di sintesi vocale neurale: motore Kokoro 82M ultra-veloce, Coqui XTTS-v2 zero-shot voice cloning, personalizzazione tono e Voice MCP Server.',
+    version: 'v1.1.0',
+    description: 'Composizione musicale locale con ACE-Step, quattro preset per lo studio, anteprime WAV/MP3 e strumenti per sintesi vocale e clonazione.',
     highlights: [
-      'Sintesi vocale ultra-veloce a bassa latenza con modello Kokoro 82M',
+      'Basi lo-fi, ambient, piano neoclassico e cyber ambient con anteprime di due minuti',
       'Clonazione vocale neurale zero-shot con Coqui XTTS-v2',
       'Regolazione fine di timbro, intonazione, velocità e streaming real-time'
     ],

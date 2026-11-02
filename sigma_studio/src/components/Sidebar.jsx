@@ -868,12 +868,12 @@ export default function Sidebar({
 
                   {isVoiceInstalled && (
                     <SidebarItem
-                      icon={Mic}
-                      label="Voice Studio"
-                      badge="TTS"
+                      icon={Music}
+                      label="AudioStudio"
+                      badge="AUDIO"
                       badgeColor="rgba(255,121,198,0.15)"
                       active={activeTabId != null && activeTabId.startsWith('voice_studio')}
-                      onClick={() => openTab({ name: 'Voice Studio' }, 'voice_studio')}
+                      onClick={() => openTab({ name: 'AudioStudio' }, 'voice_studio')}
                     />
                   )}
 

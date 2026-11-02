@@ -23,7 +23,7 @@ const MODULE_META = {
   music:           { id: 'audio_studio',         icon: '📻', name: 'Hi-Fi Sound & FM Radio Studio',  color: '#00f2fe', desc: 'Radio FM nazionali in diretta, YouTube Live e generatore binaurale a 432Hz.' },
   music_lounge:    { id: 'audio_studio',         icon: '📻', name: 'Hi-Fi Sound & FM Radio Studio',  color: '#00f2fe', desc: 'Radio FM nazionali in diretta, YouTube Live e generatore binaurale a 432Hz.' },
   audio_studio:    { id: 'audio_studio',         icon: '📻', name: 'Hi-Fi Sound & FM Radio Studio',  color: '#00f2fe', desc: 'Radio FM nazionali in diretta, YouTube Live e generatore binaurale a 432Hz.' },
-  voice_studio:    { id: 'sigma_voice_studio',   icon: '🎙️', name: 'Voice Studio & Neural Speech',    color: '#ff79c6', desc: 'Sintesi vocale neurale, trascrizione Whisper e clonazione vocale real-time.' },
+  voice_studio:    { id: 'sigma_voice_studio',   icon: '🎙️', name: 'AudioStudio — Musica e Voci',    color: '#ff79c6', desc: 'Basi musicali strumentali, sintesi vocale neurale e libreria delle voci.' },
   developer_studio:{ id: 'sigma_developer_lab',  icon: '💻', name: 'Developer Studio & Sandbox',     color: '#10b981', desc: 'Editor di codice avanzato, terminale integrato ed esecuzione sandbox.' },
   developer_lab:   { id: 'sigma_developer_lab',  icon: '💻', name: 'Developer Studio & Sandbox',     color: '#10b981', desc: 'Editor di codice avanzato, terminale integrato ed esecuzione sandbox.' },
   network_lab:     { id: 'sigma_network_lab',    icon: '🌐', name: 'Network Explorer & Web Research',color: '#3fb950', desc: 'Ricerche web live, compositore di chiamate HTTP REST e diagnostica DNS.' },
