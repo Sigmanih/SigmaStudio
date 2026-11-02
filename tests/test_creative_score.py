@@ -11,6 +11,13 @@ from core.modules.sigma_creative_lab.video.score_plan import plan_cues, MAX_CUE_
 from core.modules.sigma_creative_lab.video.score_quality import inspect_samples, source_music_filter
 
 
+def test_film_diversi_non_condividono_il_seed_musicale_predefinito():
+    from core.modules.sigma_creative_lab.video.score_plan import production_seed
+    assert production_seed("film-a", 1922) == production_seed("film-a", 1922)
+    assert production_seed("film-a", 1922) != production_seed("film-b", 1922)
+    assert production_seed("film-a", 1922) != production_seed("film-a", 1923)
+
+
 def test_rileva_loop_esatto_ma_accetta_audio_in_evoluzione():
     rng = np.random.default_rng(42)
     phrase = rng.normal(0, 0.1, 4000).astype(np.float32)

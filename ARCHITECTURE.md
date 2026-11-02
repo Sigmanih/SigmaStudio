@@ -182,7 +182,7 @@ DRC/ERC richiedono un report nuovo e valido: assenza del report, errore del coma
 
 ### 5.4 Colonna sonora e correzione dei master
 
-Il laboratorio creativo separa piano musicale (`video/score_plan.py`), controlli del segnale (`video/score_quality.py`) e composizione. I brani di restauro durano al massimo 96 secondi piu' la dissolvenza, con orchestrazioni differenti. Le descrizioni visive ripetute vengono richieste nuovamente; se restano indistinguibili, occorre una revisione esplicita. La cache dipende dalla ricetta musicale e viene ricontrollata prima del riuso.
+Il laboratorio creativo separa piano musicale (`video/score_plan.py`), controlli del segnale (`video/score_quality.py`) e composizione. I brani di restauro durano al massimo 96 secondi piu' la dissolvenza, con orchestrazioni differenti. Il seed musicale dipende anche dall'identificativo della produzione: film diversi non condividono il seed predefinito, mentre la ripresa dello stesso film resta riproducibile. Le descrizioni visive ripetute vengono richieste nuovamente; se restano indistinguibili, occorre una revisione esplicita. La cache dipende dalla ricetta musicale e viene ricontrollata prima del riuso.
 
 I controlli rifiutano durate insufficienti, silenzi prolungati, duplicati esatti e loop quasi identici protratti per almeno trenta secondi. Si rigenera con seed diverso e margine di coda crescente; non si copiano frasi per riempire i vuoti. Queste misure rilevano difetti tecnici, non sostituiscono l'ascolto e il giudizio musicale. La generazione ordinaria usa gli stessi controlli; le dissolvenze non devono allungare la durata del film.
 
