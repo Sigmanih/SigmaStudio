@@ -24,3 +24,17 @@
 .cs-ed-job.interrupted {
   color: var(--text-secondary);
 }
+
+.cs-ed-publication {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.cs-ed-publication input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
