@@ -14,6 +14,7 @@ esista comunque (con la data del file come ripiego).
 """
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -50,6 +51,22 @@ def _stato(server):
 
 
 class TestQuantoEIndietro:
+    def test_timestamp_futuro_e_modifica_retrodatata(self, radice):
+        # Riproduce lo scarto fra clock Windows e filesystem senza attese.
+        sorgente = radice / "rete.py"
+        futuro = time.time() + 60
+        os.utime(sorgente, (futuro, futuro))
+        server = SemanticMCPServer()
+        server.call_tool("index_codebase", {})
+        assert _stato(server)["aggiornato"] is True
+        assert not any(r.get("stale") for r in server._semantic_search("socket"))
+        contenuto = sorgente.read_text(encoding="utf-8")
+        sorgente.write_text(contenuto.replace("porta", "porte"), encoding="utf-8")
+        passato = time.time() - 60
+        os.utime(sorgente, (passato, passato))
+        assert _stato(server)["modificati"] == 1
+        assert any(r.get("stale") for r in server._semantic_search("socket"))
+
     def test_appena_costruito_e_aggiornato(self, radice):
         server = SemanticMCPServer()
         server.call_tool("index_codebase", {})
@@ -114,6 +131,9 @@ class TestGliIndiciVecchi:
         server = SemanticMCPServer()
         server.call_tool("index_codebase", {})
         server._index.pop("built_at", None)
+        for doc in server._index["documents"]:
+            doc.pop("mtime_ns", None)
+            doc.pop("byte_size", None)
         server._save_index()
         ricaricato = SemanticMCPServer()
         stato = _stato(ricaricato)
