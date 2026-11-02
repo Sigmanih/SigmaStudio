@@ -1,0 +1,38 @@
+.as-studio { display: flex; flex-direction: column; height: 100%; min-height: 0; color: var(--text-primary); }
+.as-tabs { display: flex; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--border-color, #ffffff18); }
+.as-tabs button, .as-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; border: 1px solid var(--border-color, #ffffff20); border-radius: 9px; color: inherit; background: transparent; cursor: pointer; }
+.as-tabs button[aria-pressed="true"] { background: #00d2ff14; border-color: #00d2ff66; color: var(--primary, #00d2ff); }
+.as-content { flex: 1; min-height: 0; overflow: auto; }
+.as-music { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 28px; max-width: 1600px; margin: auto; padding: 28px; }
+.as-compose { min-width: 0; }
+.as-intro h2 { font-size: clamp(22px, 2.5vw, 34px); font-weight: 650; margin: 10px 0; letter-spacing: -.5px; }
+.as-intro p, .as-note, .as-empty, .as-scene { color: var(--text-secondary, #9ca5bc); line-height: 1.6; }
+.as-eyebrow { color: var(--primary, #00d2ff); font-size: 11px; letter-spacing: 1.8px; }
+.as-genres { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 24px 0; }
+.as-genre { display: grid; justify-items: start; gap: 10px; padding: 20px; min-width: 0; text-align: left; color: inherit; background: var(--bg-secondary, #ffffff04); border: 1px solid var(--border-color, #ffffff18); border-radius: 14px; cursor: pointer; }
+.as-genre.selected { border-color: var(--primary, #00d2ff); background: #00d2ff09; }
+.as-genre svg { color: var(--primary, #00d2ff); }
+.as-genre span, .as-genre small { color: var(--text-secondary, #9ca5bc); font-size: 12px; line-height: 1.6; }
+.as-form-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 12px 0; }
+.as-music label { display: grid; gap: 8px; font-size: 12px; }
+.as-music select, .as-music input, .as-music textarea { padding: 10px; border: 1px solid var(--border-color, #ffffff20); border-radius: 8px; color: inherit; background: var(--bg-secondary, #131925); font: inherit; }
+.as-music textarea { width: 100%; min-height: 90px; box-sizing: border-box; resize: vertical; }
+.as-music details { margin: 18px 0; }
+.as-music summary { cursor: pointer; color: var(--text-secondary, #9ca5bc); margin-bottom: 12px; font-size: 13px; }
+.as-engine { font-size: 12px; color: #dfaa69; max-width: 310px; overflow-wrap: anywhere; }
+.as-engine.ready { color: #79cea5; }
+.as-scene { border-left: 2px solid #00d2ff66; padding-left: 12px; font-size: 12px; }
+.as-scene strong { display: block; color: var(--text-primary); }
+.as-generate { display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 13px 22px; color: #071219; background: var(--primary, #00d2ff); border: 0; border-radius: 10px; font-weight: 700; cursor: pointer; }
+.as-music button:disabled { opacity: .45; cursor: default; }
+.as-note { font-size: 11px; }
+.as-error { color: #f29e9e; font-size: 13px; overflow-wrap: anywhere; }
+.as-library { min-width: 0; border-left: 1px solid var(--border-color, #ffffff18); padding-left: 24px; }
+.as-library h3 { font-size: 15px; margin: 0 0 18px; }
+.as-track { display: grid; gap: 10px; border-bottom: 1px solid var(--border-color, #ffffff18); padding: 0 0 20px; margin-bottom: 20px; }
+.as-track > span { color: var(--text-secondary, #9ca5bc); font-size: 11px; }
+.as-track audio, .as-track progress { width: 100%; min-width: 0; }
+.as-track a { display: inline-flex; align-items: center; gap: 6px; color: var(--primary, #00d2ff); font-size: 12px; text-decoration: none; }
+.as-music :is(button, select, input, textarea, a):focus-visible { outline: 2px solid var(--primary, #00d2ff); outline-offset: 3px; }
+@media (max-width: 1100px) { .as-music { grid-template-columns: minmax(0, 1fr); } .as-library { border-left: 0; border-top: 1px solid var(--border-color, #ffffff18); padding: 22px 0 0; } }
+@media (max-width: 600px) { .as-music { padding: 16px; gap: 20px; } .as-genres { grid-template-columns: minmax(0, 1fr); } .as-tabs { padding: 10px 16px; } }

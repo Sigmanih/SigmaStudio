@@ -35,7 +35,7 @@ const TITOLI_DA_URL = {
   network_lab: 'AI Web Browser',
   sigma_network: 'Sigma Network',
   roadmap: 'Pianificazione & Task',
-  voice_studio: 'Voice Studio',
+  voice_studio: 'AudioStudio',
   email_client: 'Email Hub',
   messaging_hub: 'Messaging Hub',
   youtube_studio: 'YouTube',
