@@ -103,7 +103,7 @@ LOTTI: Dict[str, Tuple[str, ...]] = {
         "kicad_advanced",
         "module_lifecycle",
         "creative_audio_export", "creative_remaster", "creative_sigla",
-        "editor_jobs",
+        "editor_jobs", "creative_score",
         "capability_manager", "civitai_red", "creative_characters", "creative_cleanup", "creative_color_finish", "creative_judge", "creative_ltx", "creative_media", "creative_production", "creative_scene", "creative_speech_qa", "creative_storyboard", "creative_preproduction", "voice_engines", "creative_timeline", "video_agents_and_tools", "docker_fs", "dynamic_swarm", "eda_harness_tools",
         "eda_lab", "email_client", "frontend_diagnostics", "developer_graph",
         "fusione_a_tre_vie", "i18n_translator", "kicad_agent",

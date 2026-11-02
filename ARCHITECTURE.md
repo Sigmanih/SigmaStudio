@@ -180,6 +180,14 @@ Il laboratorio distribuisce un solo catalogo di schemi ed esecutori per harness 
 
 DRC/ERC richiedono un report nuovo e valido: assenza del report, errore del comando o connessioni mancanti non diventano un risultato pulito. La creazione di un progetto rifiuta la sovrascrittura di file esistenti. Le integrazioni di produzione usano la [CLI ufficiale di KiCad](https://docs.kicad.org/9.0/en/cli/cli.html); la verifica locale su Linux con KiCad 9 non sostituisce quella su Windows o Raspberry Pi.
 
+### 5.4 Colonna sonora e correzione dei master
+
+Il laboratorio creativo separa piano musicale (`video/score_plan.py`), controlli del segnale (`video/score_quality.py`) e composizione. I brani di restauro durano al massimo 96 secondi piu' la dissolvenza, con orchestrazioni differenti. Le descrizioni visive ripetute vengono richieste nuovamente; se restano indistinguibili, occorre una revisione esplicita. La cache dipende dalla ricetta musicale e viene ricontrollata prima del riuso.
+
+I controlli rifiutano durate insufficienti, silenzi prolungati, duplicati esatti e loop quasi identici protratti per almeno trenta secondi. Si rigenera con seed diverso e margine di coda crescente; non si copiano frasi per riempire i vuoti. Queste misure rilevano difetti tecnici, non sostituiscono l'ascolto e il giudizio musicale. La generazione ordinaria usa gli stessi controlli; le dissolvenze non devono allungare la durata del film.
+
+Una clip marcata `restoration_score` sostituisce l'audio originale nel proprio intervallo: le due colonne sonore non vengono sommate. Le clip musicali ordinarie mantengono il comportamento di sovrapposizione. Il modulo `video.repair_score` ricompone un master in un nuovo file, conserva narrazioni e sottotitoli e copia il video senza ricodifica. Non modifica la timeline attiva e rifiuta un file di uscita esistente; la CLI si ferma se ComfyUI risulta occupato prima dell'invio.
+
 ## 6. 🤖 Swarm & Agent Orchestration
 
 ### 6.1 Agent Catalog
