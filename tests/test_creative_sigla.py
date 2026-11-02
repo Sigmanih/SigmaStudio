@@ -70,7 +70,12 @@ def test_intro_corta_e_video_centrale_conservato(tmp_path, monkeypatch):
     run(['-f', 'lavfi', '-i', 'color=c=blue:s=64x48:r=24:d=2', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
          '-i', str(subtitle), '-map', '0:v', '-map', '1:a', '-map', '2:s', '-t', '2', '-c:v', 'libx264',
          '-c:a', 'aac', '-c:s', 'mov_text', str(source)])
-    result = audio_export.add_sigla_to_master(source, output, tmp_path, ['en'])
+    import hashlib
+    from core.store import JsonStore
+    JsonStore(tmp_path / 'sigla_template.json').save({'layout': 'sigma-logo-title-v1',
+        **{kind + '_sha256': hashlib.sha256((tmp_path / f'{kind}.mp4').read_bytes()).hexdigest() for kind in ('intro', 'outro')}})
+    result = audio_export.add_sigla_to_master(source, output, tmp_path, ['en'], film_title='Film', film_year='1926')
+    assert result['identity_title'] == 'Film'
     assert result['film_video_copied']
     assert abs(probe(output)['duration'] - 11) < 0.1
     assert abs(probe(output)['audio_duration'] - 11) < 0.1

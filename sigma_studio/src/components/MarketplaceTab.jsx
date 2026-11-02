@@ -180,7 +180,7 @@ const OPTIONAL_MODULES = [
     icon: Mic,
     color: '#ff79c6',
     tabType: 'voice_studio',
-    version: 'v1.1.0',
+    version: 'v1.2.0',
     description: 'Composizione musicale locale con ACE-Step, quattro preset per lo studio, anteprime WAV/MP3 e strumenti per sintesi vocale e clonazione.',
     highlights: [
       'Basi lo-fi, ambient, piano neoclassico e cyber ambient con anteprime di due minuti',
