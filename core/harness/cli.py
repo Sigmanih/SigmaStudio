@@ -13,11 +13,17 @@ Usage:
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
+from contextlib import nullcontext, redirect_stdout
+from core.logger import redirect_console
 
-from core.harness.loop import stream_admin_agent_turn
 from core.harness.policy import ToolPolicy
+
+
+def stream_admin_agent_turn(**kwargs):
+    """Carica il runtime dopo avere separato diagnostica e output strutturato."""
+    from core.harness.loop import stream_admin_agent_turn as run
+    yield from run(**kwargs)
 
 
 def main() -> int:
@@ -44,53 +50,56 @@ def main() -> int:
     messages = [{"role": "user", "content": args.goal}]
     success = False
     turn_count = 0
+    event_output = sys.stdout
 
     try:
-        gen = stream_admin_agent_turn(
-            messages=messages,
-            workspace_root=workspace_path,
-            provider=args.provider,
-            model_name=args.model,
-            max_turns=args.max_turns,
-            allowed_tools=allowed,
-            policy_label=policy.label,
-        )
+        with (redirect_console(sys.stderr) if args.json else nullcontext()), \
+                (redirect_stdout(sys.stderr) if args.json else nullcontext()):
+            gen = stream_admin_agent_turn(
+                messages=messages,
+                workspace_root=workspace_path,
+                provider=args.provider,
+                model_name=args.model,
+                max_turns=args.max_turns,
+                allowed_tools=allowed,
+                policy_label=policy.label,
+            )
 
-        for event in gen:
-            e_type = event.get("type")
-            if e_type == "turn_end":
-                turn_count += 1
-            if e_type == "run_metrics":
-                success = bool(event.get("goal_reached"))
-            elif e_type == "complete":
-                success = bool(event.get("success", True))
-            elif e_type == "done" and "success" in event:
-                success = bool(event["success"])
-            elif e_type == "error" or (e_type == "worktree_preserved" and event.get("apply_failed")):
-                success = False
+            for event in gen:
+                e_type = event.get("type")
+                if e_type == "turn_end":
+                    turn_count += 1
+                if e_type == "run_metrics":
+                    success = bool(event.get("goal_reached"))
+                elif e_type == "complete":
+                    success = bool(event.get("success", True))
+                elif e_type == "done" and "success" in event:
+                    success = bool(event["success"])
+                elif e_type == "error" or (e_type == "worktree_preserved" and event.get("apply_failed")):
+                    success = False
 
-            if args.json:
-                print(json.dumps(event, default=str))
-                continue
+                if args.json:
+                    print(json.dumps(event, default=str), file=event_output)
+                    continue
 
-            if e_type == "token":
-                sys.stdout.write(event.get("token", ""))
-                sys.stdout.flush()
-            elif e_type == "thought":
-                # Print reasoning in dim style
-                sys.stdout.write(f"\033[90m{event.get('token', '')}\033[0m")
-                sys.stdout.flush()
-            elif e_type == "status":
-                print(f"\n\033[93m[Status]\033[0m {event.get('text')}")
-            elif e_type == "tool_call":
-                print(f"\n\033[94m[Tool Call]\033[0m {event.get('tool')}: {json.dumps(event.get('params', {}))[:120]}")
-            elif e_type == "tool_result":
-                res = event.get("result", {})
-                ok = res.get("success", False)
-                sym = "\033[92m✔\033[0m" if ok else "\033[91m✖\033[0m"
-                print(f"{sym} [Tool Result] {event.get('tool')}: {'OK' if ok else res.get('error', 'failed')[:100]}")
-            elif e_type == "error":
-                print(f"\n\033[91m[Error]\033[0m {event.get('message') or event.get('error')}")
+                if e_type == "token":
+                    sys.stdout.write(event.get("token", ""))
+                    sys.stdout.flush()
+                elif e_type == "thought":
+                    # Print reasoning in dim style
+                    sys.stdout.write(f"\033[90m{event.get('token', '')}\033[0m")
+                    sys.stdout.flush()
+                elif e_type == "status":
+                    print(f"\n\033[93m[Status]\033[0m {event.get('text')}")
+                elif e_type == "tool_call":
+                    print(f"\n\033[94m[Tool Call]\033[0m {event.get('tool')}: {json.dumps(event.get('params', {}))[:120]}")
+                elif e_type == "tool_result":
+                    res = event.get("result", {})
+                    ok = res.get("success", False)
+                    sym = "\033[92m✔\033[0m" if ok else "\033[91m✖\033[0m"
+                    print(f"{sym} [Tool Result] {event.get('tool')}: {'OK' if ok else res.get('error', 'failed')[:100]}")
+                elif e_type == "error":
+                    print(f"\n\033[91m[Error]\033[0m {event.get('message') or event.get('error')}")
 
     except KeyboardInterrupt:
         if args.json:

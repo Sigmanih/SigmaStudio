@@ -66,5 +66,23 @@ def test_cli_non_dichiara_successo_se_consegna_fallisce(monkeypatch, capsys, tmp
     assert "SUCCESSO" not in capsys.readouterr().out
 
 
+def test_cli_json_tiene_i_log_su_stderr(monkeypatch, capsys, tmp_path):
+    from core.harness import cli
+    from core.logger import get_logger
+
+    def events(**kwargs):
+        get_logger("test_cli").info("Diagnostica separata")
+        print("Diagnostica del provider")
+        yield {"type": "run_metrics", "goal_reached": True}
+
+    monkeypatch.setattr("sys.argv", ["sigma", "--goal", "verifica", "--workspace", str(tmp_path), "--json"])
+    monkeypatch.setattr(cli, "stream_admin_agent_turn", events)
+    assert cli.main() == 0
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["type"] == "run_metrics"
+    assert "Diagnostica separata" in captured.err
+    assert "Diagnostica del provider" in captured.err
+
+
 if __name__ == "__main__":
     unittest.main()

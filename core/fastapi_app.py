@@ -12,6 +12,7 @@ import time
 import uuid
 import datetime
 import asyncio
+import contextvars
 import concurrent.futures
 import queue
 import threading
@@ -34,6 +35,8 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from core.logger import get_logger
+from core.version import VERSION
+from core.request_context import RequestContextMiddleware, get_request_id, request_scope
 from core.system.runtime_env import apply_hardware_env
 apply_hardware_env()
 from core.security.http_access import HTTPAccessMiddleware, allowed_origins
@@ -106,7 +109,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Σ-SIGMA Studio API",
     description="Unified Research Environment & Cognitive Orchestration Engine",
-    version="0.9.1",
+    version=VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -118,9 +121,22 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 app.add_middleware(RequestLimitMiddleware)
 app.add_middleware(HTTPAccessMiddleware)
+app.add_middleware(RequestContextMiddleware)
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(request: Request, exc: Exception):
+    request_id = request.scope.get("state", {}).get("request_id") or get_request_id()
+    with request_scope(request_id):
+        log.error("Richiesta HTTP fallita: %s", request.url.path,
+                  exc_info=(type(exc), exc, exc.__traceback__))
+    return JSONResponse(status_code=500,
+                        content={"success": False, "error": "Errore interno dello Studio.", "request_id": request_id},
+                        headers={"X-Request-ID": request_id})
 
 
 # Handlers are synchronous, so every API request spends its life on a worker
@@ -226,7 +242,7 @@ async def _aiter_blocking(factory):
                 _stream_slots.release()
 
     try:
-        _stream_executor.submit(_pump)
+        _stream_executor.submit(contextvars.copy_context().run, _pump)
     except RuntimeError:
         _stream_slots.release()
         raise
@@ -1024,7 +1040,7 @@ async def _dispatch_route(request: Request, method: str):
         # all -- not even the "engine busy" notice the runtime sends.
         try:
             threading.Thread(
-                target=_run_in_thread, daemon=True,
+                target=contextvars.copy_context().run, args=(_run_in_thread,), daemon=True,
                 name=f"sigma-sse-{request.url.path}",
             ).start()
         except RuntimeError:
@@ -1060,7 +1076,7 @@ async def _dispatch_route(request: Request, method: str):
     # cannot leave a status poll with no thread to run on.
     loop = asyncio.get_running_loop()
     try:
-        await loop.run_in_executor(_api_executor, handler_fn)
+        await loop.run_in_executor(_api_executor, contextvars.copy_context().run, handler_fn)
     except asyncio.CancelledError:
         return Response(status_code=499)
 
@@ -1265,7 +1281,7 @@ async def v1_completions(request: Request):
             return [answer.text]
 
         tokens = await asyncio.get_running_loop().run_in_executor(
-            _stream_executor, _collect
+            _stream_executor, contextvars.copy_context().run, _collect
         )
         full_text = "".join(tokens)
         req_id = f"cmpl-{uuid.uuid4().hex[:20]}"

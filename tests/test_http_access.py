@@ -1,5 +1,6 @@
 """Il confine HTTP distingue accesso locale, browser estranei e accesso remoto."""
 import time
+import asyncio
 
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
@@ -7,10 +8,42 @@ from starlette.routing import Route
 from starlette.testclient import TestClient
 
 from core.security.http_access import HTTPAccessMiddleware, _session
+from core.request_context import RequestContextMiddleware, get_request_id
 
 
 async def endpoint(request):
     return JSONResponse({"ok": True})
+
+
+def test_traccia_richiesta_validata_e_propagata_ai_thread():
+    async def traced(request):
+        return JSONResponse({"request_id": get_request_id(), "thread_id": await asyncio.to_thread(get_request_id)})
+
+    app = Starlette(routes=[Route("/", traced)])
+    app.add_middleware(RequestContextMiddleware)
+    caller_id = "b3aa767a-1542-4f43-99b6-76bd6134aa67"
+    with TestClient(app) as c:
+        response = c.get("/", headers={"X-Request-ID": caller_id})
+        assert response.json() == {"request_id": caller_id, "thread_id": caller_id}
+        assert response.headers["x-request-id"] == caller_id
+        invalid = c.get("/", headers={"X-Request-ID": "un-valore-non-valido"})
+        assert invalid.headers["x-request-id"] != "un-valore-non-valido"
+    assert get_request_id() == "-"
+
+
+def test_errore_imprevisto_mantiene_la_traccia_senza_esporre_dettagli_interni():
+    from core.fastapi_app import unexpected_error
+
+    async def fail(request):
+        raise RuntimeError("dettaglio interno riservato")
+
+    app = Starlette(routes=[Route("/", fail)], exception_handlers={Exception: unexpected_error})
+    app.add_middleware(RequestContextMiddleware)
+    with TestClient(app, raise_server_exceptions=False) as c:
+        response = c.get("/")
+        assert response.status_code == 500
+        assert response.json()["request_id"] == response.headers["x-request-id"]
+        assert "riservato" not in response.text
 
 
 def client(remote=False, host="localhost"):

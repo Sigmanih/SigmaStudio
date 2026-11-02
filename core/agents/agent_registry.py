@@ -80,6 +80,12 @@ def get_all_agents() -> list:
                             "specialization": aid
                         })
                         known_ids.add(aid)
+    from core.manifests_catalog import get_catalog
+    domains = {entry["id"]: entry.get("workDomain", "") for entry in get_catalog()}
+    for entry in result:
+        private = "private" in str(entry.get("manifesto", "")).replace("\\", "/").casefold().split("/")
+        if not private:
+            entry.setdefault("workDomain", entry.get("work_domain") or domains.get(entry["id"], ""))
     return result
 
 

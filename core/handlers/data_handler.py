@@ -357,6 +357,9 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
     # Foto e modello 3D installati con il ruolo stanno in <ruoli>/<id>/ e il
     # server li espone sotto /ruoli/<id>/
     stem = fname[:-3] if fname.lower().endswith('.md') else fname
+    from core.manifests_catalog import get_catalog
+    official = next((entry for entry in get_catalog() if entry.get("id") == stem), {})
+    work_domain = official.get("workDomain", "") if Path(fpath).parent.name.casefold() != "private" else ""
     risorse_dir = Path(fpath).parent / stem
     if not img:
         for nome_img in ("immagine.jpg", "immagine.png"):
@@ -412,6 +415,8 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
             role = line_s.replace("# Role:", "").strip()
         elif line_s.startswith("# Category:"):
             category = line_s.replace("# Category:", "").strip()
+        elif line_s.startswith("# WorkDomain:"):
+            work_domain = line_s.replace("# WorkDomain:", "").strip()
         elif line_s.startswith("# DomainColor:"):
             domain_color = line_s.replace("# DomainColor:", "").strip()
         elif line_s.startswith("# Icon:"):
@@ -471,6 +476,7 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
         "name": name,
         "role": role,
         "category": category,
+        "workDomain": work_domain,
         "domainColor": domain_color,
         "icon": icon,
         "capabilities": capabilities,

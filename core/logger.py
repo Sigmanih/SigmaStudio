@@ -14,6 +14,8 @@ Usage:
 import logging
 import os
 import sys
+from contextlib import contextmanager
+from core.request_context import get_request_id
 
 # Su Windows la console standard usa cp1252/charmap: quando un modello emette
 # token CJK, emoji o caratteri speciali non mappabili, la stampa su stdout solleverebbe
@@ -31,15 +33,22 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # Log level controlled via SIGMA_LOG_LEVEL env var (default: INFO)
 _DEFAULT_LEVEL = os.environ.get("SIGMA_LOG_LEVEL", "INFO").upper()
-_LOG_FORMAT = "[%(asctime)s][%(name)s][%(levelname)s] %(message)s"
+_LOG_FORMAT = "[%(asctime)s][%(name)s][%(levelname)s][%(request_id)s] %(message)s"
 _DATE_FORMAT = "%H:%M:%S"
 
 # Root logger for all Sigma modules — configured once
 _root = logging.getLogger("sigma")
 _root.propagate = False  # don't bubble up to Python root logger
 
+
+class RequestIdFilter(logging.Filter):
+    def filter(self, record):
+        record.request_id = get_request_id()
+        return True
+
 if not _root.handlers:
     _handler = logging.StreamHandler(sys.stdout)
+    _handler.addFilter(RequestIdFilter())
     _handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
     _root.addHandler(_handler)
 
@@ -62,3 +71,18 @@ def get_logger(name: str) -> logging.Logger:
     # Strip redundant 'core.' prefix so names are shorter in output
     short = name.replace("core.", "", 1) if name.startswith("core.") else name
     return _root.getChild(short)
+
+
+@contextmanager
+def redirect_console(stream):
+    """Separa la diagnostica dall'output strutturato della CLI."""
+    previous = []
+    try:
+        for handler in _root.handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                previous.append((handler, handler.stream))
+                handler.setStream(stream)
+        yield
+    finally:
+        for handler, original in previous:
+            handler.setStream(original)

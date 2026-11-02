@@ -19,7 +19,8 @@
     "numCtx": 32768,
     "role": "Cognitive Front-Desk & Intelligent Router",
     "target": "Tutti gli utenti (Front-Desk predefinito)",
-    "temperature": 0.3
+    "temperature": 0.3,
+    "workDomain": "general"
   },
   {
     "baseModel": "sigma",
@@ -41,7 +42,8 @@
     "numCtx": 65536,
     "role": "Kernel Administrator & Architecture Orchestrator",
     "target": "Sviluppatori & Amministratori di Sistema",
-    "temperature": 0.2
+    "temperature": 0.2,
+    "workDomain": "systems"
   },
   {
     "baseModel": "sigma",
@@ -68,7 +70,8 @@
     },
     "role": "System Architect & Swarm Coordinator",
     "target": "Architetti Software & Project Manager",
-    "temperature": 0.55
+    "temperature": 0.55,
+    "workDomain": "systems"
   },
   {
     "baseModel": "sigma",
@@ -95,7 +98,8 @@
     },
     "role": "Full-Stack Software Engineer & Algorithm Designer",
     "target": "Sviluppatori Python, JavaScript, React e Full-Stack",
-    "temperature": 0.3
+    "temperature": 0.3,
+    "workDomain": "development"
   },
   {
     "baseModel": "sigma",
@@ -117,7 +121,8 @@
     "numCtx": 32768,
     "role": "Theoretical Mathematician & Formal Theorem Prover",
     "target": "Matematici, Ricercatori e Studenti Avanzati",
-    "temperature": 0.5
+    "temperature": 0.5,
+    "workDomain": "research"
   },
   {
     "baseModel": "sigma",
@@ -144,7 +149,8 @@
     },
     "role": "Test Automation & Numerical Verification Specialist",
     "target": "QA Engineers, Sviluppatori e Ricercatori",
-    "temperature": 0.25
+    "temperature": 0.25,
+    "workDomain": "development"
   },
   {
     "baseModel": "sigma",
@@ -171,7 +177,8 @@
     },
     "role": "Interactive Data Visualizer & Scientific UI Designer",
     "target": "Data Scientist, Designer UI e Divulgatori",
-    "temperature": 0.5
+    "temperature": 0.5,
+    "workDomain": "research"
   },
   {
     "baseModel": "sigma",
@@ -198,7 +205,8 @@
     },
     "role": "Critical Reviewer & Scientific Verification Auditor",
     "target": "Ricercatori, Autori e Docenti Universitari",
-    "temperature": 0.3
+    "temperature": 0.3,
+    "workDomain": "research"
   },
   {
     "baseModel": "sigma",
@@ -206,11 +214,11 @@
       "Meccanica Quantistica",
       "Elettromagnetismo",
       "Termodinamica Applicata",
-      "Relativit\u00e0 Generale",
+      "Relatività Generale",
       "Simulazioni Numeriche Python"
     ],
     "category": "Scienze, Ingegneria & Tech",
-    "description": "Meccanica classica, quantistica, elettromagnetismo, termodinamica e relativit\u00e0 con modellazione numerica in Python.",
+    "description": "Meccanica classica, quantistica, elettromagnetismo, termodinamica e relatività con modellazione numerica in Python.",
     "domainColor": "#06b6d4",
     "filename": "physics_professor.md",
     "icon": "Atom",
@@ -225,7 +233,8 @@
     },
     "role": "Theoretical & Experimental Physics Professor",
     "target": "Studenti di Fisica, Ingegneria e Ricercatori",
-    "temperature": 0.25
+    "temperature": 0.25,
+    "workDomain": "research"
   },
   {
     "baseModel": "sigma",
@@ -247,7 +256,8 @@
     "numCtx": 32768,
     "role": "Chemistry Professor & Molecular Modeling Specialist",
     "target": "Studenti di Chimica, Biotecnologie e Farmacia",
-    "temperature": 0.25
+    "temperature": 0.25,
+    "workDomain": "research"
   },
   {
     "baseModel": "sigma",
@@ -258,7 +268,7 @@
       "Simulazione Quiz",
       "Valutazione Competenze"
     ],
-    "category": "Studenti & Universit\u00e0",
+    "category": "Studenti & Università",
     "description": "Generazione di prove d'esame, quesiti a risposta multipla e aperta, griglie di valutazione e simulazioni di verifica.",
     "domainColor": "#8b5cf6",
     "filename": "academic_examiner.md",
@@ -269,7 +279,8 @@
     "numCtx": 32768,
     "role": "Academic Examiner & Curriculum Assessor",
     "target": "Docenti, Formatori e Studenti Universitari",
-    "temperature": 0.3
+    "temperature": 0.3,
+    "workDomain": "research"
   },
   {
     "baseModel": "sigma",
@@ -280,7 +291,7 @@
       "Articoli Divulgativi",
       "Interviste & Inchieste"
     ],
-    "category": "Comunicazione & Creativit\u00e0",
+    "category": "Comunicazione & Creatività",
     "description": "Ricerca web in tempo reale, rassegne stampa tematiche, inchieste giornalistiche, fact-checking e articoli divulgativi.",
     "domainColor": "#3b82f6",
     "filename": "online_journalist.md",
@@ -291,7 +302,8 @@
     "numCtx": 32768,
     "role": "Investigative Online Journalist & Fact-Checker",
     "target": "Giornalisti, Content Creator e Ricercatori",
-    "temperature": 0.35
+    "temperature": 0.35,
+    "workDomain": "communication"
   },
   {
     "baseModel": "sigma",
@@ -302,7 +314,7 @@
       "Fonetica IPA",
       "Business English"
     ],
-    "category": "Studenti & Universit\u00e0",
+    "category": "Studenti & Università",
     "description": "Insegnamento inglese, spagnolo, tedesco, francese con correzione saggi, grammatica comparata, fonetica IPA e business language.",
     "domainColor": "#bc8cff",
     "filename": "docente_lingue.md",
@@ -313,7 +325,8 @@
     "numCtx": 32768,
     "role": "Language Tutor & Contextual Translator",
     "target": "Studenti, Viaggiatori e Professionisti Internazionali",
-    "temperature": 0.3
+    "temperature": 0.3,
+    "workDomain": "research"
   },
   {
     "baseModel": "sigma",
@@ -324,7 +337,7 @@
       "KaTeX Impeccabile",
       "Preparazione Esami"
     ],
-    "category": "Studenti & Universit\u00e0",
+    "category": "Studenti & Università",
     "description": "Risoluzione passo-passo di integrali, matrici, limiti e derivate con spiegazione didattica in KaTeX e schemi di ripasso per esami.",
     "domainColor": "#00d2ff",
     "filename": "tutor_matematica.md",
@@ -335,7 +348,8 @@
     "numCtx": 32768,
     "role": "University Math Tutor & Exercise Solver",
     "target": "Studenti Universitari & Scuole Superiori",
-    "temperature": 0.15
+    "temperature": 0.15,
+    "workDomain": "research"
   },
   {
     "baseModel": "sigma",
@@ -357,7 +371,8 @@
     "numCtx": 32768,
     "role": "Legal Consultant & Contract Specialist",
     "target": "Professionisti, Aziende e Consulenti",
-    "temperature": 0.15
+    "temperature": 0.15,
+    "workDomain": "legal"
   },
   {
     "baseModel": "sigma",
@@ -384,7 +399,8 @@
     },
     "role": "Medical Researcher & Health Science Communicator",
     "target": "Studenti di Medicina, Professionisti Sanitari e Cittadini",
-    "temperature": 0.15
+    "temperature": 0.15,
+    "workDomain": "health"
   },
   {
     "baseModel": "sigma",
@@ -406,7 +422,8 @@
     "numCtx": 32768,
     "role": "Financial Analyst & Quantitative Economist",
     "target": "Imprenditori, Investitori e Studenti di Economia",
-    "temperature": 0.2
+    "temperature": 0.2,
+    "workDomain": "legal"
   },
   {
     "baseModel": "sigma",
@@ -428,7 +445,8 @@
     "numCtx": 32768,
     "role": "Data Scientist & Machine Learning Specialist",
     "target": "Data Scientist, Sviluppatori ML e Studenti STEM",
-    "temperature": 0.15
+    "temperature": 0.15,
+    "workDomain": "research"
   },
   {
     "baseModel": "sigma",
@@ -439,7 +457,7 @@
       "Brand Voice & Tono",
       "Content Strategy"
     ],
-    "category": "Comunicazione & Creativit\u00e0",
+    "category": "Comunicazione & Creatività",
     "description": "Storytelling persuasivo, modelli AIDA/PAS, sceneggiature, romanzi, brand voice, content strategy e post ad alto ingaggio.",
     "domainColor": "#ff5064",
     "filename": "copywriter_creativo.md",
@@ -450,7 +468,8 @@
     "numCtx": 32768,
     "role": "Creative Copywriter & Narrative Architect",
     "target": "Copywriter, Scrittori, Creator e Marketer",
-    "temperature": 0.4
+    "temperature": 0.4,
+    "workDomain": "creative"
   },
   {
     "baseModel": "sigma",
@@ -472,7 +491,8 @@
     "numCtx": 32768,
     "role": "Structural & Mechanical Engineering Specialist",
     "target": "Ingegneri Meccanici, Progettisti e Studenti",
-    "temperature": 0.15
+    "temperature": 0.15,
+    "workDomain": "research"
   },
   {
     "baseModel": "sigma",
@@ -483,7 +503,7 @@
       "Direzione Attori & Personaggi Virtuali",
       "Grammatica Audiovisiva & Pacing"
     ],
-    "category": "Comunicazione & Creativit\u00e0",
+    "category": "Comunicazione & Creatività",
     "description": "Visione artistica, regia di scene, inquadrature, movimenti di macchina, blocking attori e coerenza drammaturgica per video e cortometraggi.",
     "domainColor": "#ff007a",
     "filename": "regista_cinematografico.md",
@@ -500,7 +520,8 @@
     },
     "role": "Film Director & Creative Vision Lead",
     "target": "Registi, Filmmaker, Creator Video e Storyteller",
-    "temperature": 0.35
+    "temperature": 0.35,
+    "workDomain": "creative"
   },
   {
     "baseModel": "sigma",
@@ -511,7 +532,7 @@
       "Struttura in 3 Atti",
       "Adattamento per Doppiaggio & TTS"
     ],
-    "category": "Comunicazione & Creativit\u00e0",
+    "category": "Comunicazione & Creatività",
     "description": "Scrittura di copioni standard, trattamenti di scena, archi trasformativi dei personaggi e dialoghi incisivi per produzioni video.",
     "domainColor": "#f59e0b",
     "filename": "sceneggiatore.md",
@@ -528,7 +549,8 @@
     },
     "role": "Cinematic Screenwriter & Storyteller",
     "target": "Sceneggiatori, Scrittori, Autori e Creator",
-    "temperature": 0.4
+    "temperature": 0.4,
+    "workDomain": "creative"
   },
   {
     "baseModel": "sigma",
@@ -539,7 +561,7 @@
       "Prompt Engineering Cinematografico",
       "Composizione Inquadratura"
     ],
-    "category": "Comunicazione & Creativit\u00e0",
+    "category": "Comunicazione & Creatività",
     "description": "Progettazione illuminotecnica, scelta lenti, color grading e creazione di prompt cinematografici per generatori AI di immagini e video.",
     "domainColor": "#8b5cf6",
     "filename": "direttore_fotografia.md",
@@ -556,18 +578,19 @@
     },
     "role": "Director of Photography & Prompt Artist",
     "target": "Direttori della Fotografia, Fotografi e Prompt Designer",
-    "temperature": 0.3
+    "temperature": 0.3,
+    "workDomain": "creative"
   },
   {
     "baseModel": "sigma",
     "capabilities": [
-      "Montaggio di Scena & Continuit\u00e0",
+      "Montaggio di Scena & Continuità",
       "Raccordi Dinamici (J-Cut/L-Cut/Match Cut)",
       "Ritmo & Pacing Temporale",
       "Gestione Timeline & Clip Video",
       "Sincronizzazione Audio e Immagini"
     ],
-    "category": "Comunicazione & Creativit\u00e0",
+    "category": "Comunicazione & Creatività",
     "description": "Montaggio video, raccordi di scena, ritmo dei tagli, timeline e sincronizzazione per le produzioni video di Sigma Studio.",
     "domainColor": "#06b6d4",
     "filename": "montatore_video.md",
@@ -583,7 +606,8 @@
     },
     "role": "Film Editor & Post-Production Specialist",
     "target": "Video Editor, Montatori e Content Creator",
-    "temperature": 0.25
+    "temperature": 0.25,
+    "workDomain": "creative"
   },
   {
     "baseModel": "sigma",
@@ -594,7 +618,7 @@
       "Mix Audio & Bilanciamento Tracce",
       "Prompt per Generatori Musicali"
     ],
-    "category": "Comunicazione & Creativit\u00e0",
+    "category": "Comunicazione & Creatività",
     "description": "Stratificazione sonora, effetti sonori Foley, atmosfere ambientali, composizione musicale e mixaggio per video e produzioni.",
     "domainColor": "#10b981",
     "filename": "sound_designer.md",
@@ -610,6 +634,7 @@
     },
     "role": "Sound Designer & Audio Composer",
     "target": "Sound Designer, Musicisti, Fonici e Produttori Audio",
-    "temperature": 0.3
+    "temperature": 0.3,
+    "workDomain": "creative"
   }
 ]

@@ -1,6 +1,7 @@
 """Prove rapide per cadenza, segmentazione e riparazione dei graffi verticali."""
 
 import subprocess
+import json
 
 import numpy as np
 
@@ -51,6 +52,52 @@ def test_checkpoint_senza_identita_non_riutilizza_un_altro_film(tmp_path, monkey
     chosen = M._checkpoint_dir(tmp_path, source, 1080, {"duration": 10})
     assert chosen != legacy
     assert (chosen / "checkpoint.json").is_file()
+
+
+def test_checkpoint_non_mescola_risoluzioni_diverse(tmp_path, monkeypatch):
+    source = tmp_path / "film.mp4"
+    source.write_bytes(b"sorgente")
+    monkeypatch.setattr(M, "_valid_video", lambda *args, **kwargs: {"duration": 10})
+    first = M._checkpoint_dir(tmp_path, source, 1080, {"duration": 10})
+    second = M._checkpoint_dir(tmp_path, source, 2160, {"duration": 10})
+    assert first != second
+    assert M._checkpoint_dir(tmp_path, source, 1080, {"duration": 10}) == first
+
+
+def test_checkpoint_parziale_si_ritrova_e_metadati_corrotti_si_conservano(tmp_path):
+    source = tmp_path / "film.mp4"
+    source.write_bytes(b"sorgente")
+    first = M._checkpoint_dir(tmp_path, source, 1080, {"duration": 10})
+    assert M._checkpoint_dir(tmp_path, source, 1080, {"duration": 10}) == first
+    (first / "checkpoint.json").write_text("[]", encoding="utf-8")
+    second = M._checkpoint_dir(tmp_path, source, 1080, {"duration": 10})
+    assert second != first
+    assert (first / "checkpoint.json").read_text() == "[]"
+
+
+def test_master_con_audio_diverso_non_viene_riutilizzato(tmp_path, monkeypatch):
+    import pytest
+    source = tmp_path / "film.mp4"
+    output = tmp_path / "master.mp4"
+    source.write_bytes(b"sorgente")
+    output.write_bytes(b"master")
+    state = tmp_path / "checkpoint.json"
+    state.write_text(json.dumps({"completed_stage": "master_video",
+                                "final_recipe": M._final_recipe(output, None, True)}), encoding="utf-8")
+    probe = lambda path: {"width": 320, "height": 240, "duration": 10, "frames": 240, "has_audio": True}
+    monkeypatch.setattr(M, "_ff", lambda: (lambda: "ffmpeg", probe))
+    monkeypatch.setattr(M, "_checkpoint_dir", lambda *args: tmp_path)
+    monkeypatch.setattr(M, "cadence_profile", lambda *args: {"source_fps": 24})
+    monkeypatch.setattr(M, "_valid_video", lambda path, *args, **kwargs: probe(path) if path == output else None)
+    (tmp_path / "master_prima_dopo.jpg").write_bytes(b"anteprima")
+    assert M.remaster_film(source, output, tmp_path, preserve_source_audio=True)["path"] == str(output)
+
+    def interrupted(*args):
+        raise RuntimeError("Il master deve essere ricostruito")
+
+    monkeypatch.setattr(M, "normalize_cadence", interrupted)
+    with pytest.raises(RuntimeError, match="deve essere ricostruito"):
+        M.remaster_film(source, output, tmp_path, preserve_source_audio=False)
 
 
 def test_risoluzione_finale_mantiene_il_rapporto_della_sorgente():

@@ -32,6 +32,7 @@ from typing import Any
 from core import paths
 from core.logger import get_logger
 from core.net_utils import safe_urlopen
+from core.module_contract import validate_manifest
 
 log = get_logger(__name__)
 
@@ -336,6 +337,7 @@ class ModuleLoader:
 
     def _copy_module_from_dir(self, source_dir: str, module_id: str) -> None:
         """Copia i file backend e frontend dalla cartella sorgente alle destinazioni di Sigma Studio."""
+        validate_manifest(Path(source_dir) / "manifest.json", module_id)
         backend_src = os.path.join(source_dir, "backend")
         frontend_src = os.path.join(source_dir, "frontend")
 
@@ -442,6 +444,7 @@ class ModuleLoader:
         """Risolve il backend senza inizializzare l'applicazione HTTP."""
         import traceback
         self._validate_module_id(module_id)
+        validate_manifest(Path(_CORE_MODULES_DIR) / module_id / "manifest.json", module_id)
         if _CORE_MODULES_DIR not in sys.path:
             sys.path.insert(0, os.path.dirname(_CORE_MODULES_DIR))
         if _ROOT not in sys.path:

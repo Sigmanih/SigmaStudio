@@ -11,7 +11,7 @@ import urllib.error
 from datetime import datetime
 from core import paths
 
-CURRENT_VERSION = "0.9.1"
+from core.version import VERSION as CURRENT_VERSION
 GITHUB_REPO = "Sigmanih/SigmaStudio"
 GITHUB_ROLES_REPO = "Sigmanih/SigmaStudio-Manifesti"
 

@@ -1,5 +1,6 @@
 """Un errore di installazione conserva la versione utilizzabile precedente."""
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -103,3 +104,32 @@ def test_stato_json_non_valido_non_interrompe_il_boot(setup, invalid):
     loader, root, _, _ = setup
     (root / "installed.json").write_text(json.dumps(invalid), encoding="utf-8")
     assert loader._enabled_module_ids() == []
+
+
+@pytest.mark.parametrize("requirements", [
+    {"min_kernel_version": "99.0.0"}, {"kernel_api": 99}, {"kernel_api": True},
+    {"required_kernel_features": ["funzione_inesistente"]}, {"required_kernel_features": "persistent_jobs"},
+    {"id": "altro_modulo"}, {"min_kernel_version": "non-valida"},
+])
+def test_pacchetto_incompatibile_non_sostituisce_la_versione_precedente(setup, requirements):
+    loader, root, backend, _ = setup
+    source = root.parent / "SigmaStudio-Moduli/modules/demo"
+    (source / "manifest.json").write_text(json.dumps({"id": "demo", **requirements}), encoding="utf-8")
+    with pytest.raises(ValueError):
+        loader.install("demo", app=FastAPI())
+    assert (backend / "demo/version.txt").read_text() == "precedente"
+
+
+def test_manifest_compatibile_con_le_funzioni_del_kernel(tmp_path):
+    from core.module_contract import validate_manifest
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps({"id": "demo", "kernel_api": 1, "min_kernel_version": "0.9.1",
+                               "required_kernel_features": ["persistent_jobs"]}), encoding="utf-8")
+    assert validate_manifest(path, "demo")["id"] == "demo"
+
+
+def test_versione_del_kernel_coerente_con_i_pacchetti_frontend():
+    from core.version import VERSION
+    root = Path(__file__).resolve().parents[1]
+    for relative in ("package.json", "sigma_studio/package.json", "sigma_studio/package-lock.json"):
+        assert json.loads((root / relative).read_text(encoding="utf-8"))["version"] == VERSION
