@@ -23,6 +23,14 @@ test('dimensioni e parametri vuoti non diventano valori silenziosamente diversi'
   assert.throws(() => imageRequest({ ...IMAGE_DRAFT, prompt: 'x', width: 1001 }), /multipli/);
   assert.throws(() => imageRequest({ ...IMAGE_DRAFT, prompt: 'x', seed: NaN }));
 });
+test('un modello preparato con motore spento mantiene ricetta e dimensioni', () => {
+  const profile = { id: 'local:abc', tasks: ['text_to_image'], available: false, configured: true,
+    setup_message: 'Motore spento: avvia ComfyUI', defaults: { width: 512, height: 512, steps: 20, cfg_scale: 6 } };
+  const draft = selectImageModel(IMAGE_DRAFT, { model_id: profile.id }, profile);
+  assert.equal(draft.width, 512);
+  assert.equal(draft.steps, 20);
+  assert.equal(selectionIssue(draft, [profile], { reachable: false }), profile.setup_message);
+});
 test('un file installato non rende utilizzabile un motore incompatibile', () => {
   const draft = { ...IMAGE_DRAFT, model: { model_id: 'custom', ckpt: 'paint.safetensors' } };
   const inventory = { reachable: true, enabled: true, checkpoints: ['paint.safetensors'] };
