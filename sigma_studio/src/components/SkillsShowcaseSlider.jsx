@@ -154,7 +154,7 @@ export const SKILLS_CATALOG = [
     icon: Mic,
     color: '#ff79c6',
     tabType: 'voice_studio',
-    version: 'v1.4.0',
+    version: 'v1.5.0',
     size: '3 MB',
     gitUrl: 'https://github.com/Sigmanih/SigmaStudio-Moduli/tree/main/modules/sigma_voice_studio',
     image: '/images/account_voice_banner.jpg',
