@@ -32,6 +32,8 @@
 .as-track { display: grid; gap: 10px; border-bottom: 1px solid var(--border-color, #ffffff18); padding: 0 0 20px; margin-bottom: 20px; }
 .as-track > span { color: var(--text-secondary, #9ca5bc); font-size: 11px; }
 .as-track audio, .as-track progress { width: 100%; min-width: 0; }
+.as-linked-video { display:grid; gap:10px; padding:12px; border:1px solid var(--border-color,#ffffff20); border-radius:10px; }
+.as-linked-video video { display:block; width:100%; aspect-ratio:16/9; background:#080c14; border-radius:8px; }
 .as-track a { display: inline-flex; align-items: center; gap: 6px; color: var(--primary, #00d2ff); font-size: 12px; text-decoration: none; }
 .as-music :is(button, select, input, textarea, a):focus-visible { outline: 2px solid var(--primary, #00d2ff); outline-offset: 3px; }
 @media (max-width: 1100px) { .as-music { grid-template-columns: minmax(0, 1fr); } .as-library { border-left: 0; border-top: 1px solid var(--border-color, #ffffff18); padding: 22px 0 0; } }
