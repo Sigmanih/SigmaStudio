@@ -19,6 +19,39 @@ from core.modules.sigma_developer_lab.orchestrator import (  # noqa: E402
 from core.harness.context import DevContextManager  # noqa: E402
 
 
+def test_un_nuovo_run_annulla_e_attende_quello_precedente_della_sessione():
+    import threading
+    from core.modules.sigma_developer_lab.handlers import (
+        _AGENT_RUNS,
+        _AGENT_RUNS_LOCK,
+        _finish_agent_run,
+        _register_agent_run,
+    )
+
+    sessione = "test-run-priorita"
+    primo_cancel = threading.Event()
+    primo_fine = threading.Event()
+    secondo_cancel = threading.Event()
+    secondo_fine = threading.Event()
+    try:
+        assert _register_agent_run(sessione, primo_cancel, primo_fine) is None
+        attesa = _register_agent_run(sessione, secondo_cancel, secondo_fine)
+        assert primo_cancel.is_set()
+        assert attesa is primo_fine
+
+        _finish_agent_run(sessione, primo_cancel, primo_fine)
+        with _AGENT_RUNS_LOCK:
+            assert _AGENT_RUNS[sessione]["cancel"] is secondo_cancel
+
+        _finish_agent_run(sessione, secondo_cancel, secondo_fine)
+        assert primo_fine.is_set() and secondo_fine.is_set()
+        with _AGENT_RUNS_LOCK:
+            assert sessione not in _AGENT_RUNS
+    finally:
+        with _AGENT_RUNS_LOCK:
+            _AGENT_RUNS.pop(sessione, None)
+
+
 def test_orchestrator_initialization():
     orch = DevOrchestrator()
     status = orch.get_status()

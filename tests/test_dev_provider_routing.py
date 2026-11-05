@@ -25,6 +25,21 @@ class TestDevProviderRouting(unittest.TestCase):
         self.assertEqual("".join(c["token"] for c in chunks), "Hello World")
         mock_engine.generate_stream.assert_called_once()
 
+    @patch("core.harness.providers.sigma_engine")
+    @patch("core.harness.providers.load_ai_config")
+    def test_passes_cancellation_to_sigma_engine(self, mock_load_cfg, mock_engine):
+        mock_load_cfg.return_value = {"active_provider": "sigma_engine"}
+        mock_engine.generate_stream.return_value = iter([])
+
+        list(stream_dev_generation(
+            messages=[{"role": "user", "content": "test"}],
+            provider="sigma_engine",
+            cancel_check=lambda: True,
+        ))
+
+        token = mock_engine.generate_stream.call_args.kwargs["cancel"]
+        self.assertTrue(token.cancelled)
+
     @patch("core.harness.providers.call_ai_model_stream")
     @patch("core.harness.providers.load_ai_config")
     def test_routes_to_external_provider(self, mock_load_cfg, mock_call_ai):

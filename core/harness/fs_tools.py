@@ -20,6 +20,7 @@ remember.
 """
 
 import difflib
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -369,29 +370,58 @@ def glob_workspace_files(
     limit = max(1, min(int(limit or 300), 2000))
 
     matches: List[Dict[str, Any]] = []
+    visti: set[Path] = set()
     truncated = False
     try:
-        for entry in root.glob(pattern):
-            if len(matches) >= limit:
-                truncated = True
+        patterns = [pattern]
+        while True:
+            espansi = []
+            for corrente in patterns:
+                gruppo = re.search(r"\{([^{}]+)\}", corrente)
+                if not gruppo:
+                    espansi.append(corrente)
+                    continue
+                opzioni = gruppo.group(1).split(",")
+                if len(opzioni) < 2:
+                    espansi.append(corrente)
+                    continue
+                espansi.extend(corrente[:gruppo.start()] + opzione + corrente[gruppo.end():]
+                               for opzione in opzioni)
+                if len(espansi) > 128:
+                    return {"success": False,
+                            "error": "Troppe alternative nel pattern glob (massimo 128).",
+                            "files": []}
+            if espansi == patterns:
                 break
-            try:
-                if entry.is_dir():
+            patterns = espansi
+
+        for pattern_singolo in patterns:
+            for entry in root.glob(pattern_singolo):
+                if entry in visti:
                     continue
-                # Prune the same heavy trees the content search prunes.
-                if any(part in SEARCH_IGNORE_DIRS for part in entry.parts):
+                if len(matches) >= limit:
+                    truncated = True
+                    break
+                try:
+                    if entry.is_dir():
+                        continue
+                    # Prune the same heavy trees the content search prunes.
+                    if any(part in SEARCH_IGNORE_DIRS for part in entry.parts):
+                        continue
+                    if entry.suffix.lower() in SEARCH_IGNORE_EXTENSIONS:
+                        continue
+                    st = entry.stat()
+                    visti.add(entry)
+                    matches.append({
+                        "path": str(entry).replace("\\", "/"),
+                        "rel": str(entry.relative_to(root)).replace("\\", "/"),
+                        "size": st.st_size,
+                        "mtime": st.st_mtime,
+                    })
+                except (OSError, ValueError):
                     continue
-                if entry.suffix.lower() in SEARCH_IGNORE_EXTENSIONS:
-                    continue
-                st = entry.stat()
-                matches.append({
-                    "path": str(entry).replace("\\", "/"),
-                    "rel": str(entry.relative_to(root)).replace("\\", "/"),
-                    "size": st.st_size,
-                    "mtime": st.st_mtime,
-                })
-            except (OSError, ValueError):
-                continue
+            if truncated:
+                break
     except (OSError, ValueError, NotImplementedError) as e:
         return {"success": False, "error": f"Pattern glob non valido: {e}", "files": []}
 

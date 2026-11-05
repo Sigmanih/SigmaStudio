@@ -11,6 +11,7 @@ import re
 import json
 import time
 import difflib
+import threading
 from pathlib import Path
 from typing import Callable, Dict, List, Any, Optional, Generator, Tuple
 
@@ -444,6 +445,7 @@ rifiutata e il completamento con essa.
   sono riportate piu sotto e PREVALGONO su queste regole generali.
 - Se un tool fallisce, leggi l'errore e correggi la chiamata. Non ripeterla identica.
 - Non inventare percorsi o contenuti: verificali con i tool prima di agire.
+- Per dispositivi fisici e firmware, non dedurre microcontrollore, componenti o protocolli dal solo fatto che il dispositivo sia collegato. Cerca prove nei file e nei dati realmente disponibili; separa i fatti dalle ipotesi e chiedi modello/identificativi prima di pianificare modifiche o flash irreversibili.
 - Rispondi in italiano.
 """
 
@@ -717,21 +719,43 @@ _INLINE_WRITE_PATTERNS = (
         r"(?:write_text|writelines|\.write\(|open\s*\([^)]*['\"][wa])",
         re.I | re.S,
     ),
-    # echo o printf con redirezione su file
-    re.compile(r"^\s*(?:echo|printf)\b[^|\n]*?>{1,2}\s*\S", re.I | re.M),
     # equivalenti PowerShell
     re.compile(r"\b(?:set-content|out-file|add-content)\b", re.I),
-    # here-doc: cat > file << EOF
-    re.compile(r"^\s*cat\s*>{1,2}\s*\S", re.I | re.M),
     re.compile(r"\bnew-item\b[^\n]*-value\b", re.I),
-    # Redirezione a un file, da qualunque comando: `qualsiasi-cosa > percorso`.
-    # Era il buco piu largo, e da li che sono passati dieci estratti di
-    # `gguf_converter.py` in sei minuti: il file nasce su disco senza backup,
-    # senza controllo di sintassi, senza diff e senza voce nel ledger.
-    # `$null`, `NUL` e `/dev/null` non scrivono niente e restano legittimi,
-    # come le redirezioni di descrittore (`2>&1`), che non nominano percorsi.
-    re.compile(r"(?<![0-9&>])>{1,2}\s*(?!(?:\$null\b|nul\b|/dev/null\b))[^\s|;&]+", re.I),
 )
+
+# Le redirezioni sono sintassi della shell solo fuori dalle stringhe. Senza
+# questa maschera, `n>50` dentro `python -c "..."` sembra un file di output.
+_SHELL_REDIRECT_PATTERNS = (
+    re.compile(
+        r"(?<![0-9&>])>{1,2}\s*(?!(?:\$null\b|nul\b|/dev/null\b))"
+        r"(?:\"[^\"]+\"|'[^']+'|[^\s|;&]+)", re.I,
+    ),
+)
+
+
+def _maschera_stringhe_shell(testo: str) -> str:
+    """Nasconde gli operatori di redirect dentro stringhe della shell."""
+    chars = list(testo)
+    quote = None
+    i = 0
+    while i < len(chars):
+        char = chars[i]
+        if quote is None:
+            if char in ("'", '"', '`'):
+                quote = char
+        else:
+            if char == quote:
+                if quote == "'" and i + 1 < len(chars) and chars[i + 1] == "'":
+                    i += 1
+                else:
+                    quote = None
+            elif char == "\\" and quote == '"' and i + 1 < len(chars):
+                i += 1
+            elif char in (">", "<"):
+                chars[i] = ' '
+        i += 1
+    return ''.join(chars)
 
 
 #: I percorsi che un comando di shell scrive. Serve a due cose: decidere se
@@ -739,7 +763,6 @@ _INLINE_WRITE_PATTERNS = (
 #: un lavoro smette di essere dimostrabile. Non e un parser di shell: e un
 #: elenco di destinazioni plausibili, e basta al suo scopo.
 _PERCORSI_SCRITTI = (
-    re.compile(r"(?<![0-9&>])>{1,2}\s*([^\s|;&]+)", re.I),
     re.compile(r"\b(?:set-content|out-file|add-content|tee-object)\b[^\n|;]*?(?:-path|-filepath)\s+([^\s|;&]+)", re.I),
     re.compile(r"\bnew-item\b[^\n|;]*?\s([^-\s|;&][^\s|;&]*)", re.I),
 )
@@ -749,10 +772,12 @@ def percorsi_scritti_dal_comando(command: str) -> List[str]:
     # Le virgolette attorno a un percorso sono parte della sintassi della shell,
     # non del percorso: si tolgono qui una volta sola.
     testo = str(command or "")
+    shell = _maschera_stringhe_shell(testo)
     fuori: List[str] = []
-    for schema in _PERCORSI_SCRITTI:
-        for trovato in schema.finditer(testo):
-            candidato = trovato.group(1).strip().strip("'`")
+    redirect = re.compile(r"(?<![0-9&>])>{1,2}\s*(\"[^\"]+\"|'[^']+'|[^\s|;&]+)", re.I)
+    for schema, sorgente in [*((s, testo) for s in _PERCORSI_SCRITTI), (redirect, shell)]:
+        for trovato in schema.finditer(sorgente):
+            candidato = trovato.group(1).strip().strip("\"'`")
             if candidato and candidato not in fuori:
                 fuori.append(candidato)
     return fuori
@@ -764,7 +789,7 @@ def scrittura_consentita(destinazione: str, workspace_root: str) -> bool:
     # programma. Dentro l albero un file scritto dalla shell non ha backup, non
     # viene controllato e non entra nel ledger: li si passa dai tool, che fanno
     # tutte e tre le cose.
-    pulito = str(destinazione or "").strip().strip("'`")
+    pulito = str(destinazione or "").strip().strip("\"'`")
     if not pulito:
         return False
     basso = pulito.lower().replace(chr(92), chr(47))
@@ -793,7 +818,10 @@ def authors_a_file_inline(command: str) -> bool:
     dimostrare di averlo scritto.
     """
     testo = str(command or "")
-    return any(p.search(testo) for p in _INLINE_WRITE_PATTERNS)
+    if any(p.search(testo) for p in _INLINE_WRITE_PATTERNS):
+        return True
+    shell = _maschera_stringhe_shell(testo)
+    return any(p.search(shell) for p in _SHELL_REDIRECT_PATTERNS)
 
 
 def _as_history(full_text: str) -> str:
@@ -2930,10 +2958,13 @@ def _stream_agent_turn_impl(
             except Exception as exc:
                 log.debug("[AdminAgent] binding del ruolo non leggibile: %s", exc)
 
+    cancellation_forwarded = threading.Event()
+
     def _cancelled() -> bool:
         try:
             cancelled = bool(should_cancel and should_cancel())
-            if cancelled:
+            if cancelled and not cancellation_forwarded.is_set():
+                cancellation_forwarded.set()
                 try:
                     from core.engine.backends.sigmarust_backend import NamedPipeClient
                     NamedPipeClient().cancel_generation(str(session_id or "default"))
@@ -3291,6 +3322,8 @@ def _stream_agent_turn_impl(
     # rumore, e il rumore si salta.
     spezzatura_proposta = False
     total_generated_tokens = 0
+    total_reported_tokens = 0
+    reported_token_counts_complete = True
     t_turn_start = time.perf_counter()
     overall_first_token_time = None
     # L ultimo turno concluso: e quello che la telemetria live puo mostrare,
@@ -3298,6 +3331,8 @@ def _stream_agent_turn_impl(
     ultimo_ttft_ms = None
     ultimo_tps = None
     ultimo_tokens = 0
+    ultimo_chunks = 0
+    ultimo_rate_unit = "frammenti/s"
 
     #: La riga del turno in corso. Si chiude quando il turno e finito, ma non
     #: solo dove il ciclo lo dichiara: un turno che finisce senza tool esce da
@@ -3422,6 +3457,8 @@ def _stream_agent_turn_impl(
         loop_detected = False
         prefetch_symbol_done = False
         turn_tokens = 0
+        turn_reported_tokens = None
+        turn_reported_tps = None
         turn_reused = 0
         # Il conteggio vero che il server dichiara per questo turno, quando lo
         # dichiara: `prompt_tokens` dal server batte la stima caratteri/4.
@@ -3480,6 +3517,8 @@ def _stream_agent_turn_impl(
             "ttft_ms": ultimo_ttft_ms,
             "tps": ultimo_tps,
             "generated_tokens_last_turn": ultimo_tokens,
+            "generated_chunks_last_turn": ultimo_chunks,
+            "rate_unit": ultimo_rate_unit,
         }
 
         try:
@@ -3530,6 +3569,13 @@ def _stream_agent_turn_impl(
                 cancel_check=_cancelled,
                 tools=tool_catalogue,
             ):
+                if chunk.get("total_tokens") is not None:
+                    turn_reported_tokens = int(chunk["total_tokens"])
+                elif chunk.get("token_index") is not None and not chunk.get("notice"):
+                    turn_reported_tokens = max(turn_reported_tokens or 0,
+                                               int(chunk["token_index"]))
+                if chunk.get("speed_tok_s") is not None:
+                    turn_reported_tps = float(chunk["speed_tok_s"])
                 # Il provider ha accettato i tool dichiarati: da qui in poi la
                 # chiamata arriva strutturata e il testo non va piu' setacciato.
                 if chunk.get("native_tools"):
@@ -3689,28 +3735,42 @@ def _stream_agent_turn_impl(
         # Calculate metrics for this generation pass
         t_now = time.perf_counter()
         gen_duration = max(t_now - (turn_first_token_time or t_call_start), 0.001)
-        tps = round(turn_tokens / gen_duration, 1) if turn_tokens > 0 else 0.0
+        chunk_rate = round(turn_tokens / gen_duration, 1) if turn_tokens > 0 else 0.0
+        tps = turn_reported_tps or chunk_rate
         ttft_ms = round(((turn_first_token_time or t_now) - t_call_start) * 1000, 1)
+        if turn_reported_tokens is None:
+            reported_token_counts_complete = False
+        else:
+            total_reported_tokens += turn_reported_tokens
+        rate_unit = "t/s" if turn_reported_tps is not None else "frammenti/s"
 
         yield {
             "type": "metrics",
             "tps": tps,
             "ttft_ms": ttft_ms,
-            "tokens": turn_tokens,
-            "total_tokens": total_generated_tokens,
+            "tokens": turn_reported_tokens,
+            "token_count_exact": turn_reported_tokens is not None,
+            "total_tokens": (total_reported_tokens
+                             if reported_token_counts_complete else None),
+            "output_chunks": turn_tokens,
+            "rate_unit": rate_unit,
             "duration_s": round(t_now - t_turn_start, 2)
         }
         riga_turno.update({
             "prompt_tokens": (prompt_vero["valore"] if prompt_vero["valore"] is not None
                               else _approx_prompt),
             "prompt_tokens_estimated": prompt_vero["valore"] is None,
-            "generated_tokens": turn_tokens,
+            "generated_tokens": turn_reported_tokens,
+            "output_chunks": turn_tokens,
             "tps": tps,
+            "rate_unit": rate_unit,
             "ttft_ms": ttft_ms,
         })
         ultimo_ttft_ms = ttft_ms
         ultimo_tps = tps
-        ultimo_tokens = turn_tokens
+        ultimo_tokens = turn_reported_tokens
+        ultimo_chunks = turn_tokens
+        ultimo_rate_unit = rate_unit
 
         full_text = "".join(accumulated_response)
 
@@ -4900,7 +4960,9 @@ def _stream_agent_turn_impl(
             }
 
     _chiudi_riga_turno()
-    run_metrics["generated_tokens"] = total_generated_tokens
+    run_metrics["generated_tokens"] = (
+        total_reported_tokens if reported_token_counts_complete else None)
+    run_metrics["output_chunks"] = total_generated_tokens
     run_metrics["elapsed_s"] = round(time.time() - run_metrics["started_at"], 2)
     run_metrics["ttft_ms"] = (
         round((overall_first_token_time - t_turn_start) * 1000, 1)
@@ -4923,7 +4985,9 @@ def _stream_agent_turn_impl(
              100.0 * hit / max(1, hit + miss))
 
     elapsed_total_s = max(run_metrics["elapsed_s"], 0.001)
-    calc_tps = round(total_generated_tokens / elapsed_total_s, 1) if total_generated_tokens > 0 else 1091.5
+    calc_chunk_rate = round(total_generated_tokens / elapsed_total_s, 1)
+    calc_tps = (round(total_reported_tokens / elapsed_total_s, 1)
+                if reported_token_counts_complete else None)
 
     # I numeri del costo, dove si vedono: il riuso del prefisso decide se un
     # turno costa dodicimila token di attesa o duecento, e il prefill e' il
@@ -4942,15 +5006,22 @@ def _stream_agent_turn_impl(
         int(r.get("generated_tokens") or 0) / float(r["tps"])
         for r in righe_turno
         if r.get("tps") and int(r.get("generated_tokens") or 0) > 0)
-    decode_tps = (round(token_decodificati / secondi_decodifica, 1)
-                  if secondi_decodifica > 0 else calc_tps)
+    decode_tps = (
+        round(token_decodificati / secondi_decodifica, 1)
+        if reported_token_counts_complete and secondi_decodifica > 0
+        else (calc_chunk_rate if not reported_token_counts_complete else 0.0)
+    )
+    rate_unit = "t/s" if reported_token_counts_complete else "frammenti/s"
     metriche = {
         "load_duration_ms": 1.28,
         "routing_time_ms": run_metrics.get("ttft_ms"),
-        "tokens_per_second": decode_tps,
+        "tokens_per_second": decode_tps if reported_token_counts_complete else None,
         "total_tokens_per_second": calc_tps,
-        "decode_tokens_per_second": decode_tps,
-        "token_count": total_generated_tokens,
+        "decode_tokens_per_second": decode_tps if reported_token_counts_complete else None,
+        "token_count": total_reported_tokens if reported_token_counts_complete else None,
+        "output_chunks": total_generated_tokens,
+        "output_chunks_per_second": calc_chunk_rate,
+        "rate_unit": rate_unit,
         "elapsed_s": elapsed_total_s,
         "ttft_ms": run_metrics.get("ttft_ms"),
         "reuse_tokens": int(run_metrics.get("reuse_tokens") or 0),
@@ -4965,9 +5036,11 @@ def _stream_agent_turn_impl(
         "metrics": metriche,
         "meta": {
             "load_duration_ms": 1.28,
-            "tokens_per_second": decode_tps,
+            "tokens_per_second": metriche["tokens_per_second"],
             "total_tokens_per_second": calc_tps,
-            "decode_tokens_per_second": decode_tps,
+            "decode_tokens_per_second": metriche["decode_tokens_per_second"],
+            "output_chunks_per_second": calc_chunk_rate,
+            "rate_unit": rate_unit,
             "ttft_ms": run_metrics.get("ttft_ms"),
             "reuse_tokens": metriche["reuse_tokens"],
             "prefill_ms": metriche["prefill_ms"],

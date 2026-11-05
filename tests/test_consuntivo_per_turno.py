@@ -22,7 +22,7 @@ CHIAVI_DELLA_RIGA = ("turn", "prompt_tokens", "generated_tokens", "tps",
 
 
 def _turno(destinazione, max_turns=1, riuso=None, con_tool=False,
-           prompt_vero=None):
+           prompt_vero=None, token_veri=None):
     """Un run finto. Senza una chiamata nel primo turno il ciclo chiude al
     primo: il modello ha risposto, e un run che risponde e finito."""
     chiamate = {"n": 0}
@@ -40,6 +40,9 @@ def _turno(destinazione, max_turns=1, riuso=None, con_tool=False,
             pezzi.append({"prefix_reused_tokens": riuso})
         if prompt_vero is not None:
             pezzi.append({"prompt_tokens": prompt_vero, "prefill_ms": 1200.0})
+        if token_veri is not None:
+            pezzi.append({"token": "", "total_tokens": token_veri,
+                          "speed_tok_s": 42.0, "done": True})
         pezzi.append({"done": True})
         return iter(pezzi)
 
@@ -81,8 +84,15 @@ class TestLaRigaDelTurno:
         for chiave in CHIAVI_DELLA_RIGA:
             assert chiave in righe[0], chiave
         assert righe[0]["turn"] == 1
-        assert righe[0]["generated_tokens"] == 2
+        assert righe[0]["generated_tokens"] is None
+        assert righe[0]["output_chunks"] == 2
         assert righe[0]["prompt_tokens"] > 0
+
+    def test_il_numero_di_token_e_mostrato_solo_se_dichiarato_dal_provider(self, tmp_path):
+        riga = _consuntivo(_turno(tmp_path, token_veri=64))["turns_detail"][0]
+        assert riga["generated_tokens"] == 64
+        assert riga["output_chunks"] == 2
+        assert riga["rate_unit"] == "t/s"
 
     def test_il_contesto_in_ingresso_si_accumula(self, tmp_path):
         """Due turni veri: il primo chiama un tool, il secondo risponde."""
@@ -147,5 +157,6 @@ class TestLaTelemetriaLive:
         assert telemetrie[0]["generated_tokens_last_turn"] == 0
         assert telemetrie[1]["ttft_ms"] is not None
         assert telemetrie[1]["tps"] is not None
-        assert telemetrie[1]["generated_tokens_last_turn"] >= 1
+        assert telemetrie[1]["generated_tokens_last_turn"] is None
+        assert telemetrie[1]["generated_chunks_last_turn"] >= 1
 

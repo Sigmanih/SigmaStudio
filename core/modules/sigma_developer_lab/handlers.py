@@ -42,6 +42,34 @@ log = get_logger("developer_handlers")
 _ORCHESTRATORS: Dict[str, Any] = {}
 _ORCHESTRATORS_LOCK = threading.RLock()
 
+# Un solo run per sessione: un nuovo messaggio annulla il precedente e aspetta
+# che il suo thread cooperativo esca prima di usare lo stesso ledger/workspace.
+_AGENT_RUNS: Dict[str, Dict[str, Any]] = {}
+_AGENT_RUNS_LOCK = threading.RLock()
+
+
+def _register_agent_run(session_id: Optional[str], cancel: threading.Event,
+                        finished: threading.Event) -> Optional[threading.Event]:
+    if not session_id:
+        return None
+    with _AGENT_RUNS_LOCK:
+        precedente = _AGENT_RUNS.get(session_id)
+        if precedente:
+            precedente["cancel"].set()
+        _AGENT_RUNS[session_id] = {"cancel": cancel, "finished": finished}
+        return precedente["finished"] if precedente else None
+
+
+def _finish_agent_run(session_id: Optional[str], cancel: threading.Event,
+                      finished: threading.Event) -> None:
+    finished.set()
+    if not session_id:
+        return
+    with _AGENT_RUNS_LOCK:
+        corrente = _AGENT_RUNS.get(session_id)
+        if corrente and corrente["cancel"] is cancel:
+            _AGENT_RUNS.pop(session_id, None)
+
 
 def _register_orchestrator(key: str, orchestrator: Any) -> None:
     with _ORCHESTRATORS_LOCK:
@@ -396,11 +424,24 @@ async def handle_agent_chat(request: Request):
     # the event loop freezes every other Sigma Studio request until it finishes.
     async def sse_stream():
         cancel_event = threading.Event()
+        run_finished = threading.Event()
+        precedente = _register_agent_run(session_id, cancel_event, run_finished)
         events: "queue.Queue[Any]" = queue.Queue(maxsize=512)
         DONE = object()
 
         def producer():
             try:
+                if precedente is not None:
+                    try:
+                        events.put({"type": "status", "text":
+                                    "In attesa che si arresti il run precedente della sessione."},
+                                   timeout=1.0)
+                    except queue.Full:
+                        pass
+                    while not cancel_event.is_set() and not precedente.wait(timeout=0.25):
+                        pass
+                if cancel_event.is_set():
+                    return
                 for event in stream_admin_agent_turn(
                     messages=messages,
                     workspace_root=workspace_root,
@@ -444,6 +485,7 @@ async def handle_agent_chat(request: Request):
                 except queue.Full:
                     pass
             finally:
+                _finish_agent_run(session_id, cancel_event, run_finished)
                 try:
                     events.put(DONE, timeout=1.0)
                 except queue.Full:

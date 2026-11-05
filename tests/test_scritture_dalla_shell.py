@@ -37,6 +37,17 @@ class TestLaRedirezioneSiRiconosce:
     def test_una_redirezione_in_coda_a_una_verifica(self):
         assert authors_a_file_inline("python -m pytest tests/ -q > esito.txt") is True
 
+    def test_i_confronti_python_non_sono_redirezioni_della_shell(self):
+        comando = ('python -c "import os; assert 150 > 50; assert len([1, 2]) >= 2; '
+                   'print(open(\'docs/orologio_analisi.md\').read())"')
+        assert authors_a_file_inline(comando) is False
+        assert percorsi_scritti_dal_comando(comando) == []
+
+    def test_la_redirezione_reale_dopo_python_restano_rilevata(self):
+        comando = 'python -c "print(1 > 0)" > "risultato locale.txt"'
+        assert authors_a_file_inline(comando) is True
+        assert percorsi_scritti_dal_comando(comando) == ['risultato locale.txt']
+
     def test_scrivere_nel_null_non_e_scrivere(self):
         assert authors_a_file_inline("python -m pytest tests/ -q > $null") is False
         assert authors_a_file_inline("python -m pytest tests/ -q > NUL") is False

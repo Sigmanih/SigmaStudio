@@ -37,6 +37,19 @@ def stream_dev_generation(
     ai_cfg = load_ai_config()
     active_prov = (provider or ai_cfg.get("active_provider") or "sigma_engine").lower().strip()
 
+    class _CancelToken:
+        def __init__(self, checker):
+            self._checker = checker
+
+        def is_set(self):
+            return self._checker() if callable(self._checker) else False
+
+        @property
+        def cancelled(self):
+            return self.is_set()
+
+    cancel_obj = _CancelToken(cancel_check) if cancel_check else None
+
     # Normalise provider names
     if active_prov in ("sigma", "sigma_engine", "local", "sigmaengine", "native"):
         # Use native SigmaEngine with prefix caching and GBNF support
@@ -53,6 +66,7 @@ def stream_dev_generation(
                 # Un prefisso KV per ruolo: alternare Architect e Coder non
                 # deve piu' far sfrattare all'uno il prompt dell'altro.
                 cache_slot=cache_slot,
+                cancel=cancel_obj,
             ):
                 yield chunk
         except Exception as ex:
@@ -73,14 +87,6 @@ def stream_dev_generation(
     formatted_messages = list(messages)
     if system_prompt and not any(m.get("role") == "system" for m in formatted_messages):
         formatted_messages.insert(0, {"role": "system", "content": system_prompt})
-
-    class _CancelToken:
-        def __init__(self, checker):
-            self._checker = checker
-        def is_set(self):
-            return self._checker() if callable(self._checker) else False
-
-    cancel_obj = _CancelToken(cancel_check) if cancel_check else None
 
     # I tool si dichiarano solo a chi sa usarli. Mandarli a un endpoint che
     # non li implementa costa un 400 a meta' del run; ometterli con chi li

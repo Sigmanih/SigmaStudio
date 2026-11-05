@@ -280,8 +280,26 @@ function eBollaObiettivo(testo) {
     || /^\s*Obiettivo\s+completato\s*[:—–\-]/i.test(t);
 }
 
+const canonicalPipelineStatus = (status) => {
+  const value = String(status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (['done', 'completed', 'complete', 'finished', 'success', 'successful'].includes(value)) return 'done';
+  if (['in_progress', 'running', 'active'].includes(value)) return 'in_progress';
+  if (['failed', 'failure', 'error'].includes(value)) return 'failed';
+  if (['skipped', 'cancelled', 'canceled'].includes(value)) return 'skipped';
+  if (['blocked', 'waiting'].includes(value)) return 'blocked';
+  return 'pending';
+};
+
+const normalizeTaskPipelines = (taskList) => (taskList || []).map(task => ({
+  ...task,
+  pipeline: (Array.isArray(task.pipeline) ? task.pipeline : []).map(item => ({
+    ...item,
+    status: canonicalPipelineStatus(item.status)
+  }))
+}));
+
 const sanitizeTasksForLocalStorage = (tasksList) => {
-  return (tasksList || []).slice(0, 15).map(t => ({
+  return normalizeTaskPipelines(tasksList).slice(0, 15).map(t => ({
     id: t.id,
     title: t.title,
     createdAt: t.createdAt,
@@ -341,7 +359,7 @@ export default function AdminAgentChat({
       const saved = localStorage.getItem(STORAGE_TASKS_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return normalizeTaskPipelines(parsed);
       }
     } catch (e) {
       console.debug('Error loading dev tasks from localStorage:', e);
@@ -363,7 +381,7 @@ export default function AdminAgentChat({
       .then(res => res.json())
       .then(data => {
         if (data.success && Array.isArray(data.tasks) && data.tasks.length > 0) {
-          setTasks(data.tasks);
+          setTasks(normalizeTaskPipelines(data.tasks));
         }
       })
       .catch(err => console.debug('Could not load server tasks:', err));
@@ -440,7 +458,13 @@ export default function AdminAgentChat({
   const [activeInfoTab, setActiveInfoTab] = useState('piano');
   const [loopCountdown, setLoopCountdown] = useState(null);
   const autoLoopTimeoutRef = useRef(null);
+  // Scheduler (setTimeout) del prossimo giro automatico: va potuto annullare
+  // quando l'utente invia un messaggio, altrimenti il loop automatico parte
+  // comunque e "ruba" la priorita' alla nuova istruzione.
+  const autoLoopSchedulerRef = useRef(null);
   const abortControllerRef = useRef(null);
+  // Impedisce a uno stream annullato di aggiornare lo stato dopo il run nuovo.
+  const runGenerationRef = useRef(0);
   // Il loop riparte solo dopo che l'utente ha mandato almeno un messaggio
   // nella sessione corrente: senza questo, riaprire la tab faceva ripartire
   // i task da soli.
@@ -559,6 +583,7 @@ export default function AdminAgentChat({
     // 2. Disattiva definitivamente il flag autoLoop sul task attivo
     setTasks(prev => prev.map(t => t.id === activeTask.id ? { ...t, autoLoop: false } : t));
 
+    runGenerationRef.current += 1;
     // 3. Se c'è una generazione o chiamata in streaming attiva, abortiscila subito
     if (abortControllerRef.current) {
       try {
@@ -575,6 +600,7 @@ export default function AdminAgentChat({
       e.preventDefault();
       e.stopPropagation();
     }
+    runGenerationRef.current += 1;
     // 1. Abort active network SSE stream
     if (abortControllerRef.current) {
       try {
@@ -606,7 +632,8 @@ export default function AdminAgentChat({
       if (t.id === activeTask.id) {
         const updated = (t.pipeline || []).map(item => {
           if (item.id === taskId) {
-            const nextStatus = item.status === 'done' ? 'pending' : (item.status === 'pending' ? 'in_progress' : 'done');
+            const status = canonicalPipelineStatus(item.status);
+            const nextStatus = status === 'done' ? 'pending' : (status === 'pending' ? 'in_progress' : 'done');
             return { ...item, status: nextStatus };
           }
           return item;
@@ -1031,6 +1058,7 @@ export default function AdminAgentChat({
       }
       setIsStreaming(false);
     }
+    const runId = ++runGenerationRef.current;
 
     // Da questo momento l'utente ha interagito: il loop può ripartire se non attivo.
     userHasInteractedRef.current = true;
@@ -1047,6 +1075,10 @@ export default function AdminAgentChat({
     if (autoLoopTimeoutRef.current) {
       clearInterval(autoLoopTimeoutRef.current);
       autoLoopTimeoutRef.current = null;
+    }
+    if (autoLoopSchedulerRef.current) {
+      clearTimeout(autoLoopSchedulerRef.current);
+      autoLoopSchedulerRef.current = null;
     }
 
     // Read the true latest task state from latestTasksRef to avoid stale closure
@@ -1153,11 +1185,11 @@ export default function AdminAgentChat({
       let buffer = '';
       let streamStartTime = Date.now();
       let streamFirstTokenTime = null;
-      let streamTokenCount = 0;
+      let streamChunkCount = 0;
 
-      while (true) {
+      while (runId === runGenerationRef.current) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done || runId !== runGenerationRef.current) break;
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n\n');
@@ -1188,7 +1220,9 @@ export default function AdminAgentChat({
                 tps: event.tps,
                 ttftMs: event.ttft_ms,
                 promptTokens: event.prompt_tokens,
-                generatedTokensLastTurn: event.generated_tokens_last_turn
+                generatedTokensLastTurn: event.generated_tokens_last_turn,
+                generatedChunksLastTurn: event.generated_chunks_last_turn,
+                rateUnit: event.rate_unit || 'frammenti/s'
               });
               continue;
             }
@@ -1197,13 +1231,68 @@ export default function AdminAgentChat({
             // generazione completa. Sovrascrivono i valori parziali di
             // context_telemetry con dati definitivi.
             if (event.type === 'metrics') {
+              if (event.metrics && typeof event.metrics === 'object') {
+                const riepilogo = event.metrics;
+                const tasso = riepilogo.tokens_per_second ?? riepilogo.output_chunks_per_second ?? 0;
+                setContextMetrics(prev => ({
+                  ...prev,
+                  tps: tasso,
+                  ttftMs: riepilogo.ttft_ms,
+                  turnTokens: riepilogo.token_count,
+                  outputChunks: riepilogo.output_chunks,
+                  rateUnit: riepilogo.rate_unit || 'frammenti/s',
+                  turnDurationS: riepilogo.elapsed_s
+                }));
+                setTasks(prev => prev.map(t => {
+                  if (t.id !== currentTaskId) return t;
+                  const msgs = [...t.messages];
+                  if (!msgs[activeMsgIndex]) return t;
+                  msgs[activeMsgIndex] = {
+                    ...msgs[activeMsgIndex],
+                    metrics: {
+                      tps: tasso,
+                      ttft_ms: riepilogo.ttft_ms,
+                      tokens: riepilogo.token_count,
+                      output_chunks: riepilogo.output_chunks,
+                      rate_unit: riepilogo.rate_unit || 'frammenti/s',
+                      token_count_exact: riepilogo.token_count != null,
+                      duration_s: riepilogo.elapsed_s,
+                      isLive: false
+                    }
+                  };
+                  return { ...t, messages: msgs, updatedAt: new Date().toISOString() };
+                }));
+                continue;
+              }
               setContextMetrics(prev => ({
                 ...prev,
                 tps: event.tps,
                 ttftMs: event.ttft_ms,
                 turnTokens: event.tokens,
                 totalTokens: event.total_tokens,
+                outputChunks: event.output_chunks,
+                rateUnit: event.rate_unit || 'frammenti/s',
                 turnDurationS: event.duration_s
+              }));
+              setTasks(prev => prev.map(t => {
+                if (t.id !== currentTaskId) return t;
+                const msgs = [...t.messages];
+                if (!msgs[activeMsgIndex]) return t;
+                msgs[activeMsgIndex] = {
+                  ...msgs[activeMsgIndex],
+                  metrics: {
+                    tps: event.tps,
+                    ttft_ms: event.ttft_ms,
+                    tokens: event.tokens,
+                    total_tokens: event.total_tokens,
+                    output_chunks: event.output_chunks,
+                    rate_unit: event.rate_unit || 'frammenti/s',
+                    token_count_exact: !!event.token_count_exact,
+                    duration_s: event.duration_s,
+                    isLive: false
+                  }
+                };
+                return { ...t, messages: msgs, updatedAt: new Date().toISOString() };
               }));
               continue;
             }
@@ -1398,14 +1487,15 @@ ${event.diff || ''}`,
 
             // Handle pipeline task updates from model
             if (event.type === 'pipeline_update' && Array.isArray(event.tasks)) {
-              const hasPending = event.tasks.some(p => p.status !== 'done' && p.status !== 'completed');
               setTasks(prev => prev.map(t => {
                 if (t.id === currentTaskId) {
+                  // Aggiorna solo il piano: lo stato di completamento resta intatto.
+                  // Prima di questa correzione una ri-pianificazione successiva a
+                  // complete_goal rimetteva isGoalCompleted a false e faceva
+                  // ripartire l'auto-loop all'infinito.
                   return {
                     ...t,
-                    pipeline: event.tasks,
-                    // Se ci sono task ancora in sospeso, l'obiettivo non è concluso
-                    isGoalCompleted: hasPending ? false : t.isGoalCompleted,
+                    pipeline: normalizeTaskPipelines([{ pipeline: event.tasks }])[0].pipeline,
                     updatedAt: new Date().toISOString()
                   };
                 }
@@ -1420,7 +1510,10 @@ ${event.diff || ''}`,
               setTasks(prev => prev.map(t => {
                 if (t.id === currentTaskId) {
                   const updatedPipeline = (t.pipeline || []).map(p => ({ ...p, status: 'done' }));
-                  return { ...t, isGoalCompleted: true, pipeline: updatedPipeline, updatedAt: new Date().toISOString() };
+                  // Ferma il ciclo automatico: l'obiettivo e' chiuso e verificato.
+                  // Senza questo flag l'auto-loop ripartiva con "Continua
+                  // l'implementazione" e l'agente ri-pianificava il lavoro gia' fatto.
+                  return { ...t, isGoalCompleted: true, autoLoop: false, pipeline: updatedPipeline, updatedAt: new Date().toISOString() };
                 }
                 return t;
               }));
@@ -1456,7 +1549,7 @@ ${event.diff || ''}`,
               }
               streamStartTime = Date.now();
               streamFirstTokenTime = null;
-              streamTokenCount = 0;
+              streamChunkCount = 0;
               continue;
             }
 
@@ -1491,29 +1584,22 @@ ${event.diff || ''}`,
                   if (!streamFirstTokenTime) {
                     streamFirstTokenTime = Date.now();
                   }
-                  streamTokenCount += 1;
+                  streamChunkCount += 1;
                   const now = Date.now();
                   const liveDuration = Math.max((now - streamStartTime) / 1000, 0.05);
                   const genDuration = Math.max((now - streamFirstTokenTime) / 1000, 0.05);
-                  const liveTps = streamTokenCount > 0 ? Math.round((streamTokenCount / genDuration) * 10) / 10 : 0;
+                  const liveTps = streamChunkCount > 0 ? Math.round((streamChunkCount / genDuration) * 10) / 10 : 0;
                   const liveTtft = Math.round(streamFirstTokenTime - streamStartTime);
 
                   cur.metrics = {
                     tps: liveTps,
                     ttft_ms: liveTtft,
-                    tokens: streamTokenCount,
-                    total_tokens: streamTokenCount,
+                    tokens: null,
+                    output_chunks: streamChunkCount,
+                    rate_unit: 'frammenti/s',
+                    token_count_exact: false,
                     duration_s: Math.round(liveDuration * 10) / 10,
                     isLive: true
-                  };
-                } else if (event.type === 'metrics') {
-                  cur.metrics = {
-                    tps: event.tps,
-                    ttft_ms: event.ttft_ms,
-                    tokens: event.tokens,
-                    total_tokens: event.total_tokens,
-                    duration_s: event.duration_s,
-                    isLive: false
                   };
                 } else if (event.type === 'tool_start') {
                   cur.tools = [...(cur.tools || []), { tool: event.tool, params: event.params, status: 'running' }];
@@ -1534,6 +1620,7 @@ ${event.diff || ''}`,
         }
       }
     } catch (err) {
+      if (runId !== runGenerationRef.current) return;
       if (err.name === 'AbortError') {
         console.debug('Generation aborted by user');
         return;
@@ -1551,7 +1638,10 @@ ${event.diff || ''}`,
         return t;
       }));
     } finally {
-      abortControllerRef.current = null;
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
+      if (runId !== runGenerationRef.current) return;
       setIsStreaming(false);
       setAgentStatus('');
       onRefreshTree?.();
@@ -1567,7 +1657,9 @@ ${event.diff || ''}`,
       }));
 
       // Check Auto-Loop Continuation Trigger
-      setTimeout(() => {
+      autoLoopSchedulerRef.current = setTimeout(() => {
+        autoLoopSchedulerRef.current = null;
+        if (runId !== runGenerationRef.current) return;
         // Se l'utente non ha ancora interagito (es. mount dopo refresh),
         // non far partire il loop da solo.
         if (!userHasInteractedRef.current) return;
@@ -1597,8 +1689,24 @@ ${event.diff || ''}`,
           const recentUsers = msgs.filter(m => m.role === 'user').slice(-3);
           const isPromptStuck = recentUsers.length >= 3 && recentUsers.every(m => m.content === recentUsers[0].content);
 
-          if (isStuckEmpty || isPromptStuck) {
-            console.warn('[AdminAgentChat] Auto-loop interrotto per mancato avanzamento o risposte vuote.');
+          // Lo stesso riepilogo rigenerato identico due volte di fila e' il segno
+          // di un ciclo di chiusura: l'agente riscrive la stessa conclusione
+          // invece di fermarsi.
+          const recentContent = recentAssistant
+            .map(m => (m.content || '').trim())
+            .filter(c => c.length > 120);
+          const ultimiContenuti = recentContent.slice(-2);
+          const paroleA = new Set((ultimiContenuti[0] || '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []);
+          const paroleB = new Set((ultimiContenuti[1] || '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []);
+          const paroleComuni = [...paroleA].filter(parola => paroleB.has(parola)).length;
+          const unioneParole = new Set([...paroleA, ...paroleB]).size;
+          const riepilogoQuasiUguale = paroleA.size >= 20 && paroleB.size >= 20
+            && unioneParole > 0 && paroleComuni / unioneParole >= 0.92;
+          const isContentStuck = ultimiContenuti.length === 2
+            && (ultimiContenuti[0] === ultimiContenuti[1] || riepilogoQuasiUguale);
+
+          if (isStuckEmpty || isPromptStuck || isContentStuck) {
+            console.warn('[AdminAgentChat] Auto-loop interrotto per mancato avanzamento, prompt ripetuto o riepilogo identico.');
             return currentTasks.map(t => t.id === currentTaskId ? { ...t, autoLoop: false } : t);
           }
 
@@ -2757,8 +2865,14 @@ ${event.diff || ''}`,
                 whiteSpace: 'nowrap'
               }}>
                 {agentStatus || (() => {
-                  const runningTask = pipeline.find(p => p.status === 'in_progress') || pipeline.find(p => p.status !== 'done');
-                  return runningTask ? `Task in corso: "${runningTask.title}"` : "Elaborazione in corso...";
+                  // Mostra un solo task realmente attivo: 'completed' e 'done' sono
+                  // entrambi terminali e non vanno etichettati come "in corso".
+                  const isActive = s => s === 'in_progress' || s === 'running';
+                  const runningTask = pipeline.find(p => isActive(p.status));
+                  const pendingTask = pipeline.find(p => p.status === 'pending' || p.status === 'todo');
+                  if (runningTask) return `Task in corso: "${runningTask.title}"`;
+                  if (pendingTask) return `In attesa: "${pendingTask.title}"`;
+                  return "Elaborazione in corso...";
                 })()}
               </span>
             </div>
@@ -2859,7 +2973,7 @@ ${event.diff || ''}`,
                   color: '#d29922'
                 }}
               >
-                ⚡ {contextMetrics.tps} t/s
+                ⚡ {contextMetrics.tps} {contextMetrics.rateUnit || 'frammenti/s'}
               </span>
             )}
 
@@ -2935,6 +3049,9 @@ ${event.diff || ''}`,
           const isSameTask = isConsecutiveAssistant && (prevMsg.resolvedTaskTitle === relatedTaskTitle);
           const showAgentHeader = !isConsecutiveAssistant;
           const showTaskBadge = msg.role === 'assistant' && relatedTaskTitle && (!isConsecutiveAssistant || !isSameTask);
+          const outputChunkCount = Number.isFinite(msg.metrics?.output_chunks)
+            ? msg.metrics.output_chunks
+            : (Number.isFinite(msg.metrics?.tokens) ? msg.metrics.tokens : 0);
 
           return (
             <div
@@ -3049,7 +3166,7 @@ ${event.diff || ''}`,
                   marginBottom: '2px'
                 }}>
                   <CircleDot size={11} color="#00f2fe" />
-                  <span>Task in corso: {relatedTaskTitle}</span>
+                  <span>{msg.isStreaming ? 'Task in corso' : 'Task associato'}: {relatedTaskTitle}</span>
                 </div>
               )}
 
@@ -3117,9 +3234,8 @@ ${event.diff || ''}`,
                 const showLoadingBanner = msg.isStreaming && msg.role === 'assistant' && !contentText && (!msg.thought || !msg.thought.trim());
 
                 if (!contentText && (!msg.attachments || msg.attachments.length === 0) && !showLoadingBanner) {
-                  // Se non c'è testo ma il turno ha registrato token ed è privo di tool visualizzati,
-                  // mostriamo un messaggio sobrio indicante l'azione o lo stato
-                  if (msg.role === 'assistant' && (!msg.tools || msg.tools.length === 0) && msg.metrics?.tokens > 0 && !msg.isStreaming) {
+                  // Un turno senza testo deve restare visibile come tale, anche se il provider non ha metriche.
+                  if (msg.role === 'assistant' && (!msg.tools || msg.tools.length === 0) && !msg.isStreaming) {
                     return (
                       <div style={{
                         padding: '4px 8px',
@@ -3130,7 +3246,7 @@ ${event.diff || ''}`,
                         fontSize: '0.66rem',
                         fontStyle: 'italic'
                       }}>
-                        {msg.content?.trim() || "Analisi interna completata: passaggio alla fase successiva."}
+                        {msg.content?.trim() || "Nessuna risposta visibile in questo turno: il modello può aver prodotto un turno vuoto o essere stato interrotto."}
                       </div>
                     );
                   }
@@ -3557,7 +3673,7 @@ ${event.diff || ''}`,
                       alignItems: 'center',
                       gap: '4px'
                     }}>
-                      ⚡ {msg.metrics.tps} t/s
+                      ⚡ {msg.metrics.tps} {msg.metrics.rate_unit || 'frammenti/s'}
                       {msg.metrics.isLive && (
                         <span style={{
                           display: 'inline-block',
@@ -3600,8 +3716,11 @@ ${event.diff || ''}`,
                   {msg.metrics.ttft_ms > 0 && (
                     <span>⏱️ TTFT {msg.metrics.ttft_ms}ms</span>
                   )}
-                  {msg.metrics.tokens > 0 && (
-                    <span>• {msg.metrics.tokens} tokens</span>
+                  {msg.metrics.token_count_exact && msg.metrics.tokens > 0 && (
+                    <span>• {msg.metrics.tokens} token</span>
+                  )}
+                  {!msg.metrics.token_count_exact && outputChunkCount > 0 && (
+                    <span>• {outputChunkCount} frammenti</span>
                   )}
                   {msg.metrics.duration_s > 0 && (
                     <span>• {msg.metrics.duration_s}s</span>
@@ -3720,7 +3839,11 @@ ${event.diff || ''}`,
                 (() => {
                   const lastMsg = activeTask?.messages?.[activeTask?.messages?.length - 1];
                   if (lastMsg?.metrics?.tps > 0) {
-                    return `⚡ Generazione in tempo reale: ${lastMsg.metrics.tps} t/s • ${lastMsg.metrics.tokens} tokens • ${lastMsg.metrics.duration_s}s`;
+                    const unit = lastMsg.metrics.rate_unit || 'frammenti/s';
+                    const count = lastMsg.metrics.token_count_exact
+                      ? `${lastMsg.metrics.tokens} token`
+                      : `${lastMsg.metrics.output_chunks ?? lastMsg.metrics.tokens ?? 0} frammenti`;
+                    return `⚡ Generazione in tempo reale: ${lastMsg.metrics.tps} ${unit} • ${count} • ${lastMsg.metrics.duration_s}s`;
                   }
                   return "L'agente sta elaborando la risposta...";
                 })()
