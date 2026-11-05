@@ -8,6 +8,7 @@
 # ==============================================================================
 import os
 import json
+import math
 import re
 import struct
 from dataclasses import dataclass, field, asdict
@@ -23,7 +24,8 @@ log = get_logger(__name__)
 # existed would keep reporting the old, incomplete answer forever. Raised to 4
 # when the GGUF path began reading vocab_size, which the llama.cpp planner needs
 # to size its prefill batch.
-_FACTS_SCHEMA = 6
+# Le cache precedenti non contano i parametri GGUF dalle dimensioni dei tensori.
+_FACTS_SCHEMA = 7
 
 # Bytes per element, by safetensors dtype string.
 _DTYPE_BYTES = {
@@ -511,12 +513,13 @@ class ModelInspector:
         alignment = 32
         total = 0
         host_only = 0
+        total_params = 0
         for path in gguf_paths:
             try:
                 size_on_disk = os.path.getsize(path)
                 with open(path, "rb") as handle:
                     if handle.read(4) != b"GGUF":
-                        continue
+                        raise ValueError("Intestazione GGUF non valida")
                     handle.seek(4, os.SEEK_CUR)  # format version
                     tensor_count = struct.unpack("<Q", handle.read(8))[0]
                     kv_count = struct.unpack("<Q", handle.read(8))[0]
@@ -532,7 +535,13 @@ class ModelInspector:
                     for _ in range(tensor_count):
                         name = cls._read_gguf_string(handle) or ""
                         dim_count = struct.unpack("<I", handle.read(4))[0]
-                        handle.seek(8 * dim_count, os.SEEK_CUR)  # dims
+                        if not 1 <= dim_count <= 8:
+                            raise ValueError("Numero di dimensioni del tensore non valido")
+                        dimensions = struct.unpack(f"<{dim_count}Q", handle.read(8 * dim_count))
+                        if any(dim == 0 for dim in dimensions):
+                            raise ValueError("Tensore con dimensione nulla")
+                        # La quantizzazione cambia i byte, non il numero di parametri.
+                        total_params += math.prod(dimensions)
                         tensor_type = struct.unpack("<I", handle.read(4))[0]  # ggml type
                         offset = struct.unpack("<Q", handle.read(8))[0]
                         if tensor_type in (29, 34, 35):  # I2_S, TQ1_0, TQ2_0
@@ -559,6 +568,7 @@ class ModelInspector:
 
         facts.expert_bytes = total
         facts.host_only_bytes = host_only
+        facts.param_count = total_params
         if total and not facts.is_moe:
             facts.is_moe = True
 

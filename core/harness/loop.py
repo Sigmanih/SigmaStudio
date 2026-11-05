@@ -42,7 +42,7 @@ from core.harness.policy import ToolPolicy, canonical, filter_tool_docs
 from core.harness import delivery, review, worktree
 from core.harness.cicli import RilevatoreCicli, comando_bloccato_in_ciclo
 from core.think_channel import RouterPensiero, separa as separa_pensiero
-from core.harness.compaction import compact_history_with_memory
+from core.harness.compaction import compact_history_with_memory, history_budget_chars
 from core.harness.roles import GENERIC_MODEL_ALIASES
 from core.harness.tool_cache import ToolResultCache
 from core.harness.prefetch import PrefetchLetture, tutte_anticipabili
@@ -1040,11 +1040,12 @@ def _esegui_la_prova_dichiarata(ledger: Any, comando: str, workspace_root: str,
     if not scritture:
         return ""
     memoria = memoria if memoria is not None else {}
-    if memoria.get("scritture") == scritture:
-        # Stesse scritture di prima: la prova e gia stata eseguita, e ripeterla
+    revisione = (pulito, ledger.modification_revision)
+    if memoria.get("revisione") == revisione:
+        # Stessa revisione di prima: la prova e gia stata eseguita, e ripeterla
         # a ogni turno sarebbe un comando che gira per sempre.
         return ""
-    memoria["scritture"] = scritture
+    memoria["revisione"] = revisione
     try:
         from core.harness.esecutori import scegli_esecutore
         esecutore = scegli_esecutore(radice=workspace_root)
@@ -1063,6 +1064,13 @@ def _esegui_la_prova_dichiarata(ledger: Any, comando: str, workspace_root: str,
             {"success": codice == 0, "returncode": codice,
              "command": pulito, "stdout": uscita[-2000:],
              "stderr": errori[-2000:]})
+        memoria["evento"] = {
+            "type": "tool_result", "tool": "terminal",
+            "params": {"command": pulito}, "automatic": True,
+            "result": {"success": codice == 0, "returncode": codice,
+                       "command": pulito, "stdout": uscita[-2000:],
+                       "stderr": errori[-2000:]},
+        }
     except Exception as exc:
         return f"Prova eseguita ma non registrata: {exc}"
     esito = "riuscita" if codice == 0 else "fallita"
@@ -2938,13 +2946,19 @@ def _stream_agent_turn_impl(
     from core.engine.unified_runtime import sigma_engine
 
     # Prepare conversation history
+    # Le aggiunte al prompt devono rispettare gli stessi permessi dei tool eseguibili.
+    documentation_policy = ToolPolicy.of(allowed_tools, label=policy_label)
+    if profile:
+        documentation_policy = ToolPolicy.for_profile(profile).intersect(documentation_policy)
+    documentation_options = ({"allowed_tools": documentation_policy.visible_tools()}
+                             if documentation_policy.restricted else {})
     # Allow Role Engine to inject role-specific system prompts
     base_system_prompt = system_prompt_override or ADMIN_DEVELOPER_SYSTEM_PROMPT
 
     # Append MCP developer tools section if available
     try:
         from core.mcp.harness_bridge import build_mcp_tools_section
-        mcp_section = build_mcp_tools_section()
+        mcp_section = build_mcp_tools_section(**documentation_options)
         if mcp_section:
             base_system_prompt = base_system_prompt + "\n" + mcp_section
     except Exception:
@@ -2964,7 +2978,7 @@ def _stream_agent_turn_impl(
     if not supports_native_tools(provider):
         try:
             from core.harness import tool_providers
-            firme = tool_providers.firme_per_prompt()
+            firme = tool_providers.firme_per_prompt(**documentation_options)
             if firme:
                 base_system_prompt = f"{base_system_prompt}\n\n{firme}"
             from core.harness import specialisti
@@ -3165,6 +3179,9 @@ def _stream_agent_turn_impl(
         "reuse_tokens": 0,
         "model": str(model_name or ""),
         "provider": str(provider or "") or _provider_attivo(),
+        "context_tokens": context_tokens,
+        "system_prompt_chars": len(base_system_prompt),
+        "tool_scope": list(policy.visible_tools()) if policy.restricted else None,
         "tool_calls": 0,
         "tool_failures": 0,
         "tool_refusals": 0,
@@ -3237,10 +3254,15 @@ def _stream_agent_turn_impl(
     def trim_history(msgs: List[Dict[str, str]], turn_num: Optional[int] = None) -> List[Dict[str, str]]:
         """Keeps recent turns within budget and distils evicted turns into durable session memory."""
         eff_turn = current_turn if turn_num is None else turn_num
+        state_chars = max(2048, len(ledger.render_volatile_block(eff_turn, max_turns)) + 1024)
+        history_limit = min(max_history_chars, history_budget_chars(
+            context_tokens, len(base_system_prompt),
+            len(msgs[1].get("content", "")) if len(msgs) > 1 else 0,
+            state_chars=state_chars))
         return compact_history_with_memory(
             messages=msgs,
             ledger=ledger,
-            max_history_chars=max_history_chars,
+            max_history_chars=history_limit,
             max_recent_turns=MAX_RECENT_TURNS,
             current_turn=eff_turn,
         )
@@ -3348,6 +3370,9 @@ def _stream_agent_turn_impl(
             coda_prova = _esegui_la_prova_dichiarata(
                 ledger, verify_command, workspace_root, should_cancel, memoria_prova)
             if coda_prova:
+                evento_prova = memoria_prova.pop("evento", None)
+                if evento_prova:
+                    yield evento_prova
                 yield {"type": "status",
                        "text": "Prova dichiarata: eseguita dal ciclo"}
 

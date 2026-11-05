@@ -15,6 +15,8 @@
 # including on hosts where neither inference runtime is installed.
 # ==============================================================================
 from dataclasses import dataclass, replace
+from pathlib import Path
+import re
 from typing import Any, Dict, Optional, Tuple
 
 from core.logger import get_logger
@@ -112,6 +114,32 @@ def _match_family(model_name: str) -> Optional[str]:
     return None
 
 
+def _local_architecture_family(model_name: str) -> Optional[str]:
+    """Un nome personalizzato conserva il profilo dell'architettura locale."""
+    if not str(model_name).lower().startswith("sigma:"):
+        return None
+    identifier = str(model_name).split(":", 1)[1].strip()
+    if not identifier:
+        return None
+    try:
+        from core.model_paths import resolve_model_dir
+        from core.engine.model_inspector import ModelInspector
+
+        path = resolve_model_dir(identifier)
+        if not path:
+            return None
+        def normalized(value: str) -> str:
+            return re.sub(r"[^a-z0-9]", "", value.lower().removesuffix(".gguf"))
+        # Il resolver tollera nomi approssimativi: qui serve il checkpoint esatto.
+        if normalized(Path(path).name) != normalized(identifier):
+            return None
+        facts = ModelInspector.inspect(path)
+        return _match_family(facts.model_type) if facts else None
+    except Exception as exc:
+        log.debug("Famiglia del checkpoint locale non disponibile: %s", exc)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # The parameters themselves
 # ---------------------------------------------------------------------------
@@ -187,7 +215,7 @@ class SamplingParams:
            their numbers regardless sets ``"sampling_locked": true`` on the
            provider, which skips this layer entirely.
         """
-        family = _match_family(model_name)
+        family = _match_family(model_name) or _local_architecture_family(model_name)
         mode = "reasoning" if reasoning else "direct"
         base = dict((FAMILY_RECIPES.get(family) or _GENERIC)[mode])
         origin = [f"family:{family}" if family else "family:generic"]

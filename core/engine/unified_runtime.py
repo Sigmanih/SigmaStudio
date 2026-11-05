@@ -752,6 +752,7 @@ class UniversalSigmaEngine:
         context_tokens: int = 32768,
         force_quantization: Optional[str] = None,
         target_hardware: Optional[str] = None,
+        require_full_offload: bool = False,
     ) -> Dict[str, Any]:
         """
         Loads a local model across all available memory tiers.
@@ -761,7 +762,8 @@ class UniversalSigmaEngine:
         """
         with self._load_lock:
             return self._load_native_model_locked(
-                model_identifier, context_tokens, force_quantization, target_hardware=target_hardware
+                model_identifier, context_tokens, force_quantization, target_hardware=target_hardware,
+                **({"require_full_offload": True} if require_full_offload else {}),
             )
 
     def _load_native_model_locked(
@@ -770,6 +772,7 @@ class UniversalSigmaEngine:
         context_tokens: int,
         force_quantization: Optional[str],
         target_hardware: Optional[str] = None,
+        require_full_offload: bool = False,
     ) -> Dict[str, Any]:
         model_info = self.find_valid_model_directory(model_identifier)
         if not model_info:
@@ -784,7 +787,7 @@ class UniversalSigmaEngine:
         target_path, display_name = model_info
 
         # Already resident: switching chats that share a model costs nothing.
-        if self.has_resident_model and self.loaded_model_name == display_name:
+        if self.has_resident_model and self.loaded_model_name == display_name and not require_full_offload:
             log.debug("[SigmaEngine] '%s' already resident, reusing", display_name)
             return {
                 "success": True,
@@ -822,8 +825,13 @@ class UniversalSigmaEngine:
         backend_cls = select_backend(facts, self.refresh_vram())
         if backend_cls is not None and facts.weight_format != "safetensors":
             return self._load_via_backend(
-                facts, display_name, context_tokens, target_hardware=target_hardware
+                facts, display_name, context_tokens, target_hardware=target_hardware,
+                **({"require_full_offload": True} if require_full_offload else {}),
             )
+
+        if require_full_offload:
+            return {"success": False, "stage": "backend",
+                    "error": "La verifica di full offload richiede un backend con collocazione osservabile"}
 
         # Check completeness before attempting PyTorch / Transformers loading
         if not getattr(facts, "is_complete", True) or getattr(facts, "has_part_files", False):
@@ -1089,6 +1097,7 @@ class UniversalSigmaEngine:
     def _load_via_backend(
         self, facts: ModelFacts, display_name: str, context_tokens: int,
         target_hardware: Optional[str] = None,
+        require_full_offload: bool = False,
     ) -> Dict[str, Any]:
         """Loads a non-safetensors checkpoint through the backend registry."""
         from core.engine.backends import select_backend, explain_unsupported
@@ -1104,6 +1113,7 @@ class UniversalSigmaEngine:
         result = backend.load(
             facts, self.hardware_profile, context_tokens=context_tokens,
             target_hardware=target_hardware,
+            **({"require_full_offload": True} if require_full_offload else {}),
         )
         if not result.get("success"):
             self.last_load_error = result.get("error")
@@ -1112,6 +1122,12 @@ class UniversalSigmaEngine:
                 backend_cls.name, result.get("error"),
             )
             return result
+
+        if require_full_offload and not backend.describe_placement().get("fully_offloaded"):
+            backend.unload()
+            error = "Il backend non ha collocato tutti i pesi sulla GPU richiesta"
+            self.last_load_error = error
+            return {"success": False, "stage": "capacity", "error": error}
 
         self.active_backend_instance = backend
         self.model_facts = facts
@@ -1688,7 +1704,8 @@ class UniversalSigmaEngine:
 
         norm_target_hw = (target_hardware or "auto").strip().lower()
         current_hw = ((self.loaded_model or {}).get("target_hardware") or "auto").strip().lower()
-        hw_changed = (norm_target_hw != current_hw)
+        # L'assenza di una richiesta hardware conserva la collocazione residente.
+        hw_changed = target_hardware is not None and norm_target_hw != current_hw
 
         is_already_resident = (
             self.has_resident_model and not hw_changed and (

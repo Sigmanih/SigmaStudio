@@ -556,6 +556,16 @@ class LlamaServerBackend(InferenceBackend):
         from core.engine.load_overrides import apply_to
         settings = apply_to(settings, facts.name)
 
+        full_offload_required = options.get("require_full_offload") is True
+        if full_offload_required:
+            if not settings.get("forced_single_gpu"):
+                return {"success": False, "stage": "capacity",
+                        "error": "Il full offload richiede una GPU selezionata esplicitamente"}
+            # La stima e' conservativa: una prova esplicita deve verificare
+            # l'allocazione reale e fallire, senza trasformarsi in offload CPU.
+            settings["n_gpu_layers"] = -1
+            settings["n_ctx"] = int(context_tokens)
+
         tentativi_settings = [settings]
         if settings.get("use_mmap") is not False:
             tentativi_settings.append(dict(settings, use_mmap=False))
@@ -682,7 +692,7 @@ class LlamaServerBackend(InferenceBackend):
 
             from core.engine.runtime_probe import is_cuda_failure
 
-            if is_cuda_failure(returncode=codice_uscita, testo=uscita):
+            if not full_offload_required and is_cuda_failure(returncode=codice_uscita, testo=uscita):
                 # La scheda video ha ceduto mentre i pesi salivano. Le tre cause
                 # possibili non si distinguono da qui: quello che si puo' fare e'
                 # togliere carico alla GPU e riprovare, e alla fine arrendersi

@@ -61,6 +61,20 @@ def _esegui(tmp_path, verify="", massimo=8):
 
 
 class TestLaProvaDichiarata:
+    def test_ripete_la_prova_dopo_una_correzione_allo_stesso_file(self, tmp_path):
+        from core.harness.loop import _esegui_la_prova_dichiarata
+
+        led = DevSessionLedger(goal="correggi una nota", workspace_root=str(tmp_path))
+        memoria = {}
+        risultato = {"success": True, "path": "nota.txt"}
+        led.record_tool("write_file", {"path": "nota.txt"}, risultato)
+        assert _esegui_la_prova_dichiarata(led, PROVA, str(tmp_path), None, memoria)
+        assert memoria.pop("evento")["result"]["success"] is True
+        assert not _esegui_la_prova_dichiarata(led, PROVA, str(tmp_path), None, memoria)
+        led.record_tool("edit_file", {"path": "nota.txt"}, risultato)
+        assert _esegui_la_prova_dichiarata(led, PROVA, str(tmp_path), None, memoria)
+        assert len(led.successful_commands()) == 2
+
     def test_il_ciclo_la_esegue_e_la_registra(self, tmp_path):
         led, eventi = _esegui(tmp_path, verify=PROVA)
         comandi = [c.get("command") for c in (led._commands or [])]
@@ -68,6 +82,8 @@ class TestLaProvaDichiarata:
         registrato = [c for c in led._commands if c.get("command") == PROVA][0]
         assert registrato["ok"] is True
         assert "prova-ok" in str(registrato)
+        assert any(e.get("type") == "tool_result" and e.get("automatic")
+                   and e.get("tool") == "terminal" for e in eventi)
 
     def test_il_pannello_lo_dice(self, tmp_path):
         """Il testo che il pannello mostra lo produce un aiutante, e si prova

@@ -948,7 +948,13 @@ class SigmaRustBackend(InferenceBackend):
         return {}
 
     def parallel_slots(self) -> int:
-        return 4
+        if self._compute_delegate and self._compute_delegate.is_loaded:
+            try:
+                return max(1, int(self._compute_delegate.parallel_slots()))
+            except Exception as exc:
+                log.debug("Slot del processo di calcolo non osservabili: %s", exc)
+        # Senza una misura non si promette concorrenza al chiamante.
+        return 1
 
     def validate_grammar(
         self, text: str, allowed_tools: Optional[List[str]] = None, is_partial: bool = False
@@ -1145,6 +1151,9 @@ class SigmaRustBackend(InferenceBackend):
 
     def telemetry(self) -> Dict[str, Any]:
         """Restituisce le metriche di runtime con scomposizione microsecondo (AC4 & AD1)."""
+        if self._compute_delegate and self._compute_delegate.is_loaded:
+            # La collocazione deve descrivere chi esegue davvero il modello.
+            return dict(self._compute_delegate.telemetry() or {})
         try:
             from core.engine.backends.sigma_ffi import get_ffi_telemetry, is_ffi_available
             if is_ffi_available():

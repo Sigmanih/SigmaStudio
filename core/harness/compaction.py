@@ -363,6 +363,14 @@ def comprimi_osservazioni(messaggi: List[Dict[str, str]],
     return lavoro, risparmiati
 
 
+def history_budget_chars(context_tokens: int, system_chars: int,
+                         user_chars: int, state_chars: int = 2048) -> int:
+    """Riserva spazio per stato e risposta prima di assegnarlo alla cronologia."""
+    reply_tokens = min(2048, max(512, context_tokens // 4))
+    available = (context_tokens - reply_tokens) * 4 - system_chars - user_chars - state_chars
+    return max(256, available)
+
+
 def compact_history_with_memory(
     messages: List[Dict[str, str]],
     ledger: Optional[DevSessionLedger],

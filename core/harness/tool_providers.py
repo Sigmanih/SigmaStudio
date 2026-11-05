@@ -238,7 +238,8 @@ def schemas() -> List[Dict[str, Any]]:
             for schema in provider.schemas]
 
 
-def firme_per_prompt(massimo_descrizione: int = 120) -> str:
+def firme_per_prompt(massimo_descrizione: int = 120,
+                     allowed_tools: Optional[Tuple[str, ...]] = None) -> str:
     """Una riga per tool dei moduli: nome, parametri e scopo, per il prompt dei modelli locali.
 
     Col percorso recintato il modello conosce un tool solo da cio' che legge
@@ -247,6 +248,8 @@ def firme_per_prompt(massimo_descrizione: int = 120) -> str:
     ha speso un turno per scoprirlo dall'errore. I parametri obbligatori sono
     senza `?`, i facoltativi con.
     """
+    permessi = ({policy.canonical(name) for name in allowed_tools}
+                if allowed_tools is not None else None)
     righe = []
     for provider in _provider.values():
         voci = []
@@ -254,6 +257,8 @@ def firme_per_prompt(massimo_descrizione: int = 120) -> str:
             f = schema.get("function", schema) if isinstance(schema, dict) else {}
             nome = f.get("name")
             if not nome:
+                continue
+            if permessi is not None and policy.canonical(nome) not in permessi:
                 continue
             par = f.get("parameters") or {}
             richiesti = set(par.get("required") or [])

@@ -617,6 +617,12 @@ class DevSessionLedger:
     # -- querying (used by the verification gate and the UI) -----------------
 
     @property
+    def modification_revision(self) -> int:
+        """Una nuova modifica invalida la prova anche sullo stesso file."""
+        with self._lock:
+            return sum(r.edits + r.writes for r in self._files.values())
+
+    @property
     def modified_files(self) -> List[str]:
         with self._lock:
             return [p for p, r in self._files.items() if r.edits or r.writes]

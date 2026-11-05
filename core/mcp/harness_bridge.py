@@ -23,8 +23,13 @@ def execute_via_mcp(name: str, arguments: dict) -> dict:
     return {**result, "error": outcome.get("error", "Esecuzione fallita.")}
 
 
-def build_mcp_tools_section() -> str:
+def build_mcp_tools_section(allowed_tools=None) -> str:
+    from core.harness.policy import canonical
+    permessi = ({canonical(name) for name in allowed_tools}
+                if allowed_tools is not None else None)
     tools = [tool for tool in mcp_hub.get_agent_tools() if is_mcp_tool(tool["name"])]
+    if permessi is not None:
+        tools = [tool for tool in tools if canonical(tool["name"]) in permessi]
     if not tools:
         return ""
     lines = ["\n## STRUMENTI AGGIUNTIVI (MCP)"]
