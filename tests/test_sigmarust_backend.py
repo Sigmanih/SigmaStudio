@@ -127,5 +127,187 @@ class TestSenzaWorkerNonSiDichiaraCaricato(unittest.TestCase):
         self.assertTrue(risultato.get("fallback"))
 
 
+class TestStreamingRustConRipiegoLocale(unittest.TestCase):
+    def test_registrazione_fallita_non_usa_un_vecchio_upstream(self):
+        backend=SigmaRustBackend(endpoint_url="http://kernel.test")
+        backend._proxy_registration_failed=True
+        backend._compute_delegate=MagicMock()
+        backend._compute_delegate.is_loaded=True
+        backend._compute_delegate.generate_stream.return_value=iter([{"token":"dal modello corretto"}])
+        with patch("core.engine.backends.sigmarust_backend.urllib.request.urlopen") as proxy:
+            result=list(backend.generate_stream("ciao"))
+        proxy.assert_not_called()
+        self.assertEqual(result,[{"token":"dal modello corretto"}])
+        with patch("core.engine.backends.sigmarust_backend.urllib.request.urlopen") as proxy:
+            with self.assertRaises(RuntimeError):
+                backend.tokenize("ciao")
+            self.assertFalse(backend.slot_checkpoint("erase",0)["success"])
+        proxy.assert_not_called()
+
+    def _backend(self):
+        backend = SigmaRustBackend(endpoint_url="http://kernel.test")
+        backend._loaded_model_id = "qwen-test"
+        backend._compute_delegate = MagicMock()
+        backend._compute_delegate.is_loaded = True
+        return backend
+
+    def test_prova_il_proxy_rust_prima_del_worker_locale(self):
+        class Risposta:
+            headers = {"Content-Type": "application/json"}
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def read(self):
+                return json.dumps({"choices": [{"message": {"content": "dal kernel"}}]}).encode()
+
+        backend = self._backend()
+        with patch("core.engine.backends.sigmarust_backend.urllib.request.urlopen",
+                   return_value=Risposta()):
+            risultato = list(backend.generate_stream("ciao"))
+
+        self.assertEqual(risultato[0]["token"], "dal kernel")
+        backend._compute_delegate.generate_stream.assert_not_called()
+
+    def test_se_il_proxy_fallisce_usa_il_worker_sigma_locale(self):
+        backend = self._backend()
+        backend._compute_delegate.generate_stream.return_value = iter([{"token": "dal runtime locale"}])
+        with patch("core.engine.backends.sigmarust_backend.urllib.request.urlopen",
+                   side_effect=OSError("kernel spento")):
+            risultato = list(backend.generate_stream("ciao"))
+
+        self.assertEqual(risultato, [{"token": "dal runtime locale"}])
+        backend._compute_delegate.generate_stream.assert_called_once()
+
+
+class TestContrattoProxySigma(unittest.TestCase):
+    def test_annullamento_inoltrato_anche_senza_token_in_arrivo(self):
+        import threading
+        cancelled=threading.Event();forwarded=threading.Event()
+        backend=SigmaRustBackend(endpoint_url="http://kernel.test")
+        response=MagicMock();response.__enter__.return_value=response
+        response.headers={"Content-Type":"text/event-stream"}
+        def stream():
+            cancelled.set()
+            if not forwarded.wait(1):raise AssertionError("Annullamento non inoltrato durante lo stallo")
+            yield b"data: [DONE]\n\n"
+        response.__iter__.side_effect=stream
+        def cancel_request(**kwargs):
+            forwarded.set();return {"cancelled":True}
+        with patch("core.engine.backends.sigmarust_backend.urllib.request.urlopen",return_value=response), \
+             patch.object(backend,"cancel_request",side_effect=cancel_request):
+            list(backend.generate_stream("ciao",cancel=cancelled.is_set))
+        self.assertTrue(forwarded.is_set())
+    def _richiesta(self, **opzioni):
+        backend = SigmaRustBackend(endpoint_url="http://kernel.test")
+        backend._loaded_model_id = "sigma"
+        risposta = MagicMock()
+        risposta.__enter__.return_value = risposta
+        risposta.headers = {"Content-Type": "application/json"}
+        risposta.read.return_value = json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode()
+        with patch("core.engine.backends.sigmarust_backend.urllib.request.urlopen", return_value=risposta) as invio:
+            list(backend.generate_stream("ciao", **opzioni))
+        return json.loads(invio.call_args.args[0].data)
+
+    def test_parametri_identici_al_worker_diretto(self):
+        from core.engine.sampling import SamplingParams
+        from core.engine.backends.llamaserver_backend import LlamaServerBackend
+        params = SamplingParams(temperature=0.0, top_p=0.8, top_k=12, min_p=0.04,
+                                repeat_penalty=1.08, max_tokens=32, seed=123,
+                                stop=("FINE",), thinking_budget=64)
+        atteso = LlamaServerBackend()._corpo_richiesta("ciao", "", None, params, False)
+        corpo = self._richiesta(params=params, thinking=False)
+        for campo, valore in atteso.items():
+            with self.subTest(campo=campo):
+                self.assertEqual(corpo.get(campo), valore)
+
+    def test_tool_nativi_preservati_senza_grammatica_inventata(self):
+        tools = [{"type": "function", "function": {"name": "leggi", "parameters": {"type": "object"}}}]
+        corpo = self._richiesta(tools=tools, tool_choice="auto")
+        self.assertEqual(corpo.get("tools"), tools)
+        self.assertEqual(corpo.get("tool_choice"), "auto")
+        self.assertNotIn("grammar", corpo)
+
+    def test_telemetria_offline_non_inventa_latenze(self):
+        backend = SigmaRustBackend(endpoint_url="http://kernel.test")
+        with patch.object(backend, "get_status", return_value={"status": "error"}), \
+             patch("core.engine.backends.sigma_ffi.is_ffi_available", return_value=False):
+            telemetria = backend.telemetry()
+        self.assertIsNone(telemetria["latency_breakdown"]["decode_us"])
+        self.assertFalse(telemetria.get("measured", True))
+
+    def test_cronologia_con_tool_id_preservata(self):
+        messages = [{"role": "assistant", "content": None, "tool_calls": [
+            {"id": "call-1", "type": "function", "function": {"name": "leggi", "arguments": "{}"}}]},
+            {"role": "tool", "content": "risultato", "tool_call_id": "call-1"}]
+        corpo = self._richiesta(messages=messages)
+        self.assertEqual(corpo["messages"][0]["tool_calls"], messages[0]["tool_calls"])
+        self.assertEqual(corpo["messages"][1]["tool_call_id"], "call-1")
+
+    def test_stream_tool_e_ragionamento_non_attiva_ripiego(self):
+        backend = SigmaRustBackend(endpoint_url="http://kernel.test")
+        delegate = MagicMock()
+        delegate.is_loaded = True
+        backend._compute_delegate = delegate
+        calls = [{"index": 0, "function": {"name": "leggi", "arguments": "{}"}}]
+        events = [{"choices": [{"delta": {"reasoning_content": "ragiono"}}], "usage": None},
+                  {"choices": [{"delta": {"tool_calls": calls}, "finish_reason": "tool_calls"}]}]
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.headers = {"Content-Type": "text/event-stream"}
+        response.__iter__.return_value = iter([("data: " + json.dumps(event) + "\n\n").encode() for event in events]
+                                             + [b"data: [DONE]\n\n"])
+        with patch("core.engine.backends.sigmarust_backend.urllib.request.urlopen", return_value=response):
+            results = list(backend.generate_stream("ciao"))
+        self.assertEqual(next(item["reasoning_content"] for item in results if "reasoning_content" in item), "ragiono")
+        self.assertEqual(next(item["tool_calls"] for item in results if "tool_calls" in item), calls)
+        self.assertEqual("".join(item.get("token", "") for item in results), "<think>ragiono</think>")
+        delegate.generate_stream.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCollocazioneDelWorker(unittest.TestCase):
+    """Il piano del kernel non deve nascondere i layer effettivamente caricati dal worker."""
+
+    def test_full_offload_letto_dal_worker_non_dal_piano(self):
+        backend = SigmaRustBackend()
+        backend._placement_info = {"mode": "plan_only", "vram_layers": 10}
+        delegate = MagicMock(is_loaded=True)
+        delegate.describe_placement.return_value = {"fully_offloaded": True, "layers_on_cpu": 0}
+        backend._compute_delegate = delegate
+        placement = backend.describe_placement()
+        self.assertTrue(placement["fully_offloaded"])
+        self.assertEqual(placement["rust_tiering_plan"]["mode"], "plan_only")
+
+    def test_senza_worker_resta_il_piano(self):
+        backend = SigmaRustBackend()
+        backend._placement_info = {"mode": "plan_only"}
+        self.assertEqual(backend.describe_placement(), {"mode": "plan_only"})
+
+
+class TestConteggioTokenDelProxy(unittest.TestCase):
+    """Il kernel manda il conteggio in un evento senza choices: va propagato, non sostituito dalle parole."""
+
+    def test_usage_finale_diventa_total_tokens(self):
+        backend = SigmaRustBackend(endpoint_url="http://kernel.test")
+        events = [{"choices": [{"delta": {"content": "uno, due, tre"}}]},
+                  {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+                  {"choices": [], "usage": {"completion_tokens": 7, "prompt_tokens": 3}},
+                  {"sigma_telemetry": {"completion_tokens": 7}}]
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.headers = {"Content-Type": "text/event-stream"}
+        response.__iter__.return_value = iter([("data: " + json.dumps(e) + "\n\n").encode() for e in events]
+                                             + [b"data: [DONE]\n\n"])
+        with patch("core.engine.backends.sigmarust_backend.urllib.request.urlopen", return_value=response):
+            results = list(backend.generate_stream("conta"))
+        final = results[-1]
+        self.assertTrue(final["done"])
+        self.assertEqual(final["total_tokens"], 7)
+        self.assertEqual("".join(r.get("token", "") for r in results), "uno, due, tre")

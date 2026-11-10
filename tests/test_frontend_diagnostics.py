@@ -15,6 +15,7 @@ positivi, il primo falso allarme fa spegnere di nuovo il controllo; senza i
 negativi, spegnerlo non fa fallire niente.
 """
 import unittest
+from unittest.mock import patch
 
 from core.harness.diagnostics import (
     _validate_brackets_and_quotes,
@@ -42,6 +43,25 @@ class TestFrontendDiagnostics(unittest.TestCase):
         res = validate_code_syntax("data.json", invalid_json)
         self.assertFalse(res["valid"])
         self.assertIn("JSON", res["error"])
+
+    def test_json_non_richiede_un_roundtrip_al_kernel(self):
+        with patch("core.harness.diagnostics._fast_lint_rust", side_effect=AssertionError("Chiamata remota superflua")):
+            self.assertTrue(validate_code_syntax("test.json", '{"testo":"}"}')["valid"])
+            self.assertFalse(validate_code_syntax("test.json", '{"items":[1,]}')["valid"])
+
+    def test_lint_remoto_legge_il_risultato_annidato(self):
+        import json
+        from unittest.mock import MagicMock
+        from core.harness.diagnostics import _fast_lint_rust
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = json.dumps({"success": True, "result": {
+            "valid": False, "errors": [{"line": 3, "message": "Delimitatore non chiuso"}]}}).encode()
+        with patch("urllib.request.urlopen", return_value=response):
+            result = _fast_lint_rust("fn main() {", "rust")
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["line"], 3)
+        self.assertIn("Delimitatore", result["error"])
 
     def test_javascript_and_jsx_brackets(self):
         valid_jsx = "export const Button = ({ text }) => { return (<button>{text}</button>); };"

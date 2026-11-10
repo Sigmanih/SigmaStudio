@@ -43,15 +43,11 @@ class TestRadixCacheIntegration(unittest.TestCase):
         self.assertEqual(ratio, 75.0)
         self.assertEqual(tokens, [101, 102, 103, 104])
 
-    def test_sigmarust_backend_tokenize_fallback(self):
-        backend = SigmaRustBackend()
-        # Con URL non raggiungibile o offline, il ripiego deterministico genera token interi validi
-        toks = backend.tokenize("Sigma Studio Kernel Rust")
-        self.assertIsInstance(toks, list)
-        self.assertEqual(len(toks), 4)
-        for t in toks:
-            self.assertIsInstance(t, int)
-            self.assertGreaterEqual(t, 0)
+    def test_sigmarust_backend_tokenize_offline_non_inventa_id(self):
+        backend = SigmaRustBackend(endpoint_url="http://127.0.0.1:1")
+        with patch("core.engine.backends.sigmarust_backend.urllib.request.urlopen",side_effect=OSError("offline")):
+            with self.assertRaisesRegex(RuntimeError,"Tokenizer"):
+                backend.tokenize("Sigma Studio Kernel Rust")
 
     def test_sigmarust_backend_empty_tokenize(self):
         backend = SigmaRustBackend()

@@ -111,6 +111,7 @@ export default function RustTelemetryPanel({ compact = false }) {
             setMetrics((prev) => ({
               ...(prev || {}),
               status: 'ok',
+              raw: { ...(prev?.raw || {}), ...raw },
               scheduler: {
                 batch_count: prev?.scheduler?.batch_count ?? 0,
                 avg_latency_ms: raw.scheduler?.avg_latency_ms ?? null,
@@ -800,13 +801,14 @@ export default function RustTelemetryPanel({ compact = false }) {
         {(() => {
           const lbrk = metrics?.latency_breakdown || {};
           const slabFrag = metrics?.slab_fragmentation || {};
-          const prefillUs = lbrk.prefill_us ?? 1450;
-          const queueUs = lbrk.queue_us ?? 120;
-          const decodeUs = lbrk.decode_us ?? 18200;
-          const ipcUs = lbrk.ipc_us ?? 8;
-          const totUs = Math.max(1, prefillUs + queueUs + decodeUs + ipcUs);
-          const fragRatio = slabFrag.fragmentation_ratio !== undefined ? slabFrag.fragmentation_ratio : 0.042;
-          const fragPct = Math.round(fragRatio * 1000) / 10;
+          const prefillUs = lbrk.prefill_us;
+          const queueUs = lbrk.queue_us;
+          const decodeUs = lbrk.decode_us;
+          const ipcUs = lbrk.ipc_us;
+          const hasBreakdown = [prefillUs, queueUs, decodeUs, ipcUs].every(Number.isFinite);
+          const totUs = hasBreakdown ? Math.max(1, prefillUs + queueUs + decodeUs + ipcUs) : 1;
+          const fragRatio = slabFrag.fragmentation_ratio;
+          const fragPct = Number.isFinite(fragRatio) ? Math.round(fragRatio * 1000) / 10 : null;
 
           return (
             <div
@@ -836,7 +838,7 @@ export default function RustTelemetryPanel({ compact = false }) {
                     border: '1px solid rgba(0, 242, 254, 0.25)'
                   }}
                 >
-                  Micro-Second Precision (µs)
+                  {hasBreakdown ? 'Misure in µs' : 'Misure non disponibili'}
                 </span>
               </div>
 
@@ -845,38 +847,38 @@ export default function RustTelemetryPanel({ compact = false }) {
                 <div style={{ padding: '8px', borderRadius: '8px', background: isLight ? '#f1f5f9' : 'rgba(0,0,0,0.2)' }}>
                   <div style={{ fontSize: '0.66rem', color: textMuted }}>Prefill</div>
                   <div style={{ fontSize: '1rem', fontWeight: 700, color: '#00f2fe', marginTop: '2px' }}>
-                    {isOnline ? `${prefillUs.toLocaleString()} µs` : '—'}
+                    {isOnline && Number.isFinite(prefillUs) ? `${prefillUs.toLocaleString()} µs` : '—'}
                   </div>
-                  <div style={{ fontSize: '0.6rem', color: textMuted }}>{Math.round((prefillUs / totUs) * 100)}% pipeline</div>
+                  <div style={{ fontSize: '0.6rem', color: textMuted }}>{hasBreakdown ? `${Math.round((prefillUs / totUs) * 100)}% pipeline` : 'Non misurato'}</div>
                 </div>
 
                 <div style={{ padding: '8px', borderRadius: '8px', background: isLight ? '#f1f5f9' : 'rgba(0,0,0,0.2)' }}>
                   <div style={{ fontSize: '0.66rem', color: textMuted }}>Queue</div>
                   <div style={{ fontSize: '1rem', fontWeight: 700, color: '#f59e0b', marginTop: '2px' }}>
-                    {isOnline ? `${queueUs.toLocaleString()} µs` : '—'}
+                    {isOnline && Number.isFinite(queueUs) ? `${queueUs.toLocaleString()} µs` : '—'}
                   </div>
-                  <div style={{ fontSize: '0.6rem', color: textMuted }}>{Math.round((queueUs / totUs) * 100)}% pipeline</div>
+                  <div style={{ fontSize: '0.6rem', color: textMuted }}>{hasBreakdown ? `${Math.round((queueUs / totUs) * 100)}% pipeline` : 'Non misurato'}</div>
                 </div>
 
                 <div style={{ padding: '8px', borderRadius: '8px', background: isLight ? '#f1f5f9' : 'rgba(0,0,0,0.2)' }}>
                   <div style={{ fontSize: '0.66rem', color: textMuted }}>Decode</div>
                   <div style={{ fontSize: '1rem', fontWeight: 700, color: '#10b981', marginTop: '2px' }}>
-                    {isOnline ? `${decodeUs.toLocaleString()} µs` : '—'}
+                    {isOnline && Number.isFinite(decodeUs) ? `${decodeUs.toLocaleString()} µs` : '—'}
                   </div>
-                  <div style={{ fontSize: '0.6rem', color: textMuted }}>{Math.round((decodeUs / totUs) * 100)}% pipeline</div>
+                  <div style={{ fontSize: '0.6rem', color: textMuted }}>{hasBreakdown ? `${Math.round((decodeUs / totUs) * 100)}% pipeline` : 'Non misurato'}</div>
                 </div>
 
                 <div style={{ padding: '8px', borderRadius: '8px', background: isLight ? '#f1f5f9' : 'rgba(0,0,0,0.2)' }}>
                   <div style={{ fontSize: '0.66rem', color: textMuted }}>IPC / FFI</div>
                   <div style={{ fontSize: '1rem', fontWeight: 700, color: '#bc8cff', marginTop: '2px' }}>
-                    {isOnline ? `${ipcUs.toLocaleString()} µs` : '—'}
+                    {isOnline && Number.isFinite(ipcUs) ? `${ipcUs.toLocaleString()} µs` : '—'}
                   </div>
-                  <div style={{ fontSize: '0.6rem', color: '#10b981', fontWeight: 600 }}>Zero-Copy ABI</div>
+                  <div style={{ fontSize: '0.6rem', color: '#10b981', fontWeight: 600 }}>{Number.isFinite(ipcUs) ? 'Misurato dal runtime' : 'Non misurato'}</div>
                 </div>
               </div>
 
               {/* Barra segmentata orizzontale */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {hasBreakdown && <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <div style={{ height: '7px', borderRadius: '4px', overflow: 'hidden', display: 'flex', background: 'rgba(255,255,255,0.06)' }}>
                   <div style={{ width: `${(prefillUs / totUs) * 100}%`, background: '#00f2fe' }} title={`Prefill: ${prefillUs} µs`} />
                   <div style={{ width: `${(queueUs / totUs) * 100}%`, background: '#f59e0b' }} title={`Queue: ${queueUs} µs`} />
@@ -885,11 +887,12 @@ export default function RustTelemetryPanel({ compact = false }) {
                 </div>
               </div>
 
+              }
               {/* Monitoraggio Frammentazione Slab KV */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.74rem', paddingTop: '4px', borderTop: isLight ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.05)' }}>
                 <span style={{ color: textMuted }}>Slab Fragmentation Ratio:</span>
                 <span style={{ fontWeight: 700, color: fragPct < 10 ? '#10b981' : '#f59e0b' }}>
-                  {isOnline ? `${fragPct}% (frammentazione interna controllata)` : '—'}
+                  {isOnline && fragPct !== null ? `${fragPct}%` : '—'}
                 </span>
               </div>
             </div>
@@ -930,17 +933,17 @@ export default function RustTelemetryPanel({ compact = false }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
             <div style={{ background: isLight ? '#f8fafc' : 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px' }}>
-              <div style={{ fontSize: '0.68rem', color: textMuted }}>Throughput Estimato</div>
+              <div style={{ fontSize: '0.68rem', color: textMuted }}>Throughput ultima richiesta</div>
               <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#00f2fe', marginTop: '3px' }}>
-                {isOnline && scheduler.avg_latency_ms ? `${Math.round((1000 / scheduler.avg_latency_ms) * 2.1)} tok/s` : '—'}
+                {isOnline && Number.isFinite(metrics?.raw?.inference_metrics?.tokens_per_second) ? `${metrics.raw.inference_metrics.tokens_per_second.toFixed(1)} tok/s` : '—'}
               </div>
-              <div style={{ fontSize: '0.62rem', color: textMuted, marginTop: '2px' }}>decoding multi-slot</div>
+              <div style={{ fontSize: '0.62rem', color: textMuted, marginTop: '2px' }}>decode misurato dal worker</div>
             </div>
 
             <div style={{ background: isLight ? '#f8fafc' : 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px' }}>
               <div style={{ fontSize: '0.68rem', color: textMuted }}>Speculative Boost</div>
               <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#10b981', marginTop: '3px' }}>
-                {isOnline ? '2.1x – 2.4x' : '—'}
+                {isOnline && Number.isFinite(metrics?.raw?.speculative_telemetry?.effective_speedup) ? `${metrics.raw.speculative_telemetry.effective_speedup.toFixed(2)}x` : '—'}
               </div>
               <div style={{ fontSize: '0.62rem', color: textMuted, marginTop: '2px' }}>rejection sampling K=4..8</div>
             </div>
@@ -948,7 +951,7 @@ export default function RustTelemetryPanel({ compact = false }) {
             <div style={{ background: isLight ? '#f8fafc' : 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px' }}>
               <div style={{ fontSize: '0.68rem', color: textMuted }}>Acceptance Rate</div>
               <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#bc8cff', marginTop: '3px' }}>
-                {isOnline ? '74.2%' : '—'}
+                {isOnline && Number.isFinite(metrics?.raw?.speculative_telemetry?.acceptance_rate) ? `${(metrics.raw.speculative_telemetry.acceptance_rate * 100).toFixed(1)}%` : '—'}
               </div>
               <div style={{ fontSize: '0.62rem', color: textMuted, marginTop: '2px' }}>target/draft alignment</div>
             </div>

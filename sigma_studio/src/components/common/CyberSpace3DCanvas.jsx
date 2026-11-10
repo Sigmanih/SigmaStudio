@@ -39,13 +39,51 @@ const prefersReducedMotion = () => {
 let agentClipsPromise = null;
 const loadAgentClips = (loader) => {
   if (!agentClipsPromise) {
-    agentClipsPromise = loader.loadAsync('/models/animazioni_agenti.glb').then(g => g.animations.map(c =>
-      new THREE.AnimationClip(c.name, c.duration,
-        c.tracks.filter(t => t.name.endsWith('.quaternion') || t.name === 'DEF-hips.position'))));
+    agentClipsPromise = loader.loadAsync('/models/animazioni_agenti.glb').then(g => {
+      const restRotations = new Map();
+      g.scene.traverse(o => {
+        if (o.name) {
+          const trackNodeName = THREE.PropertyBinding.sanitizeNodeName(o.name);
+          restRotations.set(trackNodeName, o.quaternion.clone());
+        }
+      });
+      const clips = g.animations.map(c => new THREE.AnimationClip(c.name, c.duration,
+        c.tracks.filter(t => t.name.endsWith('.quaternion') || t.name === 'DEF-hips.position')));
+      return { clips, restRotations };
+    });
     agentClipsPromise.catch(() => { agentClipsPromise = null; });
   }
   return agentClipsPromise;
 };
+
+// Le clip contengono rotazioni locali del rig canonico. Il rig di ogni agente
+// adatta alcune ossa alla mesh; compensare la posa evita salti e stiramenti.
+const retargetAgentClips = (clips, sourceRestRotations, targetBody) => clips.map(clip => {
+  const retargeted = clip.clone();
+  const targetBones = new Map();
+  targetBody.traverse(o => {
+    if (o.name) targetBones.set(THREE.PropertyBinding.sanitizeNodeName(o.name), o);
+  });
+  retargeted.tracks = retargeted.tracks.map(track => {
+    if (!track.name.endsWith('.quaternion')) return track;
+    const trackNodeName = track.name.slice(0, -'.quaternion'.length);
+    const sourceRest = sourceRestRotations.get(trackNodeName);
+    const targetBone = targetBones.get(trackNodeName);
+    if (!sourceRest || !targetBone) return track;
+
+    const correction = targetBone.quaternion.clone().multiply(sourceRest.clone().invert());
+    const values = new Float32Array(track.values.length);
+    for (let i = 0; i < track.values.length; i += 4) {
+      const rotation = new THREE.Quaternion(
+        track.values[i], track.values[i + 1], track.values[i + 2], track.values[i + 3]
+      );
+      correction.clone().multiply(rotation).normalize().toArray(values, i);
+    }
+    track.values = values;
+    return track;
+  });
+  return retargeted;
+});
 
 // Testo che si restringe fino a stare nella larghezza della scheda invece di
 // uscire dai bordi con i nomi lunghi dei ruoli.
@@ -1805,7 +1843,7 @@ export default function CyberSpace3DCanvas({
       agentFigureGroup.position.set(0, 0.65, 0.5);
 
       const torso = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.38, 0.3, 0.85, 16),
+        new THREE.CylinderGeometry(0.38, 0.3, 0.85, 24),
         new THREE.MeshStandardMaterial({
           color: isLight ? 0x64748b : 0x141e33,
           metalness: 0.7,
@@ -1817,7 +1855,7 @@ export default function CyberSpace3DCanvas({
 
       // Reattore toracico pulsante
       const coreReactor = new THREE.Mesh(
-        new THREE.SphereGeometry(0.12, 16, 16),
+        new THREE.SphereGeometry(0.12, 24, 16),
         new THREE.MeshBasicMaterial({ color: roleThreeColor, blending: THREE.AdditiveBlending })
       );
       coreReactor.position.set(0, 0.72, -0.28);
@@ -1825,12 +1863,12 @@ export default function CyberSpace3DCanvas({
 
       // Braccia e mani mecha rivolte verso la console
       const armMat = new THREE.MeshStandardMaterial({ color: isLight ? 0x94a3b8 : 0x0f182c, metalness: 0.6 });
-      const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.75, 8), armMat);
+      const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.75, 16), armMat);
       leftArm.position.set(-0.42, 0.6, -0.32);
       leftArm.rotation.x = Math.PI / 2.8;
       agentFigureGroup.add(leftArm);
 
-      const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.75, 8), armMat);
+      const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.75, 16), armMat);
       rightArm.position.set(0.42, 0.6, -0.32);
       rightArm.rotation.x = Math.PI / 2.8;
       agentFigureGroup.add(rightArm);
@@ -1848,7 +1886,7 @@ export default function CyberSpace3DCanvas({
       headGroup.position.set(0, 1.25, 0);
 
       const helmet = new THREE.Mesh(
-        new THREE.SphereGeometry(0.26, 20, 20),
+        new THREE.SphereGeometry(0.26, 32, 24),
         new THREE.MeshStandardMaterial({
           color: isLight ? 0xf8fafc : 0x1e293b,
           metalness: 0.8,
@@ -2059,19 +2097,49 @@ export default function CyberSpace3DCanvas({
     // Rivolto al centro della plancia: davanti alla scheda, verso chi guarda
     const centerYaw = (st) => st.stationGroup.rotation.y;
 
-    const playClip = (ch, name, fade = 0.35) => {
+    const playClip = (ch, name, fade = 0.35, afterClip = null) => {
       const next = ch.actions[name];
-      if (!next || ch.current === name) return;
+      if (!next) return;
+      ch.afterClip = afterClip;
+      if (ch.current === name) return;
+      const oneShot = name === 'Sitting_Enter' || name === 'Sitting_Exit';
+      next.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity);
+      next.clampWhenFinished = oneShot;
       next.reset().fadeIn(fade).play();
       if (ch.current && ch.actions[ch.current]) ch.actions[ch.current].fadeOut(fade);
       ch.current = name;
     };
 
-    const walkTo = (ch, points, then) => {
-      ch.path = points;
-      ch.after = then;
+    const beginWalk = (ch, request) => {
+      if (request.mode !== ch.mode) return;
+      ch.path = request.points;
+      ch.after = request.then;
       ch.state = 'cammina';
       playClip(ch, 'Walk_Loop', 0.3);
+    };
+
+    const walkTo = (ch, points, then) => {
+      const request = { points, then, mode: ch.mode };
+      if (ch.leavingSeat) {
+        ch.pendingWalk = request;
+        return;
+      }
+      if (ch.isSeated) {
+        ch.pendingWalk = request;
+        ch.isSeated = false;
+        ch.leavingSeat = true;
+        ch.path = [];
+        ch.after = null;
+        ch.state = 'fermo';
+        playClip(ch, 'Sitting_Exit', 0.25, () => {
+          ch.leavingSeat = false;
+          const pending = ch.pendingWalk;
+          ch.pendingWalk = null;
+          if (pending) beginWalk(ch, pending);
+        });
+        return;
+      }
+      beginWalk(ch, request);
     };
 
     // Ogni percorso passa dal punto davanti alla poltrona: da li' si raggiunge
@@ -2091,12 +2159,14 @@ export default function CyberSpace3DCanvas({
         ch.yawTarget = centerYaw(ch.st);
         playClip(ch, 'Idle_Loop', 0.4);
       }),
-      console: (ch) => walkTo(ch, [...viaStand(ch), stationWorld(ch.st, 0, SEAT_Z + 0.4)], () => {
+      console: (ch) => walkTo(ch, [...viaStand(ch), stationWorld(ch.st, 0, SEAT_Z)], () => {
         ch.root.position.copy(stationWorld(ch.st, 0, SEAT_Z));
         ch.state = 'fermo';
         ch.yawTarget = consoleYaw(ch.st);
-        // Seduto che gesticola: la libreria non ha una clip di battitura
-        playClip(ch, 'Sitting_Talking_Loop', 0.45);
+        ch.isSeated = true;
+        playClip(ch, 'Sitting_Enter', 0.3, () => {
+          if (ch.mode === 'console' && ch.isSeated) playClip(ch, 'Sitting_Talking_Loop', 0.3);
+        });
       }),
       olotavolo: (ch) => {
         // Nel proprio spicchio: con 15 postazioni a 0,42 rad, +-0,15 tiene
@@ -2178,7 +2248,7 @@ export default function CyberSpace3DCanvas({
     };
     window.addEventListener(AGENT_ACTIVITY_EVENT, onAgentActivity);
 
-    const attachAgentCharacter = (st, gltf, clips) => {
+    const attachAgentCharacter = (st, gltf, animationData) => {
       const root = new THREE.Group();
       const body = gltf.scene;
       body.scale.setScalar(CHARACTER_SCALE);
@@ -2201,9 +2271,17 @@ export default function CyberSpace3DCanvas({
 
       const mixer = new THREE.AnimationMixer(body);
       const actions = {};
-      clips.forEach(c => { actions[c.name] = mixer.clipAction(c); });
-      const ch = { st, root, mixer, actions, current: null, state: 'fermo', path: [], after: null,
+      retargetAgentClips(animationData.clips, animationData.restRotations, body)
+        .forEach(c => { actions[c.name] = mixer.clipAction(c); });
+      const ch = { st, root, mixer, actions, current: null, afterClip: null, isSeated: false,
+        leavingSeat: false, pendingWalk: null, state: 'fermo', path: [], after: null,
         yaw: centerYaw(st), yawTarget: centerYaw(st), focused: false, mode: 'posa', modeTimer: 0 };
+      mixer.addEventListener('finished', (event) => {
+        if (ch.actions[ch.current] !== event.action) return;
+        const callback = ch.afterClip;
+        ch.afterClip = null;
+        if (callback) callback();
+      });
       // Si parte gia' in posa davanti alla scheda, senza camminare
       root.position.copy(stationWorld(st, 0, STAND_Z));
       root.rotation.y = ch.yaw;
@@ -2283,7 +2361,7 @@ export default function CyberSpace3DCanvas({
         const character = st.role.character3d;
         if (!character || !character.url) return;
         Promise.all([loadAgentClips(gltfLoader), gltfLoader.loadAsync(character.url)])
-          .then(([clips, gltf]) => {
+          .then(([animationData, gltf]) => {
             if (disposed) {
               gltf.scene.traverse(o => {
                 if (o.geometry) o.geometry.dispose();
@@ -2292,7 +2370,7 @@ export default function CyberSpace3DCanvas({
               });
               return;
             }
-            attachAgentCharacter(st, gltf, clips);
+            attachAgentCharacter(st, gltf, animationData);
             if (lite) setAgentCharactersVisible(false);
           })
           .catch(err => console.warn(`Personaggio di ${st.role.id} non caricato:`, err));

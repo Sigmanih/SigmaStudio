@@ -299,7 +299,7 @@ def _plan_settings(
                 "Modello su storage USB/rimovibile: il caricamento resta con memory "
                 "mapping attivo, perche' leggere l'intero file a ogni avvio costa "
                 "decine di secondi. Se dovesse fallire con un errore di paginazione, "
-                "il runtime riparte da solo con --no-mmap e se lo ricorda."
+                "il runtime riparte da solo senza mmap e se lo ricorda."
             )
         return _merge_host_fit(settings, fit)
 
@@ -591,7 +591,7 @@ def _plan_settings(
             "Modello su storage USB/rimovibile: il caricamento resta con memory "
             "mapping attivo, perche' leggere l'intero file a ogni avvio costa "
             "decine di secondi. Se dovesse fallire con un errore di paginazione, "
-            "il runtime riparte da solo con --no-mmap e se lo ricorda."
+            "il runtime riparte da solo senza mmap e se lo ricorda."
         )
     if kv_quant:
         settings["kv_saving_gb"] = round(kv_gb_f16 - kv_gb, 2)
@@ -746,7 +746,7 @@ def _plan_moe_offload(facts: ModelFacts, hardware: Dict[str, Any],
             "Modello su storage USB/rimovibile: il caricamento resta con memory "
             "mapping attivo, perche' leggere l'intero file a ogni avvio costa "
             "decine di secondi. Se dovesse fallire con un errore di paginazione, "
-            "il runtime riparte da solo con --no-mmap e se lo ricorda."
+            "il runtime riparte da solo senza mmap e se lo ricorda."
         )
     if kv_quant:
         settings["kv_saving_gb"] = round(kv_gb_f16 - kv_gb, 2)

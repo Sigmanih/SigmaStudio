@@ -58,3 +58,36 @@ def test_lease_scaduto_non_blocca():
     time.sleep(0.05)
     assert leases.reserved() == set()
     assert not leases.renew(lid)
+
+
+def test_llm_partito_in_ram_torna_in_vram_a_lease_finito(monkeypatch):
+    """Collaudo del video lungo: il 27B partito su CPU durante il render ci restava anche dopo."""
+    from core.engine import gpu_lease
+    from core.engine.backends.llamaserver_backend import LlamaServerBackend
+    from core.engine.unified_runtime import UniversalSigmaEngine
+
+    registro = GpuLeases()
+    monkeypatch.setattr(gpu_lease, "leases", registro)
+    lease = registro.acquire("produzione:x", [0, 1], "render")
+
+    class Vivo:
+        def poll(self):
+            return None
+
+    backend = LlamaServerBackend()
+    backend._processo = Vivo()
+    backend._riservate_avvio = frozenset(registro.reserved())
+    assert not backend.placement_stale              # GPU ancora riservate: resta dov'e'
+
+    motore = UniversalSigmaEngine.__new__(UniversalSigmaEngine)
+    motore.active_backend_instance = backend
+    scaricati = []
+    monkeypatch.setattr(UniversalSigmaEngine, "unload", lambda self: scaricati.append(True) or {})
+    assert motore.refresh_placement() is False
+
+    registro.release(lease)
+    assert backend.placement_stale
+    backend._in_volo = 1                             # sta generando: non si tocca
+    assert motore.refresh_placement() is False
+    backend._in_volo = 0
+    assert motore.refresh_placement() is True and scaricati == [True]

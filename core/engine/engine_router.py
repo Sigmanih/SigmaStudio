@@ -620,31 +620,16 @@ def handle_engine_rust_metrics(self):
 
     # AC4 — Pipeline Latency Breakdown & Slab Fragmentation
     latency_breakdown = data.get("latency_breakdown") or {}
+    # Una latenza totale non permette di ricostruire le singole fasi.
     if not latency_breakdown:
-        try:
-            from core.engine.backends.sigma_ffi import get_ffi_telemetry
-            ffi_t = get_ffi_telemetry()
-            if ffi_t and "latency_breakdown" in ffi_t:
-                latency_breakdown = ffi_t["latency_breakdown"]
-        except Exception:
-            pass
-
-    # Se non fornito da FFI, calcoliamo una scomposizione coerente a partire da avg_latency_ms se presente
-    if not latency_breakdown and _latenza is not None and float(_latenza) > 0:
-        tot_us = int(float(_latenza) * 1000)
-        latency_breakdown = {
-            "prefill_us": int(tot_us * 0.15),
-            "queue_us": int(tot_us * 0.05),
-            "decode_us": int(tot_us * 0.78),
-            "ipc_us": int(tot_us * 0.02),
-        }
+        latency_breakdown = dict.fromkeys(("prefill_us", "queue_us", "decode_us", "ipc_us"))
 
     slab_frag = data.get("slab_fragmentation") or {}
     if not slab_frag:
         slab_frag = {
-            "fragmented_pages": data.get("fragmented_pages", 0),
-            "fragmentation_ratio": data.get("fragmentation_ratio", 0.02),
-            "active_slabs": data.get("active_slabs", 1),
+            "fragmented_pages": data.get("fragmented_pages"),
+            "fragmentation_ratio": data.get("fragmentation_ratio"),
+            "active_slabs": data.get("active_slabs"),
         }
 
     return self.send_json_response({

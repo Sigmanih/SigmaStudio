@@ -20,14 +20,15 @@ remember.
 """
 
 import difflib
+import os
 import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.logger import get_logger
 from core.harness.fs_manager import (
     SEARCH_IGNORE_DIRS,
-    SEARCH_IGNORE_EXTENSIONS,
     backup_file_snapshot,
     find_workspace_root_for_path,
     get_default_workspace_root,
@@ -46,6 +47,7 @@ def read_file_slice(
     offset: int = 1,
     limit: Optional[int] = None,
     max_line_chars: int = READ_MAX_LINE_CHARS,
+    workspace_root: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Reads a window of a text file as numbered lines, `cat -n` style.
 
@@ -53,7 +55,20 @@ def read_file_slice(
     The result always reports `total_lines` and `has_more`, so the caller knows
     a further read is needed instead of assuming it saw the whole file.
     """
-    base = read_file_content(file_path)
+    try:
+        normalized_offset = max(1,int(offset))
+    except (ValueError,TypeError):
+        normalized_offset=1
+    try:
+        normalized_limit = READ_DEFAULT_LIMIT if limit in (None, "") else int(limit)
+        normalized_limit = max(1,min(normalized_limit,READ_MAX_LIMIT))
+    except (ValueError,TypeError):
+        normalized_limit=READ_DEFAULT_LIMIT
+    from core.harness.native_reads import try_read_slice
+    from core.harness.workspace import resolve_root
+    base = try_read_slice(Path(file_path),normalized_offset,normalized_limit,Path(workspace_root or resolve_root()))
+    if base is None:
+        base = read_file_content(file_path)
     if not base.get("success"):
         return base
 
@@ -63,7 +78,7 @@ def read_file_slice(
         return {**base, "is_sliceable": False}
 
     lines = content.splitlines()
-    total = len(lines)
+    total = base.get("total_lines",len(lines)) if base.get("native_slice") else len(lines)
 
     try:
         offset = max(1, int(offset))
@@ -93,7 +108,7 @@ def read_file_slice(
             ),
         }
 
-    window = lines[start:start + limit]
+    window = lines if base.get("native_slice") else lines[start:start + limit]
     width = len(str(start + len(window))) or 1
     rendered = []
     for i, raw in enumerate(window, start=offset):
@@ -351,6 +366,33 @@ def edit_file_content(
     return res
 
 
+#: Tempo massimo di un glob: come la ricerca nel contenuto, mai appeso per minuti.
+GLOB_TIMEOUT_SECONDS = 20.0
+
+
+def _glob_regex(pattern: str) -> "re.Pattern[str]":
+    """Pattern glob (con ** su piu' livelli) come espressione regolare sul percorso relativo."""
+    pattern = pattern.replace("\\", "/").lstrip("./") if pattern.startswith("./") else pattern.replace("\\", "/")
+    out, i = [], 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif pattern[i] == "*":
+            out.append("[^/]*")
+            i += 1
+        elif pattern[i] == "?":
+            out.append("[^/]")
+            i += 1
+        else:
+            out.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile("".join(out), re.IGNORECASE if os.name == "nt" else 0)
+
+
 def glob_workspace_files(
     root_path: Optional[str] = None,
     pattern: str = "**/*",
@@ -372,6 +414,7 @@ def glob_workspace_files(
     matches: List[Dict[str, Any]] = []
     visti: set[Path] = set()
     truncated = False
+    timed_out = False
     try:
         patterns = [pattern]
         while True:
@@ -395,34 +438,37 @@ def glob_workspace_files(
                 break
             patterns = espansi
 
-        for pattern_singolo in patterns:
-            for entry in root.glob(pattern_singolo):
-                if entry in visti:
+        regole = [_glob_regex(ps) for ps in patterns]
+        scadenza = time.monotonic() + GLOB_TIMEOUT_SECONDS
+        # Visita a mano invece di Path.glob: quella entrava anche nelle cartelle pesanti (le scartava
+        # solo dopo) e senza corrispondenze non tornava mai al ciclo, quindi nessun tempo massimo
+        # poteva fermarla. "**/cand_35493.png" sul workspace e' rimasto appeso 25 minuti (9/11/2026).
+        for cartella, sottocartelle, files in os.walk(root):
+            sottocartelle[:] = [d for d in sottocartelle if d not in SEARCH_IGNORE_DIRS]
+            if time.monotonic() > scadenza:
+                timed_out = True
+                break
+            base = Path(cartella)
+            for nome in files:
+                entry = base / nome
+                # Niente filtro sulle estensioni: quello serve alla ricerca nel contenuto, qui si
+                # cercano percorsi, e un provino .png introvabile bloccava la revisione.
+                rel = entry.relative_to(root).as_posix()
+                if not any(r.fullmatch(rel) for r in regole) or entry in visti:
                     continue
                 if len(matches) >= limit:
                     truncated = True
                     break
                 try:
-                    if entry.is_dir():
-                        continue
-                    # Prune the same heavy trees the content search prunes.
-                    if any(part in SEARCH_IGNORE_DIRS for part in entry.parts):
-                        continue
-                    if entry.suffix.lower() in SEARCH_IGNORE_EXTENSIONS:
-                        continue
                     st = entry.stat()
-                    visti.add(entry)
-                    matches.append({
-                        "path": str(entry).replace("\\", "/"),
-                        "rel": str(entry.relative_to(root)).replace("\\", "/"),
-                        "size": st.st_size,
-                        "mtime": st.st_mtime,
-                    })
-                except (OSError, ValueError):
+                except OSError:
                     continue
+                visti.add(entry)
+                matches.append({"path": str(entry).replace("\\", "/"), "rel": rel,
+                                "size": st.st_size, "mtime": st.st_mtime})
             if truncated:
                 break
-    except (OSError, ValueError, NotImplementedError) as e:
+    except (OSError, ValueError, re.error) as e:
         return {"success": False, "error": f"Pattern glob non valido: {e}", "files": []}
 
     matches.sort(key=lambda m: m["mtime"], reverse=True)
@@ -431,8 +477,10 @@ def glob_workspace_files(
         "root": str(root).replace("\\", "/"),
         "pattern": pattern,
         "count": len(matches),
-        "truncated": truncated,
+        "truncated": truncated or timed_out,
         "files": matches,
+        **({"note": f"ricerca fermata dopo {GLOB_TIMEOUT_SECONDS:.0f} s: restringi la cartella o il pattern"}
+           if timed_out else {}),
     }
 
 

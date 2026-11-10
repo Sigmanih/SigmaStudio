@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 import sys
 from pathlib import Path
@@ -86,9 +87,21 @@ def init_ffi() -> bool:
         _LIB.sigma_ffi_poll_telemetry.restype = ctypes.c_int32
         _LIB.sigma_ffi_compact_kv.argtypes = [ctypes.c_void_p]
         _LIB.sigma_ffi_compact_kv.restype = ctypes.c_int32
+        if hasattr(_LIB,"sigma_ffi_execute_tool_json"):
+            _LIB.sigma_ffi_execute_tool_json.argtypes=[ctypes.c_void_p,ctypes.c_char_p]
+            _LIB.sigma_ffi_execute_tool_json.restype=ctypes.c_void_p
+            _LIB.sigma_ffi_free_string.argtypes=[ctypes.c_void_p]
+            _LIB.sigma_ffi_free_string.restype=None
 
         _CTX = _LIB.sigma_ffi_create_context()
         ver = _LIB.sigma_ffi_version().decode("utf-8", errors="replace")
+        if ver == "sigma-ffi-v1.0.0":
+            # Questa ABI restituiva costanti e accettava task senza eseguirli.
+            _LIB.sigma_ffi_destroy_context(_CTX)
+            _LIB = None
+            _CTX = None
+            log.warning("[SigmaFFI] ABI v1.0.0 priva di misure reali: ricompilare il binding.")
+            return False
         log.info("[SigmaFFI] Inizializzato binding nativo C-ABI in-process (%s da %s)", ver, lib_path)
         return True
     except Exception as exc:
@@ -146,3 +159,33 @@ def submit_tokens_ffi(tokens: List[int], task_id: int = 1, priority: int = 1) ->
     except Exception as exc:
         log.debug("[SigmaFFI] Errore submit_tokens_ffi: %s", exc)
         return False
+
+
+def execute_tool_ffi(tool: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Esegue tool di lettura nel contesto nativo e libera sempre la risposta C."""
+    return _execute_json_ffi({"tool":tool,"params":params})
+
+
+def load_native_ffi(path: str, kv_budget_mb: int = 128) -> Optional[Dict[str, Any]]:
+    return _execute_json_ffi({"op":"native_load","path":path,"kv_budget_mb":kv_budget_mb})
+
+
+def generate_native_ffi(tokens: List[int], max_tokens: int = 32, session_id: str = "ffi") -> Optional[Dict[str, Any]]:
+    return _execute_json_ffi({"op":"native_generate","tokens":tokens,"max_tokens":max_tokens,"session_id":session_id})
+
+
+def _execute_json_ffi(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not is_ffi_available() or not hasattr(_LIB,"sigma_ffi_execute_tool_json"):
+        return None
+    pointer=None
+    try:
+        pointer=_LIB.sigma_ffi_execute_tool_json(_CTX,json.dumps(payload).encode("utf-8"))
+        if not pointer:
+            return None
+        return json.loads(ctypes.string_at(pointer))
+    except (OSError,ValueError,TypeError) as error:
+        log.debug("Tool FFI non disponibile: %s",error)
+        return None
+    finally:
+        if pointer:
+            _LIB.sigma_ffi_free_string(pointer)

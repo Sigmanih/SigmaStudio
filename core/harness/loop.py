@@ -2319,6 +2319,7 @@ def _execute_admin_tool_impl(
             full_path,
             offset=params.get("offset") or params.get("start_line") or 1,
             limit=params.get("limit") or params.get("max_lines"),
+            workspace_root=workspace_root,
         )
         
         # Anti-hallucination fuzzy suggestion if file does not exist
@@ -3073,6 +3074,7 @@ def _stream_agent_turn_impl(
     # in silenzio, nel peggiore un server che smette di rispondere.
     try:
         from core.engine.unified_runtime import sigma_engine as _motore
+        _motore.request_context(context_tokens)
         reale = _motore.effective_context_window()
         if reale and reale < context_tokens:
             log.info(
@@ -3311,6 +3313,10 @@ def _stream_agent_turn_impl(
     spec_attempts = 0
     last_pipeline_signature = None
     failed_call_signatures: set = set()
+    #: L'errore di ogni chiamata fallita: il blocco della ripetizione lo ricorda, perche' "cambia
+    #: approccio: leggi il file" portava fuori strada chi doveva solo aggiungere un parametro
+    #: (prova del video lungo, 9/11/2026: confirmed=true dimenticato e poi giri a vuoto).
+    failed_call_errors: Dict[tuple, str] = {}
     # Il rilevatore normalizza le firme e tiene la finestra delle azioni: e'
     # lui a riconoscere il ciclo a due mosse, che la ripetizione secca non
     # vede. Vive accanto ai due insiemi qui sotto finche' ogni punto non ci e'
@@ -4054,8 +4060,9 @@ def _stream_agent_turn_impl(
                 msg = (
                     f"Tool '{t_name}' NON eseguito: hai gia ottenuto esattamente "
                     "questo elenco e nulla e cambiato da allora. Il risultato "
-                    "sarebbe identico. Passa all'azione: crea o modifica i file "
-                    "previsti dall'obiettivo."
+                    "sarebbe identico. Riprendi il prossimo passo della procedura "
+                    "del tuo ruolo (non tutti gli obiettivi sono file da scrivere: "
+                    "un render si aspetta col suo tool di stato)."
                 )
                 yield {
                     "type": "tool_result",
@@ -4198,11 +4205,15 @@ def _stream_agent_turn_impl(
             interroga_stato = t_name.endswith("_status") or t_name.endswith("_next")
             if not ripetibile and not interroga_stato and (rilevatore.gia_fallita(t_name, t_params)
                                                           or call_signature in failed_call_signatures):
+                prima = failed_call_errors.get(call_signature, "")
                 repeat_note = (
                     f"Tool '{t_name}' NON eseguito: hai gia effettuato questa "
-                    "chiamata e ha gia fallito. Ripeterla dara lo stesso "
-                    "risultato. Cambia approccio: leggi il file, cerca il percorso "
-                    "corretto, oppure esegui l'azione mancante che ti e stata indicata."
+                    "chiamata identica e ha gia fallito. Ripeterla dara lo stesso "
+                    "risultato. "
+                    + (f"Errore della volta scorsa: {prima[:400]} -> correggi i parametri "
+                       "come indica e rifai la chiamata." if prima else
+                       "Cambia approccio: correggi i parametri o esegui l'azione mancante "
+                       "che ti e stata indicata.")
                 )
                 yield {
                     "type": "tool_result",
@@ -4340,7 +4351,11 @@ def _stream_agent_turn_impl(
                                                  active_cwd=session_cwd)
 
                 # Auto-retry immediato System-1 con Laya su fallimenti transienti
-                if not result.get("success"):
+                # Solo i tool di sola lettura: ripetere una scrittura la esegue due volte (un render
+                # rilanciato, un lotto di revisione rifatto), e un rifiuto di convalida non e'
+                # transiente (collaudo del video lungo, 9/11/2026).
+                from core.harness.policy import READ_ONLY_TOOLS
+                if not result.get("success") and t_name in READ_ONLY_TOOLS:
                     err_msg = str(result.get("error", ""))
                     try:
                         from core.harness.laya_router import diagnose_tool_failure, decide_tool_retry
@@ -4498,9 +4513,9 @@ def _stream_agent_turn_impl(
                 rilevatore.registra_inerte(t_name, t_params)
             if not result.get("success"):
                 run_metrics["tool_failures"] += 1
-                failed_call_signatures.add(
-                    (t_name, json.dumps(t_params, sort_keys=True, default=str)[:600])
-                )
+                firma_fallita = (t_name, json.dumps(t_params, sort_keys=True, default=str)[:600])
+                failed_call_signatures.add(firma_fallita)
+                failed_call_errors[firma_fallita] = str(result.get("error") or "")
 
             # Il ledger e' appena cambiato: e' il momento in cui vale la pena
             # metterlo su disco. La frequenza la decide lo store, che rifiuta

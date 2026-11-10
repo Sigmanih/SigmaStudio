@@ -15,6 +15,7 @@ import socket
 import struct
 import sys
 import time
+import threading
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Generator, List, Optional, Tuple
@@ -86,9 +87,12 @@ def _ipc_pipe_name() -> str:
 
 
 def _ipc_socket_path() -> str:
-    """Percorso Unix Domain Socket, relativo alla cartella temporanea (mai path assoluto hardcoded)."""
+    """Percorso condiviso del socket Unix del kernel Rust."""
+    socket_path = os.environ.get("SIGMA_RUST_SOCKET_PATH", "").strip()
+    if socket_path:
+        return socket_path
     base = os.environ.get("SIGMA_RUST_SOCKET_DIR", os.path.join(os.path.expanduser("~"), ".sigma_engine_rust"))
-    return os.path.join(base, f"sigma_engine_{os.getpid()}.sock")
+    return os.path.join(base, "sigma_engine.sock")
 
 
 class NamedPipeClient:
@@ -189,14 +193,20 @@ class NamedPipeClient:
         return None
 
     def tokenize(self, text: str) -> List[int]:
-        """Tokenizza tramite canale IPC o fallback deterministico."""
+        """Restituisce soltanto ID prodotti dal tokenizer del modello."""
         if not text:
             return []
         tokens = self.tokenize_ipc(text)
         if tokens is not None:
             return tokens
-        import zlib
-        return [zlib.crc32(word.encode("utf-8")) & 0x7FFFFFFF for word in text.split()]
+        req = urllib.request.Request(f"{self._url}/api/engine/tokenize",
+            data=json.dumps({"text":text}).encode("utf-8"),
+            headers=_intestazioni({"Content-Type":"application/json"}))
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as response:
+                return [int(value) for value in json.load(response)["tokens"]]
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise RuntimeError("Tokenizer del modello non disponibile") from exc
 
     @property
     def is_ipc_connected(self) -> bool:
@@ -596,6 +606,8 @@ class SigmaRustBackend(InferenceBackend):
         self._loaded_model_id: Optional[str] = None
         self._placement_info: Dict[str, Any] = {}
         self._compute_delegate: Optional[Any] = None
+        self._parallel_slots = 1
+        self._proxy_registration_failed = False
 
     @classmethod
     def availability(cls) -> Tuple[bool, str]:
@@ -632,6 +644,8 @@ class SigmaRustBackend(InferenceBackend):
     def load(self, facts: ModelFacts, hardware: Dict[str, Any], **options) -> Dict[str, Any]:
         """Mappa il modello tramite il planner di tiering zero-copy del kernel Rust e attiva il compute worker CUDA."""
         self._facts = facts
+        self._parallel_slots = 1
+        self._proxy_registration_failed = True
         model_name = facts.name or os.path.basename(facts.path or "unknown")
 
         # 1. Caricamento del worker di calcolo delegato
@@ -646,15 +660,20 @@ class SigmaRustBackend(InferenceBackend):
             delega = self._compute_delegate.load(facts, hardware, **options) or delega
             if delega.get("success"):
                 porta = getattr(self._compute_delegate, "_porta", 57540)
-                # Registra l'upstream worker nel micro-kernel Rust (sia host.docker.internal che localhost)
+                # Il kernel risolve l'host locale diversamente dentro un contenitore.
                 try:
                     up_req = urllib.request.Request(
                         f"{self._url}/api/engine/upstream",
-                        data=json.dumps({"upstream_url": f"http://host.docker.internal:{porta}"}).encode("utf-8"),
+                        data=json.dumps({"upstream_url": os.environ.get(
+                            "SIGMA_UPSTREAM_COMPUTE_URL", f"http://127.0.0.1:{porta}"
+                        ), "parallel_slots": self._compute_delegate.parallel_slots()}).encode("utf-8"),
                         headers=_intestazioni({"Content-Type": "application/json"}),
                         method="POST",
                     )
                     with urllib.request.urlopen(up_req, timeout=3.0) as up_resp:
+                        registration = json.load(up_resp)
+                        self._parallel_slots = max(1, min(64, int(registration.get("parallel_slots") or 1)))
+                        self._proxy_registration_failed = False
                         log.info("[SigmaRustBackend] Upstream CUDA registrato nel kernel Rust su porta %s", porta)
                 except Exception as up_exc:
                     log.warning("[SigmaRustBackend] Impossibile notificare upstream al kernel Rust: %s", up_exc)
@@ -682,13 +701,20 @@ class SigmaRustBackend(InferenceBackend):
                 "stage": delega.get("stage") or "load",
             }
 
+        if self._proxy_registration_failed:
+            # Un kernel ancora raggiungibile potrebbe conservare l'upstream di un altro modello.
+            self._loaded_model_id = model_name
+            return {"success": True, "backend": self.name, "fallback": True}
+
         # 2. Registrazione partizione zero-copy nel kernel Rust
+        # I campi vengono da ModelFacts: con nomi inesistenti il kernel riceveva
+        # sempre 8 GB e 32 layer e pianificava un modello che non c'era.
         payload = {
             "model": model_name,
             "model_path": str(facts.path) if facts.path else None,
-            "model_size_gb": facts.file_size_gb if hasattr(facts, "file_size_gb") else 8.0,
-            "total_layers": getattr(facts, "layers_count", 32),
-            "quantization": getattr(facts, "quantization", "Q4_K_M"),
+            "model_size_gb": round(int(getattr(facts, "total_bytes", 0) or 0) / 1e9, 3) or None,
+            "total_layers": int(getattr(facts, "num_hidden_layers", 0) or 0) or None,
+            "quantization": getattr(facts, "quantization", "") or None,
         }
 
         try:
@@ -740,19 +766,173 @@ class SigmaRustBackend(InferenceBackend):
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
 
-        # SE1 — Micro-Chunked Prefill:
-        # Se il prompt è molto esteso (> 2048 caratteri), genera un notice intermedio per evitare freeze TTFT
-        tot_prompt_chars = sum(len(m.get("content", "")) for m in messages)
-        if tot_prompt_chars > 2048:
-            yield {
-                "notice": "micro_chunked_prefill",
-                "content": "",
-                "chunk_size": 512,
-                "token": "",
-            }
+        if self._proxy_registration_failed and self._compute_delegate and self._compute_delegate.is_loaded:
+            yield from self._compute_delegate.generate_stream(
+                prompt=prompt, system_prompt=system_prompt, temperature=temperature,
+                max_tokens=max_tokens, messages=messages, params=params, cancel=cancel,
+                thinking=thinking, tools=tools, tool_choice=tool_choice,
+            )
+            return
 
-        # 2. Se il compute worker CUDA locale è pronto, esegue lo streaming reale dei token ad altissima velocità
+        # Il proxy HTTP e' il percorso primario: l'IPC attuale gestisce ping e
+        # cancellazione, ma non inoltra token di generazione al worker.
+        # Se il kernel o il suo upstream non rispondono, si usa il worker locale.
+        from core.engine.backends.llamaserver_backend import LlamaServerBackend
+
+        # Un solo serializzatore evita che il proxy cambi il contratto del modello.
+        resolved = params or SamplingParams(temperature=temperature, max_tokens=max_tokens)
+        if isinstance(self._compute_delegate, LlamaServerBackend) and self._compute_delegate.is_loaded:
+            resolved = resolved.with_overrides(
+                max_tokens=self._compute_delegate._budget_token(resolved.max_tokens, messages)
+            )
+        req_body = LlamaServerBackend._corpo_richiesta(
+            prompt, system_prompt, messages, resolved, thinking, tools, tool_choice
+        )
+        req_body.update(request_id=uuid.uuid4().hex, model=self._loaded_model_id or "sigma_default")
+        if params and getattr(params, "response_format", None):
+            req_body["response_format"] = params.response_format
+
+        yielded_any_token = False
+        completed = False
+        in_reasoning = False
+        proxy_error = None
+        usage_tokens: Optional[int] = None
+        stop_monitor=threading.Event()
+        def is_cancelled():
+            return bool(cancel and (cancel() if callable(cancel) else getattr(cancel,"is_cancelled",lambda:False)()))
+        def monitor_cancel():
+            while not stop_monitor.wait(0.05):
+                try:
+                    if is_cancelled():
+                        result=self.cancel_request(request_id=req_body["request_id"])
+                        if result.get("cancelled"):
+                            return
+                except Exception as error:
+                    log.debug("Controllo di annullamento non disponibile: %s",error)
+                    return
+        monitor=None
+        if cancel:
+            if is_cancelled():
+                yield {"token":"","done":True,"finish_reason":"cancelled"}
+                return
+            monitor=threading.Thread(target=monitor_cancel,name="sigma-rust-cancel",daemon=True)
+            monitor.start()
+        try:
+            req = urllib.request.Request(
+                f"{self._url}/v1/chat/completions",
+                data=json.dumps(req_body).encode("utf-8"),
+                headers=_intestazioni({"Content-Type": "application/json"}),
+                method="POST",
+            )
+            t0 = time.perf_counter()
+            with urllib.request.urlopen(req, timeout=120.0) as resp:
+                content_type = resp.headers.get("Content-Type", "")
+                if "text/event-stream" in content_type:
+                    for raw_line in resp:
+                        cancelled = is_cancelled()
+                        if cancelled:
+                            self.cancel_request(request_id=req_body["request_id"])
+                            completed = True
+                            break
+                        line_str = raw_line.decode("utf-8", errors="replace").strip()
+                        if not line_str or line_str.startswith(":"):
+                            continue
+                        if line_str == "data: [DONE]":
+                            completed = True
+                            break
+                        if line_str.startswith("data: "):
+                            try:
+                                chunk = json.loads(line_str[6:])
+                                if chunk.get("error"):
+                                    raise RuntimeError(str(chunk["error"]))
+                                choices = chunk.get("choices", [])
+                                # Il conteggio arriva in un evento senza choices: senza
+                                # catturarlo i chiamanti ripiegano sulle parole del testo.
+                                usage = chunk.get("usage") or {}
+                                if type(usage.get("completion_tokens")) is int:
+                                    usage_tokens = usage["completion_tokens"]
+                                spec_telem = chunk.get("speculative_telemetry") or usage.get("speculative_telemetry") or {}
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    tok = delta.get("content") or ""
+                                    reasoning = delta.get("reasoning_content") or ""
+                                    calls = delta.get("tool_calls")
+                                    finish = choices[0].get("finish_reason")
+                                    if tok or reasoning or calls or finish:
+                                        if tok or reasoning or calls:
+                                            yielded_any_token = True
+                                        if reasoning and not in_reasoning:
+                                            in_reasoning = True
+                                            yield {"token": "<think>", "content": "<think>", "done": False}
+                                        if (tok or finish) and in_reasoning and not reasoning:
+                                            in_reasoning = False
+                                            yield {"token": "</think>", "content": "</think>", "done": False}
+                                        completed = completed or bool(finish)
+                                        item = {
+                                            "token": reasoning or tok,
+                                            "content": reasoning or tok,
+                                            "finish_reason": finish,
+                                            "latency_ms": (time.perf_counter() - t0) * 1000.0,
+                                        }
+                                        if reasoning:
+                                            item["reasoning_content"] = reasoning
+                                        if calls:
+                                            item["tool_calls"] = calls
+                                        if spec_telem:
+                                            item["speculative_speedup"] = spec_telem.get("effective_speedup", 1.0)
+                                            item["speculative_acceptance_rate"] = spec_telem.get("acceptance_rate", 0.0)
+                                            item["grammar_constrained"] = spec_telem.get("grammar_constrained", False)
+                                        yield item
+                            except (ValueError, TypeError, KeyError) as exc:
+                                log.debug("[SigmaRustBackend] Evento SSE non valido: %s", exc)
+                                continue
+                else:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                    spec_telem = data.get("speculative_telemetry") or (data.get("usage") or {}).get("speculative_telemetry") or {}
+                    completed = bool(data.get("choices"))
+                    if type((data.get("usage") or {}).get("completion_tokens")) is int:
+                        usage_tokens = data["usage"]["completion_tokens"]
+                    if content:
+                        yielded_any_token = True
+                    item = {
+                        "token": content,
+                        "content": content,
+                        "finish_reason": "stop",
+                        "latency_ms": elapsed_ms,
+                    }
+                    if spec_telem:
+                        item["speculative_speedup"] = spec_telem.get("effective_speedup", 1.0)
+                        item["speculative_acceptance_rate"] = spec_telem.get("acceptance_rate", 0.0)
+                        item["grammar_constrained"] = spec_telem.get("grammar_constrained", False)
+                    yield item
+
+        except Exception as exc:
+            log.error("[SigmaRustBackend] Errore durante generazione stream: %s", exc)
+            proxy_error = exc
+            if yielded_any_token:
+                yield {"token":"","error":str(exc),"finish_reason":"error","done":True}
+        finally:
+            stop_monitor.set()
+            if monitor is not None:
+                monitor.join(timeout=0.1)
+
+        if in_reasoning:
+            yield {"token": "</think>", "content": "</think>", "done": False}
+
+        if proxy_error is None and (yielded_any_token or completed):
+            final = {"token": "", "done": True, "finish_reason": "cancelled" if is_cancelled() else "stop"}
+            if usage_tokens is not None:
+                final["total_tokens"] = usage_tokens
+            yield final
+
+        # Un proxy che non raggiunge l'upstream non deve rendere inutilizzabile
+        # un modello gia' caricato nel runtime locale di Sigma Studio.
+        if yielded_any_token or completed:
+            return
         if self._compute_delegate and self._compute_delegate.is_loaded:
+            log.warning("[SigmaRustBackend] Proxy non disponibile (%s); uso il worker locale.", proxy_error or "stream vuoto")
             yield from self._compute_delegate.generate_stream(
                 prompt=prompt,
                 system_prompt=system_prompt,
@@ -767,159 +947,11 @@ class SigmaRustBackend(InferenceBackend):
             )
             return
 
-        # Tentativo di recuperare il backend di calcolo attivo da UniversalSigmaEngine
-        try:
-            from core.engine.unified_runtime import sigma_engine
-            for b_name, b_inst in getattr(sigma_engine, "_backends", {}).items():
-                if b_inst is not self and getattr(b_inst, "is_loaded", False):
-                    yield from b_inst.generate_stream(
-                        prompt=prompt,
-                        system_prompt=system_prompt,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        messages=messages,
-                        params=params,
-                        cancel=cancel,
-                        thinking=thinking,
-                        tools=tools,
-                        tool_choice=tool_choice,
-                    )
-                    return
-        except Exception as b_exc:
-            log.debug("[SigmaRustBackend] Impossibile delegare a backend alternativo: %s", b_exc)
-
-        # 3. Streaming nativo ad altissima velocità via IPC micro-kernel (Named Pipe o Unix Socket)
-        #
-        # `self._client` non e' mai esistito: la classe crea `_ipc_client`
-        # tramite `_get_ipc_client()`, come fanno gia' gli altri due punti che
-        # usano l'IPC. Il nome sbagliato sollevava AttributeError *prima* del
-        # try qui sotto, quindi l'eccezione usciva dal generatore e il fallback
-        # HTTP del passo 4 non veniva mai raggiunto: ogni generazione del
-        # kernel Rust moriva, e il ciclo dell'agente bruciava tutti i suoi
-        # turni sullo stesso errore senza produrre un token.
-        client = self._get_ipc_client()
-        if client and client.is_ipc_connected:
-            ipc_payload = {
-                "op": "generate_stream",
-                "request_id": f"req_{int(time.time()*1000)}",
-                "model": self._loaded_model_id or "sigma_default",
-                "messages": messages,
-                "temperature": params.temperature if params else temperature,
-                "max_tokens": params.max_tokens if params else max_tokens,
-            }
-            try:
-                stream_iter = client.stream_tokens_ipc(ipc_payload, cancel=cancel)
-                has_yielded = False
-                for token_chunk in stream_iter:
-                    has_yielded = True
-                    yield token_chunk
-                if has_yielded:
-                    return
-            except Exception as ipc_stream_exc:
-                log.debug("[SigmaRustBackend] Fallback da IPC stream a HTTP: %s", ipc_stream_exc)
-
-        # 4. Fallback via proxy HTTP OpenAI del kernel Rust
-        req_body = {
-            "request_id": uuid.uuid4().hex,
-            "model": self._loaded_model_id or "sigma_default",
-            "messages": messages,
-            "temperature": params.temperature if params else temperature,
-            "max_tokens": params.max_tokens if params else max_tokens,
-            "stream": True,
+        yield {
+            "token": f"\n[Errore SigmaEngine Rust: {proxy_error or 'nessun token ricevuto dal proxy'}]",
+            "content": f"\n[Errore SigmaEngine Rust: {proxy_error or 'nessun token ricevuto dal proxy'}]",
+            "finish_reason": "error",
         }
-        if params and getattr(params, "grammar", None):
-            req_body["grammar"] = params.grammar
-        if params and getattr(params, "response_format", None):
-            req_body["response_format"] = params.response_format
-        elif tools:
-            req_body["grammar"] = "tool_call"
-
-        try:
-            req = urllib.request.Request(
-                f"{self._url}/v1/chat/completions",
-                data=json.dumps(req_body).encode("utf-8"),
-                headers=_intestazioni({"Content-Type": "application/json"}),
-                method="POST",
-            )
-            t0 = time.perf_counter()
-            yielded_any_token = False
-            total_content_len = 0
-            with urllib.request.urlopen(req, timeout=120.0) as resp:
-                content_type = resp.headers.get("Content-Type", "")
-                if "text/event-stream" in content_type:
-                    for raw_line in resp:
-                        if cancel and cancel():
-                            self.cancel_request(request_id=req_body["request_id"])
-                            break
-                        line_str = raw_line.decode("utf-8", errors="replace").strip()
-                        if not line_str or line_str.startswith(":"):
-                            continue
-                        if line_str == "data: [DONE]":
-                            break
-                        if line_str.startswith("data: "):
-                            try:
-                                chunk = json.loads(line_str[6:])
-                                choices = chunk.get("choices", [])
-                                spec_telem = chunk.get("speculative_telemetry") or chunk.get("usage", {}).get("speculative_telemetry") or {}
-                                if choices:
-                                    delta = choices[0].get("delta", {})
-                                    tok = delta.get("content", "")
-                                    finish = choices[0].get("finish_reason")
-                                    if tok or finish:
-                                        if tok:
-                                            yielded_any_token = True
-                                            total_content_len += len(tok)
-                                        item = {
-                                            "token": tok,
-                                            "content": tok,
-                                            "finish_reason": finish,
-                                            "latency_ms": (time.perf_counter() - t0) * 1000.0,
-                                        }
-                                        if spec_telem:
-                                            item["speculative_speedup"] = spec_telem.get("effective_speedup", 1.0)
-                                            item["speculative_acceptance_rate"] = spec_telem.get("acceptance_rate", 0.0)
-                                            item["grammar_constrained"] = spec_telem.get("grammar_constrained", False)
-                                        yield item
-                            except Exception:
-                                continue
-                else:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
-                    spec_telem = data.get("speculative_telemetry") or data.get("usage", {}).get("speculative_telemetry") or {}
-                    if content:
-                        yielded_any_token = True
-                        total_content_len += len(content)
-                    item = {
-                        "token": content,
-                        "content": content,
-                        "finish_reason": "stop",
-                        "latency_ms": elapsed_ms,
-                    }
-                    if spec_telem:
-                        item["speculative_speedup"] = spec_telem.get("effective_speedup", 1.0)
-                        item["speculative_acceptance_rate"] = spec_telem.get("acceptance_rate", 0.0)
-                        item["grammar_constrained"] = spec_telem.get("grammar_constrained", False)
-                    yield item
-
-            if not yielded_any_token or total_content_len == 0:
-                warning_msg = (
-                    "⚠️ [SigmaEngine] Il micro-kernel Rust è attivo ma non è stato caricato alcun modello linguistico LLM in memoria. "
-                    "Seleziona un modello con pesi reali (es. Qwen2.5-Coder-14B o Qwen3.8-27B) dal selettore in alto per abilitare la generazione di codice."
-                )
-                yield {
-                    "token": warning_msg,
-                    "content": warning_msg,
-                    "finish_reason": "stop",
-                    "latency_ms": (time.perf_counter() - t0) * 1000.0,
-                }
-        except Exception as exc:
-            log.error("[SigmaRustBackend] Errore durante generazione stream: %s", exc)
-            yield {
-                "token": f"\n[Errore SigmaRustBackend: {exc}]",
-                "content": f"\n[Errore SigmaRustBackend: {exc}]",
-                "finish_reason": "error",
-            }
 
     def unload(self) -> Dict[str, Any]:
         """Rilascia il modello resident nel kernel Rust."""
@@ -931,6 +963,8 @@ class SigmaRustBackend(InferenceBackend):
             self._compute_delegate = None
         old_model = self._loaded_model_id
         self._loaded_model_id = None
+        self._parallel_slots = 1
+        self._proxy_registration_failed = False
         self._facts = None
         self._placement_info = {}
         return {"success": True, "unloaded": old_model}
@@ -941,20 +975,29 @@ class SigmaRustBackend(InferenceBackend):
         return self._loaded_model_id is not None
 
     def describe_placement(self) -> Dict[str, Any]:
-        if self._placement_info:
-            return self._placement_info
-        if self._compute_delegate and hasattr(self._compute_delegate, "describe_placement"):
-            return self._compute_delegate.describe_placement()
-        return {}
+        # I pesi li possiede il worker delegato: il tiering del kernel e' un piano
+        # (model_loaded_in_rust=false) e non puo' sostituire la collocazione reale,
+        # altrimenti i controlli di full offload leggono un piano invece dei layer.
+        delegate = self._compute_delegate
+        if delegate is not None and getattr(delegate, "is_loaded", False) and hasattr(delegate, "describe_placement"):
+            placement = dict(delegate.describe_placement() or {})
+            if self._placement_info:
+                placement["rust_tiering_plan"] = self._placement_info
+            return placement
+        return dict(self._placement_info) if self._placement_info else {}
 
     def parallel_slots(self) -> int:
+        return self._parallel_slots
+
+    def acceleration_capabilities(self):
+        from dataclasses import replace
+        from core.engine.acceleration import RuntimeCapabilities
         if self._compute_delegate and self._compute_delegate.is_loaded:
-            try:
-                return max(1, int(self._compute_delegate.parallel_slots()))
-            except Exception as exc:
-                log.debug("Slot del processo di calcolo non osservabili: %s", exc)
-        # Senza una misura non si promette concorrenza al chiamante.
-        return 1
+            capabilities = self._compute_delegate.acceleration_capabilities()
+            return replace(capabilities, runtime=self.name,
+                parallel_slots=min(capabilities.parallel_slots, self.parallel_slots()),
+                evidence="delegate_contract" if self._proxy_registration_failed else "registered_worker_contract")
+        return RuntimeCapabilities(runtime=self.name, execution_owner="unavailable", evidence="not_loaded")
 
     def validate_grammar(
         self, text: str, allowed_tools: Optional[List[str]] = None, is_partial: bool = False
@@ -1076,6 +1119,20 @@ class SigmaRustBackend(InferenceBackend):
         except Exception as exc:
             return {"status": "error", "error": str(exc)}
 
+    def slot_checkpoint(self, action: str, slot_id: int, filename: str = "") -> Dict[str, Any]:
+        if self._proxy_registration_failed:
+            return {"success":False,"error":"Worker corrente non registrato nel kernel"}
+        if action not in ("save","restore","erase") or not 0 <= slot_id < self.parallel_slots():
+            return {"success":False,"error":"Operazione o slot non valido"}
+        try:
+            req=urllib.request.Request(f"{self._url}/api/engine/session/cache",
+                data=json.dumps({"action":action,"slot_id":slot_id,"filename":filename}).encode(),
+                headers=_intestazioni({"Content-Type":"application/json"}))
+            with urllib.request.urlopen(req,timeout=30) as response:
+                return json.load(response)
+        except (OSError,ValueError) as error:
+            return {"success":False,"error":str(error)}
+
     def lookup_prefix_cache(self, tokens: List[int]) -> Dict[str, Any]:
         """Verifica se una sequenza di token ha un prefisso già presente nella Radix Cache."""
         try:
@@ -1118,9 +1175,11 @@ class SigmaRustBackend(InferenceBackend):
             return self.get_status().get("radix_cache", {})
 
     def tokenize(self, text: str) -> List[int]:
-        """Tokenizza il testo tramite IPC nativo ultra-veloce, REST HTTP o ripiego deterministico."""
+        """Restituisce gli ID del tokenizer reale via IPC o HTTP; segnala l'assenza del modello."""
         if not text:
             return []
+        if self._proxy_registration_failed:
+            raise RuntimeError("Tokenizer del modello corrente non registrato nel kernel")
 
         # 1. Prova prioritaria via canale IPC nativo (< 0.1 ms)
         if hasattr(self, "_ipc") and self._ipc:
@@ -1145,41 +1204,21 @@ class SigmaRustBackend(InferenceBackend):
         except Exception:
             pass
 
-        # 3. Ripiego deterministico: mappa le parole su interi positivi stabili
-        import zlib
-        return [zlib.crc32(word.encode("utf-8")) & 0x7FFFFFFF for word in text.split()]
+        raise RuntimeError("Tokenizer del modello non disponibile: impossibile produrre ID esatti")
 
     def telemetry(self) -> Dict[str, Any]:
         """Restituisce le metriche di runtime con scomposizione microsecondo (AC4 & AD1)."""
         if self._compute_delegate and self._compute_delegate.is_loaded:
             # La collocazione deve descrivere chi esegue davvero il modello.
             return dict(self._compute_delegate.telemetry() or {})
-        try:
-            from core.engine.backends.sigma_ffi import get_ffi_telemetry, is_ffi_available
-            if is_ffi_available():
-                ffi_data = get_ffi_telemetry()
-                if ffi_data:
-                    return ffi_data
-        except Exception:
-            pass
-
         status = self.get_status()
-        sched = status.get("scheduler", {})
-        lat_ms = sched.get("avg_latency_ms") or 19.8
-        tot_us = int(lat_ms * 1000)
         return {
-            "latency_breakdown": {
-                "prefill_us": int(tot_us * 0.15),
-                "queue_us": int(tot_us * 0.05),
-                "decode_us": int(tot_us * 0.78),
-                "ipc_us": int(tot_us * 0.02),
-            },
-            "slab_fragmentation": {
-                "fragmented_pages": 4,
-                "fragmentation_ratio": 0.038,
-                "active_slabs": 1,
-            },
-            "chunked_prefill": True,
+            "latency_breakdown": status.get("latency_breakdown") or dict.fromkeys(
+                ("prefill_us", "queue_us", "decode_us", "ipc_us")
+            ),
+            "slab_fragmentation": status.get("slab_fragmentation") or {},
+            "measured": bool(status.get("latency_breakdown")),
+            "chunked_prefill": None,
             "in_process_ffi": False,
         }
 

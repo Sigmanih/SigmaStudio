@@ -171,6 +171,13 @@ def test_la_corsia_non_aspetta_il_giudice(monkeypatch, tmp_path):
     monkeypatch.setattr(prod_mod, "judge_clip", fake_judge)
     monkeypatch.setattr(clip_judge, "installed", lambda: True)
     monkeypatch.setattr(prod_mod, "extract_last_frame", lambda clip: None)
+
+    async def approvata(self, prod, i, lane):
+        # Il cancello di revisione dopo il giudice ha la sua prova (test_video_long_production).
+        prod["shots"][i]["status"] = "done"
+    monkeypatch.setattr(ProductionRunner, "_finish", approvata)
+    from core.modules.sigma_creative_lab.video import postprocess as pp
+    monkeypatch.setattr(pp, "quality_check", lambda clip, *a, **k: [])
     store = ProductionStore(tmp_path / "prods")
     prod = store.create("Prova", settings={"qa": False, "color_match": False, "judge": True, "max_attempts": 3,
                                                      "judge_mode": "strict"},

@@ -36,6 +36,7 @@ import time
 import urllib.error
 import urllib.request
 from collections import deque
+from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
 from core.engine import gguf_planner
@@ -291,10 +292,12 @@ def plan_to_args(settings: Dict[str, Any]) -> List[str]:
         aggiungi("-ctk", kv)
         aggiungi("-ctv", kv)
 
-    if settings.get("use_mmap") is False:
-        argomenti.append("--no-mmap")
-    if settings.get("use_mlock"):
-        argomenti.append("--mlock")
+    # Da b11600 --no-mmap e --mlock sono confluiti in --load-mode: i vecchi flag
+    # fanno rifiutare l'avvio proprio nel tentativo di ripiego senza mmap.
+    mmap_off = settings.get("use_mmap") is False
+    mlock = bool(settings.get("use_mlock"))
+    if mmap_off or mlock:
+        aggiungi("--load-mode", ("mlock" if mmap_off else "mmap+mlock") if mlock else "none")
 
     # Speculative Decoding: N-Gram Prompt Lookup o Draft Model
     spec_model = settings.get("spec_draft_model") or os.environ.get("SIGMA_SPEC_DRAFT_MODEL")
@@ -434,6 +437,21 @@ class LlamaServerBackend(InferenceBackend):
         #: finiscono nel messaggio d'errore, perche' chi legge deve sapere cosa
         #: e' stato provato al posto suo prima di riprovare a mano.
         self._riduzioni_gpu: List[str] = []
+        #: GPU riservate (lease) quando il server e' partito: se poi tornano libere
+        #: il modello e' rimasto in RAM senza motivo (vedi `placement_stale`).
+        self._riservate_avvio: frozenset = frozenset()
+
+    @property
+    def placement_stale(self) -> bool:
+        """Il server e' partito con GPU riservate che ora sono libere: ricaricarlo lo rimette in VRAM.
+
+        Collaudo del video lungo (9/11/2026): il 27B partito in RAM durante il render restava a
+        1 token/s anche a render finito, con entrambe le schede vuote.
+        """
+        if not self.is_loaded or not self._riservate_avvio:
+            return False
+        from core.engine.gpu_lease import leases
+        return bool(self._riservate_avvio - leases.reserved())
 
     # --------------------------------------------------------- capabilities
 
@@ -609,6 +627,13 @@ class LlamaServerBackend(InferenceBackend):
                 "--slot-prompt-similarity", "0.5",
                 *plan_to_args(cur_settings),
             ]
+            from core.paths import var_dir
+            import hashlib
+            slot_dir=Path(var_dir()) / "engine_kv" / hashlib.sha256(str(modello).encode()).hexdigest()[:16]
+            slot_dir.mkdir(parents=True,exist_ok=True)
+            self._settings["slot_save_path"]=str(slot_dir)
+            cur_settings["slot_save_path"]=str(slot_dir)
+            comando.extend(["--slot-save-path",str(slot_dir)])
 
             # Aggancia l'adattatore multimodale CLIP/Vision se presente nella cartella
             mmproj_file = self._find_mmproj_file(facts)
@@ -643,6 +668,8 @@ class LlamaServerBackend(InferenceBackend):
             # l'LLM lo manderebbe in out-of-memory a meta' lavoro.
             from core.engine.gpu_lease import apply_to_llama_command
             nota_lease = apply_to_llama_command(sub_env, comando, _numero_gpu(hardware))
+            from core.engine.gpu_lease import leases
+            self._riservate_avvio = frozenset(leases.reserved())
             if nota_lease:
                 log.info("[LlamaServer] %s", nota_lease)
 
@@ -720,7 +747,7 @@ class LlamaServerBackend(InferenceBackend):
             if is_mmap_page_error and indice_tentativo == 0 and len(tentativi_settings) > 1:
                 log.warning(
                     "[LlamaServer] Caricamento fallito per errore di paginazione mmap (STATUS_IN_PAGE_ERROR). "
-                    "Tentativo di ripristino automatico con --no-mmap..."
+                    "Tentativo di ripristino automatico senza mmap (--load-mode none)..."
                 )
                 indice_tentativo += 1
                 continue
@@ -964,6 +991,15 @@ class LlamaServerBackend(InferenceBackend):
     def telemetry(self) -> Dict[str, Any]:
         return dict(self._settings)
 
+    def acceleration_capabilities(self):
+        from core.engine.acceleration import RuntimeCapabilities
+        loaded = self.is_loaded
+        return RuntimeCapabilities(runtime=self.name, execution_owner="llama_server",
+            parallel_slots=self.parallel_slots() if loaded else 1,
+            prefix_reuse=loaded, kv_checkpoint=loaded and bool(self._settings.get("slot_save_path")),
+            exact_tokenizer=loaded, cancellation=loaded, logits_owner="llama_server",
+            evidence="loaded_worker_contract" if loaded else "not_loaded")
+
     def _budget_token(self, richiesti: int, messaggi: Optional[list]) -> int:
         """Quanti token nuovi stanno in cio' che resta dello slot.
 
@@ -1150,7 +1186,7 @@ class LlamaServerBackend(InferenceBackend):
                         f"llama-server e' terminato con errore di paginazione I/O "
                         f"(STATUS_IN_PAGE_ERROR / codice {codice}). Il memory mapping "
                         f"(mmap) su periferiche esterne o bus USB ha fallito durante "
-                        f"il trasferimento dei tensori. Avvia il modello con --no-mmap "
+                        f"il trasferimento dei tensori. Avvia il modello con --load-mode none "
                         f"(use_mmap: false)."
                     )
                 if is_cuda_failure(returncode=codice, testo=uscita):
@@ -1275,7 +1311,8 @@ class LlamaServerBackend(InferenceBackend):
         """Le ultime righe che il processo figlio ha scritto."""
         return chr(10).join(self._uscita)
 
-    def _corpo_richiesta(self, prompt: str, system_prompt: str,
+    @staticmethod
+    def _corpo_richiesta(prompt: str, system_prompt: str,
                          messages: Optional[list], params: SamplingParams,
                          thinking: Optional[bool] = None,
                          tools: Optional[list] = None,
@@ -1298,7 +1335,8 @@ class LlamaServerBackend(InferenceBackend):
                         content = str(content)
                 else:
                     content = str(content)
-                conversazione.append({"role": role, "content": content})
+                # Gli identificatori dei tool devono restare associati ai risultati.
+                conversazione.append({**m, "role": role, "content": content})
         else:
             if system_prompt:
                 conversazione.append({"role": "system", "content": str(system_prompt)})
@@ -1513,55 +1551,43 @@ class LlamaServerBackend(InferenceBackend):
     # ------------------------------------------------------------- persistent slots (NVMe)
 
     def save_slot_kv(self, slot_id: int, filepath: str) -> bool:
-        """Salva lo stato della KV-cache di uno slot su NVMe via API llama-server.
-
-        Abbatte a zero il prefill di prompt frequenti o del system prompt.
-        """
-        if self._porta is None or self._processo is None:
-            return False
-        import urllib.parse
-        url = (
-            f"http://127.0.0.1:{self._porta}/slots/{slot_id}"
-            f"?action=save&filepath={urllib.parse.quote(str(filepath))}"
-        )
-        try:
-            req = urllib.request.Request(url, data=b"", method="POST")
-            with urllib.request.urlopen(req, timeout=10.0) as resp:
-                return resp.status == 200
-        except Exception as exc:
-            log.debug("[LlamaServer] save_slot_kv fallito per slot %d: %s", slot_id, exc)
-            return False
+        """Salva il KV dello slot nella directory dedicata del worker."""
+        return self._slot_action("save",slot_id,filepath)
 
     def restore_slot_kv(self, slot_id: int, filepath: str) -> bool:
         """Ripristina lo stato della KV-cache di uno slot da file NVMe."""
-        if self._porta is None or self._processo is None:
-            return False
-        if not os.path.exists(filepath):
-            return False
-        import urllib.parse
-        url = (
-            f"http://127.0.0.1:{self._porta}/slots/{slot_id}"
-            f"?action=restore&filepath={urllib.parse.quote(str(filepath))}"
-        )
-        try:
-            req = urllib.request.Request(url, data=b"", method="POST")
-            with urllib.request.urlopen(req, timeout=10.0) as resp:
-                return resp.status == 200
-        except Exception as exc:
-            log.debug("[LlamaServer] restore_slot_kv fallito per slot %d: %s", slot_id, exc)
-            return False
+        return self._slot_action("restore",slot_id,filepath)
 
     def erase_slot_kv(self, slot_id: int) -> bool:
         """Cancella la cache di uno slot su llama-server."""
-        if self._porta is None or self._processo is None:
+        return self._slot_action("erase",slot_id)
+
+    def _slot_action(self, action: str, slot_id: int, filepath: str = "") -> bool:
+        if self._porta is None or self._processo is None or not 0 <= slot_id < self.parallel_slots():
             return False
-        url = f"http://127.0.0.1:{self._porta}/slots/{slot_id}?action=erase"
         try:
-            req = urllib.request.Request(url, data=b"", method="POST")
-            with urllib.request.urlopen(req, timeout=5.0) as resp:
-                return resp.status == 200
-        except Exception as exc:
-            log.debug("[LlamaServer] erase_slot_kv fallito per slot %d: %s", slot_id, exc)
+            body={}
+            target=None
+            if action != "erase":
+                root=Path(self._settings["slot_save_path"]).resolve()
+                candidate=Path(filepath)
+                target=(candidate if candidate.is_absolute() else root/candidate).resolve()
+                if target.parent != root or not target.name or (action=="restore" and not target.is_file()):
+                    return False
+                body={"filename":target.name}
+            result=self._post(f"/slots/{slot_id}?action={action}",body,timeout=30)
+            self._settings["last_slot_io"]={"action":action,**result}
+            if action=="save":
+                budget=int(os.environ.get("SIGMA_KV_DISK_MB","512"))*1024*1024
+                total=sum(entry.stat().st_size for entry in root.iterdir() if entry.is_file())
+                if total>budget:
+                    if target and target.is_file(): target.unlink()
+                    return False
+                return bool(result.get("n_saved",0)>0 and target and target.is_file())
+            if action=="restore": return result.get("n_restored",0)>0
+            return "n_erased" in result
+        except (OSError,ValueError,KeyError,TypeError) as error:
+            log.debug("Operazione KV %s non completata: %s",action,error)
             return False
 
 

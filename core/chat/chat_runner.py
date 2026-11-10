@@ -1005,7 +1005,9 @@ def _try_fast_web_search(message: str):
         r"\b(?:apri|visit|go to|vai a|naviga)\s+(?:il sito\s+)?(?:https?://|www\.)",
     ]
     is_search = any(re.search(p, ml) for p in search_patterns)
-    is_youtube = bool(re.search(r"youtube", ml)) or bool(re.search(r"\bvideo\b", ml))
+    # La parola "video" descrive il contenuto, non la destinazione della ricerca.
+    # YouTube viene scelto solo quando l'utente nomina esplicitamente la piattaforma.
+    is_youtube = "youtube" in ml
     url_match = re.search(r"(https?://[^\s]+)", m)
 
     # Se il messaggio contiene verbi o intenti conversazionali, analitici o esplicativi,
@@ -1026,7 +1028,7 @@ def _try_fast_web_search(message: str):
         if cleaned_url_msg != url_match.group(0).lower():
             return None
 
-    if not is_search and not is_youtube and not url_match:
+    if not is_search and not url_match:
         return None
 
     # Extract the actual query — strip the command words

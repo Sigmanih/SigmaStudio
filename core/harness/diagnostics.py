@@ -341,11 +341,14 @@ def _fast_lint_rust(content: str, language: str) -> Optional[Dict[str, Any]]:
         )
         with urllib.request.urlopen(req, timeout=0.5) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            if data.get("success"):
+            result = data.get("result")
+            if data.get("success") and isinstance(result, dict) and isinstance(result.get("valid"), bool):
+                errors = result.get("errors") or []
+                first = next((error for error in errors if isinstance(error, dict)), {})
                 return {
-                    "valid": data.get("valid", True),
-                    "error": data.get("message") if not data.get("valid") else None,
-                    "line": (data.get("errors") or [{}])[0].get("line") if data.get("errors") else None
+                    "valid": result["valid"],
+                    "error": first.get("message") or result.get("message") if not result["valid"] else None,
+                    "line": first.get("line"),
                 }
     except Exception:
         return None
@@ -380,10 +383,7 @@ def validate_code_syntax(file_path: str, content: Optional[str] = None) -> Dict[
 
     # 2. JSON (.json)
     if ext in (".json", ".jsonc") and not ext == ".jsonc":
-        # Tentativo veloce tramite fast_lint del kernel Rust se attivo
-        rust_lint = _fast_lint_rust(content, "json")
-        if rust_lint is not None:
-            return {"valid": rust_lint["valid"], "language": "json", "error": rust_lint["error"]}
+        # Per un JSON gia' in memoria il roundtrip costa piu' del parsing locale.
         try:
             json.loads(content)
             return {"valid": True, "language": "json", "error": None}

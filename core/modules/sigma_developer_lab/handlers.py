@@ -1495,11 +1495,16 @@ async def handle_developer_engine_status(request: Request):
     import time
     import urllib.request
     import json
+    import os
+
+    rust_url = os.environ.get(
+        "SIGMA_RUST_ENGINE_URL", "http://127.0.0.1:8090"
+    ).rstrip("/")
 
     status_data = {
         "online": False,
         "service": "sigma_engine_rust",
-        "url": "http://127.0.0.1:8090",
+        "url": rust_url,
         "ipc_pipe": r"\\.\pipe\sigma_engine_ipc",
         "latency_ms": None,
         "details": {},
@@ -1509,7 +1514,7 @@ async def handle_developer_engine_status(request: Request):
 
     t0 = time.perf_counter()
     try:
-        req = urllib.request.Request("http://127.0.0.1:8090/health", method="GET")
+        req = urllib.request.Request(f"{rust_url}/health", method="GET")
         with urllib.request.urlopen(req, timeout=0.8) as resp:
             if resp.status == 200:
                 status_data["online"] = True
@@ -1526,7 +1531,7 @@ async def handle_developer_engine_status(request: Request):
         try:
             from core.engine.backends.sigmarust_backend import _intestazioni
             req_info = urllib.request.Request(
-                "http://127.0.0.1:8090/api/engine/status",
+                f"{rust_url}/api/engine/status",
                 headers=_intestazioni(), method="GET")
             with urllib.request.urlopen(req_info, timeout=0.8) as resp_info:
                 if resp_info.status == 200:

@@ -214,11 +214,11 @@
       "Meccanica Quantistica",
       "Elettromagnetismo",
       "Termodinamica Applicata",
-      "Relatività Generale",
+      "Relativit\u00e0 Generale",
       "Simulazioni Numeriche Python"
     ],
     "category": "Scienze, Ingegneria & Tech",
-    "description": "Meccanica classica, quantistica, elettromagnetismo, termodinamica e relatività con modellazione numerica in Python.",
+    "description": "Meccanica classica, quantistica, elettromagnetismo, termodinamica e relativit\u00e0 con modellazione numerica in Python.",
     "domainColor": "#06b6d4",
     "filename": "physics_professor.md",
     "icon": "Atom",
@@ -268,7 +268,7 @@
       "Simulazione Quiz",
       "Valutazione Competenze"
     ],
-    "category": "Studenti & Università",
+    "category": "Studenti & Universit\u00e0",
     "description": "Generazione di prove d'esame, quesiti a risposta multipla e aperta, griglie di valutazione e simulazioni di verifica.",
     "domainColor": "#8b5cf6",
     "filename": "academic_examiner.md",
@@ -291,7 +291,7 @@
       "Articoli Divulgativi",
       "Interviste & Inchieste"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Ricerca web in tempo reale, rassegne stampa tematiche, inchieste giornalistiche, fact-checking e articoli divulgativi.",
     "domainColor": "#3b82f6",
     "filename": "online_journalist.md",
@@ -314,7 +314,7 @@
       "Fonetica IPA",
       "Business English"
     ],
-    "category": "Studenti & Università",
+    "category": "Studenti & Universit\u00e0",
     "description": "Insegnamento inglese, spagnolo, tedesco, francese con correzione saggi, grammatica comparata, fonetica IPA e business language.",
     "domainColor": "#bc8cff",
     "filename": "docente_lingue.md",
@@ -337,7 +337,7 @@
       "KaTeX Impeccabile",
       "Preparazione Esami"
     ],
-    "category": "Studenti & Università",
+    "category": "Studenti & Universit\u00e0",
     "description": "Risoluzione passo-passo di integrali, matrici, limiti e derivate con spiegazione didattica in KaTeX e schemi di ripasso per esami.",
     "domainColor": "#00d2ff",
     "filename": "tutor_matematica.md",
@@ -457,7 +457,7 @@
       "Brand Voice & Tono",
       "Content Strategy"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Storytelling persuasivo, modelli AIDA/PAS, sceneggiature, romanzi, brand voice, content strategy e post ad alto ingaggio.",
     "domainColor": "#ff5064",
     "filename": "copywriter_creativo.md",
@@ -503,7 +503,7 @@
       "Direzione Attori & Personaggi Virtuali",
       "Grammatica Audiovisiva & Pacing"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Visione artistica, regia di scene, inquadrature, movimenti di macchina, blocking attori e coerenza drammaturgica per video e cortometraggi.",
     "domainColor": "#ff007a",
     "filename": "regista_cinematografico.md",
@@ -532,7 +532,7 @@
       "Struttura in 3 Atti",
       "Adattamento per Doppiaggio & TTS"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Scrittura di copioni standard, trattamenti di scena, archi trasformativi dei personaggi e dialoghi incisivi per produzioni video.",
     "domainColor": "#f59e0b",
     "filename": "sceneggiatore.md",
@@ -561,7 +561,7 @@
       "Prompt Engineering Cinematografico",
       "Composizione Inquadratura"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Progettazione illuminotecnica, scelta lenti, color grading e creazione di prompt cinematografici per generatori AI di immagini e video.",
     "domainColor": "#8b5cf6",
     "filename": "direttore_fotografia.md",
@@ -584,13 +584,13 @@
   {
     "baseModel": "sigma",
     "capabilities": [
-      "Montaggio di Scena & Continuità",
+      "Montaggio di Scena & Continuit\u00e0",
       "Raccordi Dinamici (J-Cut/L-Cut/Match Cut)",
       "Ritmo & Pacing Temporale",
       "Gestione Timeline & Clip Video",
       "Sincronizzazione Audio e Immagini"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Montaggio video, raccordi di scena, ritmo dei tagli, timeline e sincronizzazione per le produzioni video di Sigma Studio.",
     "domainColor": "#06b6d4",
     "filename": "montatore_video.md",
@@ -618,7 +618,7 @@
       "Mix Audio & Bilanciamento Tracce",
       "Prompt per Generatori Musicali"
     ],
-    "category": "Comunicazione & Creatività",
+    "category": "Comunicazione & Creativit\u00e0",
     "description": "Stratificazione sonora, effetti sonori Foley, atmosfere ambientali, composizione musicale e mixaggio per video e produzioni.",
     "domainColor": "#10b981",
     "filename": "sound_designer.md",

@@ -135,8 +135,8 @@ class TestTraduzioneDelPiano(unittest.TestCase):
                 self.assertIn(f"{flag} {atteso}", testo)
         self.assertIn("-fa on", testo)
         self.assertIn("-ts 0.7,0.3", testo)
-        self.assertIn("--no-mmap", testo)
-        self.assertIn("--mlock", testo)
+        # use_mmap False + use_mlock: con b11600 e' una sola modalita' di caricamento.
+        self.assertIn("--load-mode mlock", testo)
 
     def test_gli_esperti_su_cpu_arrivano_alla_riga_di_comando(self):
         """Il piano di un MoE decide quali tensori, non quanti layer.

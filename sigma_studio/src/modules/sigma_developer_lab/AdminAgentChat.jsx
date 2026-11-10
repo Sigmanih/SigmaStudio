@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import {
   Send, Bot, User, Sparkles, Brain, Check, Copy, RefreshCw,
-  Terminal, FileCode, Trash2, ArrowRight, ShieldCheck, Zap,
+  Terminal, FileCode, Trash2, ArrowRight, ShieldCheck,
   ChevronDown, ChevronUp, SplitSquareVertical, Layers, Folder,
   Plus, Edit2, Clock, Search, X, MessageSquare,
   Paperclip, Mic, MicOff, FileText, Upload,
@@ -398,6 +398,7 @@ export default function AdminAgentChat({
   const [autoScroll, setAutoScroll] = useState(true);
   const [isStreaming, setIsStreaming] = useState(false);
   const [agentStatus, setAgentStatus] = useState('');
+  const [rustEngineOnline, setRustEngineOnline] = useState(null);
   const [expandedThoughts, setExpandedThoughts] = useState({});
   const [expandedTools, setExpandedTools] = useState({});
 
@@ -545,6 +546,22 @@ export default function AdminAgentChat({
   // Consuntivo dell'ultimo run. Senza misure, ogni intervento sull'agente
   // resta un'impressione.
   const [runMetrics, setRunMetrics] = useState(null);
+
+  useEffect(() => {
+    let attivo = true;
+    const aggiornaStatoRust = () => {
+      fetch('/api/developer/engine/status')
+        .then(r => r.json())
+        .then(d => { if (attivo) setRustEngineOnline(Boolean(d.online)); })
+        .catch(() => { if (attivo) setRustEngineOnline(false); });
+    };
+    aggiornaStatoRust();
+    const timer = setInterval(aggiornaStatoRust, 15000);
+    return () => {
+      attivo = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   const handleSelectContextTokens = (tokens) => {
     setContextTokens(tokens);
@@ -2900,44 +2917,22 @@ ${event.diff || ''}`,
               <span>{String(selectedModel || 'sigmaengine').replace(/--/g, '/').split('/').pop().replace(/\.gguf$/i, '')}</span>
             </span>
 
-            {/* Engine Badge */}
             <span
-              title="Backend nativo di esecuzione"
+              title={rustEngineOnline
+                ? 'Kernel Rust raggiungibile; viene selezionato solo per i modelli supportati.'
+                : 'Kernel Rust non rilevato; Sigma Studio usa il backend locale disponibile.'}
               style={{
                 fontSize: '0.58rem',
-                fontWeight: 800,
+                fontWeight: 700,
                 padding: '2px 6px',
                 borderRadius: '4px',
-                background: 'rgba(63, 185, 80, 0.15)',
-                border: '1px solid rgba(63, 185, 80, 0.35)',
-                color: '#3fb950',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '3px'
+                background: rustEngineOnline ? 'rgba(63, 185, 80, 0.15)' : 'rgba(139, 148, 158, 0.12)',
+                border: `1px solid ${rustEngineOnline ? 'rgba(63, 185, 80, 0.35)' : 'rgba(139, 148, 158, 0.25)'}`,
+                color: rustEngineOnline ? '#3fb950' : '#8b949e',
+                whiteSpace: 'nowrap'
               }}
             >
-              <Zap size={10} color="#3fb950" />
-              <span>SigmaEngine O(1)</span>
-            </span>
-
-            {/* Flash Attention Badge */}
-            <span
-              title="Flash Attention (FA-2/FA-3) abilitato su GPU: accelerazione calcolo KV-Cache"
-              style={{
-                fontSize: '0.58rem',
-                fontWeight: 800,
-                padding: '2px 6px',
-                borderRadius: '4px',
-                background: 'rgba(0, 242, 254, 0.15)',
-                border: '1px solid rgba(0, 242, 254, 0.35)',
-                color: '#00f2fe',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '3px'
-              }}
-            >
-              <Zap size={10} color="#00f2fe" />
-              <span>FA: ON</span>
+              {rustEngineOnline === null ? 'Rust: controllo…' : rustEngineOnline ? 'Rust: online' : 'Rust: offline · motore locale'}
             </span>
 
             {/* Context Window Badge */}
@@ -3106,20 +3101,6 @@ ${event.diff || ''}`,
                           }}
                         >
                           ⚡ {String(msg.model || selectedModel).replace(/--/g, '/').split('/').pop().replace(/\.gguf$/i, '')}
-                        </span>
-                        <span
-                          title="Backend di inferenza SigmaEngine Rust O(1)"
-                          style={{
-                            fontSize: '0.54rem',
-                            fontWeight: 700,
-                            padding: '1px 5px',
-                            borderRadius: '4px',
-                            background: 'rgba(63, 185, 80, 0.12)',
-                            border: '1px solid rgba(63, 185, 80, 0.25)',
-                            color: '#3fb950'
-                          }}
-                        >
-                          🦀 SigmaEngine O(1)
                         </span>
                       </div>
                     )}

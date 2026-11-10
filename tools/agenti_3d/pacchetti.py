@@ -15,8 +15,8 @@ e finiscono in works/creative/agenti_3d/<foto>/.
     python tools/agenti_3d/pacchetti.py --repo <clone di SigmaStudio-Ruoli> [--installa]
 
 --installa copia le cartelle anche nei roles/ locali. Nessun push: il
-repository si aggiorna a mano. I busti (modello.glb) dei pacchetti precedenti
-vengono tolti: la plancia non li usa piu'.
+repository si aggiorna a mano. I busti (modello.glb) gia' presenti vengono
+conservati per compatibilita'; la plancia usa il personaggio a figura intera.
 """
 
 from __future__ import annotations
@@ -64,6 +64,9 @@ CAMPI_INDICE = ("id", "filename", "name", "role", "category", "domainColor", "ic
 def dettagli_personaggio(cartella: Path, foto: str) -> dict:
     agente = cartella / "agente.json"
     extra = json.loads(agente.read_text(encoding="utf-8")) if agente.is_file() else {}
+    dettagli = cartella / "dettagli.json"
+    if dettagli.is_file():
+        extra = {**extra, **json.loads(dettagli.read_text(encoding="utf-8"))}
     return {
         "versione": 2,
         "file": "personaggio.glb",
@@ -129,7 +132,6 @@ def main() -> int:
         cartella = args.repo / ruolo
         cartella.mkdir(exist_ok=True)
         shutil.copy2(sorgente / "personaggio.glb", cartella / "personaggio.glb")
-        (cartella / "modello.glb").unlink(missing_ok=True)
         scrivi_immagine(IMMAGINI / foto, cartella / "immagine.jpg")
         (cartella / "modello.json").write_text(
             json.dumps(dettagli_personaggio(sorgente, foto), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

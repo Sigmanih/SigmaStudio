@@ -1062,7 +1062,12 @@ class UniversalSigmaEngine:
             )
         else:
             self.prefix_cache_retained = True
-            self.prefix_cache.configure(display_name, plan.context_tokens)
+            from core.engine.acceleration import CacheIdentity
+            namespace = CacheIdentity(checkpoint=f"{target_path}:{id(model)}",
+                tokenizer=str(id(tokenizer)), template=str(getattr(tokenizer, "chat_template", "default")),
+                runtime=type(model).__module__ + "." + type(model).__qualname__,
+                kv_layout=str(plan.quantization)).digest()
+            self.prefix_cache.configure(display_name, plan.context_tokens, namespace=namespace)
 
         actual_placement = self._describe_placement(model)
         self.loaded_model = {
@@ -1440,6 +1445,32 @@ class UniversalSigmaEngine:
             "devices": sorted(counts.keys()),
         }
 
+    def request_context(self, tokens: int) -> int:
+        """Finestra con cui caricare il prossimo modello (il caricamento automatico usava sempre 32k).
+
+        Il loop dell'agente la chiede all'avvio: con 65 tool il ruolo video occupa ~16k token di
+        schemi e a 32k la compattazione tagliava la procedura dopo pochi turni (prova Ornith, 9/11).
+        Non ricarica un modello gia' residente: vale dal prossimo caricamento.
+        """
+        self.preferred_context_tokens = max(4096, min(int(tokens or 32768), 262144))
+        return self.preferred_context_tokens
+
+    def refresh_placement(self) -> bool:
+        """Scarica l'LLM partito in RAM perche' le GPU erano riservate, se ora sono libere.
+
+        Chi rilascia un lease (fine di un render) lo chiama: il turno successivo ricarica il
+        modello in VRAM invece di continuare a ~1 token/s. Niente da fare durante una generazione.
+        """
+        backend = self.active_backend_instance
+        if backend is None or not getattr(backend, "placement_stale", False):
+            return False
+        if getattr(backend, "_in_volo", 0):
+            return False
+        log.info("[SigmaEngine] GPU tornate libere: scarico '%s' per ricaricarlo in VRAM",
+                    getattr(self, "loaded_model_name", ""))
+        self.unload()
+        return True
+
     def unload(self) -> Dict[str, Any]:
         """
         Releases the model and returns VRAM to the allocator.
@@ -1728,7 +1759,8 @@ class UniversalSigmaEngine:
                 "notice": True,
                 "done": False,
             }
-            result = self.load_native_model(target_model, target_hardware=target_hardware)
+            result = self.load_native_model(target_model, target_hardware=target_hardware,
+                                            context_tokens=getattr(self, "preferred_context_tokens", 32768))
             if not result.get("success"):
                 err_text = self._format_load_failure(target_model, result)
                 yield {
@@ -3261,6 +3293,7 @@ class UniversalSigmaEngine:
                 self.placement_plan.to_dict() if self.placement_plan else None
             ),
             "optimizations": self._generate_default_optimizations(),
+            "acceleration": self._acceleration_status(),
             "backends": self.backend_capabilities(),
             "active_backend_name": (
                 self.active_backend_instance.name
@@ -3276,6 +3309,21 @@ class UniversalSigmaEngine:
             "generation_busy": self._generation_waiting > 0,
             "generation_queue": self._generation_waiting,
         }
+
+    def _acceleration_status(self) -> Dict[str, Any]:
+        from core.engine.acceleration import RuntimeCapabilities, acceleration_plan
+        backend = self.active_backend_instance
+        if backend is not None:
+            try:
+                return backend.acceleration_plan()
+            except (AttributeError, TypeError, ValueError) as error:
+                log.debug("Contratto di accelerazione non disponibile: %s", error)
+        loaded = self.model_instance is not None
+        return acceleration_plan(RuntimeCapabilities(runtime="transformers",
+            execution_owner="python_runtime", prefix_reuse=loaded and self.prefix_cache_retained,
+            exact_tokenizer=loaded and self.tokenizer_instance is not None, cancellation=loaded,
+            logits_owner="transformers", evidence="loaded_runtime" if loaded else "not_loaded"),
+            model=self.model_facts)
 
     def backend_capabilities(self) -> Dict[str, Any]:
         """

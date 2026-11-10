@@ -20,6 +20,7 @@ import os
 import threading
 import time
 import unittest
+import pytest
 
 from core.chat.history import (
     estimate_tokens, trim_history, dropped_notice, history_budget,
@@ -777,10 +778,10 @@ class TestGrammars(unittest.TestCase):
         self.assertIn(r'"\"search_web\""', gbnf)
         self.assertNotIn('("search_web")', gbnf)
 
+    @pytest.mark.lento
     def test_grammar_output_round_trips_through_json(self):
         # The only check that would have caught the quoting bug: generate under
         # the grammar and parse the result.
-        import glob
         import json
         import os
 
@@ -789,15 +790,13 @@ class TestGrammars(unittest.TestCase):
         except ImportError:
             self.skipTest("llama_cpp not installed on this host")
 
-        from core.paths import models_dir
-
-        models = [f for d in glob.glob(os.path.join(str(models_dir()), "*"))
-                  for f in glob.glob(os.path.join(d, "*.gguf"))]
-        if not models:
-            self.skipTest("no local GGUF to generate with")
+        # Il GGUF piu' piccolo puo' essere un adattatore LoRA, non un modello.
+        model_path = os.environ.get("SIGMA_TEST_GGUF")
+        if not model_path or not os.path.isfile(model_path):
+            self.skipTest("Impostare SIGMA_TEST_GGUF su un checkpoint compatibile con llama_cpp")
 
         tools = ["get_hardware_status", "search_web", "read_file"]
-        llm = Llama(model_path=min(models, key=os.path.getsize),
+        llm = Llama(model_path=model_path,
                     n_ctx=1024, n_gpu_layers=0, verbose=False)
         try:
             result = llm.create_chat_completion(

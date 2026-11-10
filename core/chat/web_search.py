@@ -542,7 +542,9 @@ def _perform_web_search(query: str, max_results: int = 5, deep_scan: bool = Fals
             return [result]
 
     # 2 — Query specifica per YouTube
-    if "youtube" in q_lower or "video" in q_lower:
+    # Il tipo di contenuto (video) non identifica il motore di ricerca.
+    # Se YouTube non è stato chiesto, la query resta una ricerca web generale.
+    if "youtube" in q_lower:
         yt_results = _search_youtube(query)
         if yt_results:
             return yt_results

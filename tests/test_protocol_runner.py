@@ -106,9 +106,9 @@ class TestProtocolRunner(unittest.TestCase):
         self.assertTrue(ok)
         self.assertTrue(stopped.wait(timeout=1), "La cancellazione deve restare visibile al lavoratore.")
 
-        # Non deve piu essere presente come job attivo
+        # Il job eliminato risponde 'not_found' con il proprio id: la UI lo usa per smettere di seguirlo.
         status = get_protocol_status(jid)
-        self.assertNotEqual(status.get("id"), jid)
+        self.assertEqual(status.get("status"), "not_found")
 
 
 if __name__ == "__main__":

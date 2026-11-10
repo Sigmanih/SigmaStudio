@@ -42,13 +42,11 @@ class TestIpcClientTransport(unittest.TestCase):
         
         client.close()
 
-    def test_tokenize_fallback_deterministic(self):
+    def test_tokenizer_offline_non_inventa_id(self):
         client = SigmaRustClient(endpoint_url="http://127.0.0.1:9999", timeout=0.1)
         client._transport = "http"
-        # Con server offline, tokenize restituisce hash CRC32 deterministici
-        tokens = client.tokenize("test prompt tokenization")
-        self.assertEqual(len(tokens), 3)
-        self.assertTrue(all(isinstance(t, int) and t >= 0 for t in tokens))
+        with self.assertRaisesRegex(RuntimeError,"Tokenizer"):
+            client.tokenize("test prompt tokenization")
         client.close()
 
 

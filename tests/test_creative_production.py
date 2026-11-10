@@ -86,9 +86,18 @@ class FakeEngine(ClipEngine):
         return {"clip_path": str(clip), "last_frame": str(last), "frames": request["frames"], "timings": {"total_s": 1}}
 
 
+async def _finish_approvato(self, prod, i, lane):
+    # Queste prove riguardano corsie e catene: il cancello di revisione (controllo anatomico e
+    # approvazione per clip) ha la sua prova in test_video_long_production.
+    prod["shots"][i]["status"] = "done"
+
+
 @pytest.fixture
 def store(tmp_path, monkeypatch):
     monkeypatch.setattr(prod_mod.paths, "creative_output_dir", lambda kind="image": tmp_path / "out")
+    monkeypatch.setattr(ProductionRunner, "_finish", _finish_approvato)
+    from core.modules.sigma_creative_lab.video import postprocess as pp
+    monkeypatch.setattr(pp, "quality_check", lambda clip, *a, **k: [])
     return ProductionStore(tmp_path / "prods")
 
 

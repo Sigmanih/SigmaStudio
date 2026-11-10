@@ -135,6 +135,15 @@ class InferenceBackend(ABC):
         """
         return 1
 
+    def acceleration_capabilities(self):
+        from core.engine.acceleration import RuntimeCapabilities
+        return RuntimeCapabilities(runtime=self.name, parallel_slots=self.parallel_slots())
+
+    def acceleration_plan(self, requested_parallelism=None):
+        from core.engine.acceleration import acceleration_plan
+        return acceleration_plan(self.acceleration_capabilities(), model=getattr(self, "_facts", None),
+                                 requested_parallelism=requested_parallelism)
+
     def benchmark(self, prompt_tokens: int = 128, decode_tokens: int = 24) -> Dict[str, Any]:
         """
         Measures prefill and decode speed on this backend, or says it cannot.

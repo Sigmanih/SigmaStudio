@@ -29,6 +29,7 @@
 # tetto basso, perche' ogni slot e' KV che resta in VRAM.
 # ==============================================================================
 import json
+import hashlib
 import os
 from pathlib import Path
 import threading
@@ -72,7 +73,7 @@ class PrefixKVCache:
     da altri pesi non e' riutilizzabile, e' sbagliato.
     """
 
-    __slots__ = ("_slots", "_model_name", "_max_tokens", "_max_slots", "_lock",
+    __slots__ = ("_slots", "_model_name", "_namespace", "_max_tokens", "_max_slots", "_lock",
                  "hits", "misses", "tokens_reused", "tokens_prefilled", "evictions")
 
     def __init__(self, max_tokens: int = 0, max_slots: Optional[int] = None):
@@ -80,6 +81,7 @@ class PrefixKVCache:
         #: vecchio, ed e' quello che si sfratta.
         self._slots: "OrderedDict[str, Tuple[List[int], Any]]" = OrderedDict()
         self._model_name: Optional[str] = None
+        self._namespace = "legacy"
         self._max_tokens = max_tokens
         self._max_slots = int(max_slots) if max_slots else _max_slots_from_env()
         self._lock = threading.Lock()
@@ -91,7 +93,7 @@ class PrefixKVCache:
 
     # ------------------------------------------------------------- lifecycle
 
-    def configure(self, model_name: Optional[str], max_tokens: int) -> None:
+    def configure(self, model_name: Optional[str], max_tokens: int, namespace: Optional[str] = None) -> None:
         """
         Binds the cache to a model and a ceiling.
 
@@ -100,9 +102,11 @@ class PrefixKVCache:
         rather than memory that was not.
         """
         with self._lock:
-            if model_name != self._model_name:
+            effective_namespace = namespace or "legacy"
+            if model_name != self._model_name or effective_namespace != self._namespace:
                 self._reset_locked()
             self._model_name = model_name
+            self._namespace = effective_namespace
             self._max_tokens = max_tokens
 
     def clear(self, reason: str = "", slot: Optional[str] = None) -> None:
@@ -224,6 +228,10 @@ class PrefixKVCache:
 
     # ------------------------------------------------------------- NVMe persistence
 
+    def _metadata_path(self, directory: Path, slot: str, model: str) -> Path:
+        key = json.dumps([model, str(slot), self._namespace], ensure_ascii=False, separators=(",", ":"))
+        return directory / (hashlib.sha256(key.encode("utf-8")).hexdigest() + ".json")
+
     @staticmethod
     def _default_persist_dir() -> Path:
         from core.paths import var_dir
@@ -234,8 +242,7 @@ class PrefixKVCache:
     def save_to_disk(self, slot: str = DEFAULT_SLOT, dest_dir: Optional[Path] = None) -> Optional[Path]:
         """Salva i metadati e i token del prefisso su storage persistente (NVMe/SSD).
 
-        Consente di azzerare il prefill del prompt di sistema tra riavvii del server
-        o cambi di sessione.
+        I token sono metadati: senza i tensori KV non eliminano il prefill.
         """
         slot = slot or DEFAULT_SLOT
         with self._lock:
@@ -246,8 +253,10 @@ class PrefixKVCache:
             model = self._model_name or "unknown"
 
         out_dir = dest_dir or self._default_persist_dir()
-        file_path = out_dir / f"{slot}_{abs(hash(model)) % 1000000}.json"
+        file_path = self._metadata_path(out_dir, slot, model)
         payload = {
+            "schema": 2,
+            "namespace": self._namespace,
             "slot": slot,
             "model": model,
             "tokens": tokens,
@@ -268,16 +277,23 @@ class PrefixKVCache:
         slot = slot or DEFAULT_SLOT
         in_dir = src_dir or self._default_persist_dir()
         model = model_name or self._model_name or "unknown"
-        file_path = in_dir / f"{slot}_{abs(hash(model)) % 1000000}.json"
+        file_path = self._metadata_path(in_dir, slot, model)
 
         if not file_path.exists():
             return None
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            with open(file_path, "rb") as f:
+                raw = f.read(8 * 1024 * 1024 + 1)
+            if len(raw) > 8 * 1024 * 1024:
+                return None
+            data = json.loads(raw)
+            if (data.get("schema") != 2 or data.get("namespace") != self._namespace
+                    or data.get("model") != model or data.get("slot") != slot):
+                return None
             tokens = data.get("tokens", [])
-            if tokens and isinstance(tokens, list):
+            if (tokens and isinstance(tokens, list) and all(type(t) is int and 0 <= t <= 0xFFFFFFFF for t in tokens)
+                    and (not self._max_tokens or len(tokens) <= self._max_tokens)):
                 log.debug("[PrefixCache] ripristinato prefisso su disco '%s' (%d token)", slot, len(tokens))
                 return [int(t) for t in tokens]
         except Exception as exc:

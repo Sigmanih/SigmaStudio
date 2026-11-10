@@ -8,7 +8,7 @@ llama-server legge l'intero GGUF a ogni avvio invece di mapparlo.
 
 La protezione da `STATUS_IN_PAGE_ERROR` non serviva: il backend **aveva gia'**
 il ripiego — prova con mmap, e se il processo muore con un errore di
-paginazione riparte con `--no-mmap`. Le due cose sono arrivate con lo stesso
+paginazione riparte senza mmap (`--load-mode none`). Le due cose sono arrivate con lo stesso
 commit, e quella preventiva rendeva l'altra irraggiungibile: con `use_mmap`
 gia' falso c'e' un tentativo solo, ed e' quello lento.
 
@@ -80,14 +80,19 @@ class TestIlRipiegoEsisteAncora:
 
 
 class TestLaTraduzioneDelPiano:
-    def test_use_mmap_falso_diventa_no_mmap(self):
-        assert "--no-mmap" in LS.plan_to_args({"use_mmap": False})
+    def test_use_mmap_falso_diventa_load_mode_none(self):
+        args = LS.plan_to_args({"use_mmap": False})
+        assert args[args.index("--load-mode") + 1] == "none"
 
     def test_use_mmap_vero_non_aggiunge_niente(self):
-        assert "--no-mmap" not in LS.plan_to_args({"use_mmap": True})
+        assert "--load-mode" not in LS.plan_to_args({"use_mmap": True})
 
     def test_use_mmap_assente_non_aggiunge_niente(self):
-        assert "--no-mmap" not in LS.plan_to_args({})
+        assert "--load-mode" not in LS.plan_to_args({})
+
+    def test_mlock_con_mmap_resta_combinato(self):
+        args = LS.plan_to_args({"use_mlock": True})
+        assert args[args.index("--load-mode") + 1] == "mmap+mlock"
 
 
 class TestLOverrideManualeVinceComunque:
@@ -103,7 +108,7 @@ class TestLOverrideManualeVinceComunque:
         piano = load_overrides.apply_to({"use_mmap": True, "n_ctx": 8192},
                                         "modello-x")
         assert piano["use_mmap"] is False
-        assert "--no-mmap" in LS.plan_to_args(piano)
+        assert "--load-mode" in LS.plan_to_args(piano)
 
         intatto = load_overrides.apply_to({"use_mmap": True}, "modello-y")
         assert intatto["use_mmap"] is True
