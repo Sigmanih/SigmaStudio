@@ -573,6 +573,14 @@ class LlamaServerBackend(InferenceBackend):
         )
         from core.engine.load_overrides import apply_to
         settings = apply_to(settings, facts.name)
+        # Una cache imposta dal chiamante (es. il profilo di misura di sigma) vince sul
+        # pianificatore: altrimenti la scelta cambia con la VRAM libera in quel momento.
+        kv_richiesta = options.get("kv_quant")
+        if kv_richiesta is not None:
+            if kv_richiesta not in ("f16", "q8_0", "q4_0"):
+                return {"success": False, "stage": "settings",
+                        "error": f"Quantizzazione della cache KV non supportata: {kv_richiesta}"}
+            settings["kv_quant"] = None if kv_richiesta == "f16" else kv_richiesta
 
         full_offload_required = options.get("require_full_offload") is True
         if full_offload_required:

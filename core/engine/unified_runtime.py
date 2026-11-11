@@ -753,6 +753,7 @@ class UniversalSigmaEngine:
         force_quantization: Optional[str] = None,
         target_hardware: Optional[str] = None,
         require_full_offload: bool = False,
+        kv_quant: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Loads a local model across all available memory tiers.
@@ -764,6 +765,7 @@ class UniversalSigmaEngine:
             return self._load_native_model_locked(
                 model_identifier, context_tokens, force_quantization, target_hardware=target_hardware,
                 **({"require_full_offload": True} if require_full_offload else {}),
+                **({"kv_quant": kv_quant} if kv_quant else {}),
             )
 
     def _load_native_model_locked(
@@ -773,6 +775,7 @@ class UniversalSigmaEngine:
         force_quantization: Optional[str],
         target_hardware: Optional[str] = None,
         require_full_offload: bool = False,
+        kv_quant: Optional[str] = None,
     ) -> Dict[str, Any]:
         model_info = self.find_valid_model_directory(model_identifier)
         if not model_info:
@@ -787,7 +790,7 @@ class UniversalSigmaEngine:
         target_path, display_name = model_info
 
         # Already resident: switching chats that share a model costs nothing.
-        if self.has_resident_model and self.loaded_model_name == display_name and not require_full_offload:
+        if self.has_resident_model and self.loaded_model_name == display_name and not require_full_offload and not kv_quant:
             log.debug("[SigmaEngine] '%s' already resident, reusing", display_name)
             return {
                 "success": True,
@@ -827,6 +830,7 @@ class UniversalSigmaEngine:
             return self._load_via_backend(
                 facts, display_name, context_tokens, target_hardware=target_hardware,
                 **({"require_full_offload": True} if require_full_offload else {}),
+                **({"kv_quant": kv_quant} if kv_quant else {}),
             )
 
         if require_full_offload:
@@ -1103,6 +1107,7 @@ class UniversalSigmaEngine:
         self, facts: ModelFacts, display_name: str, context_tokens: int,
         target_hardware: Optional[str] = None,
         require_full_offload: bool = False,
+        kv_quant: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Loads a non-safetensors checkpoint through the backend registry."""
         from core.engine.backends import select_backend, explain_unsupported
@@ -1119,6 +1124,7 @@ class UniversalSigmaEngine:
             facts, self.hardware_profile, context_tokens=context_tokens,
             target_hardware=target_hardware,
             **({"require_full_offload": True} if require_full_offload else {}),
+            **({"kv_quant": kv_quant} if kv_quant else {}),
         )
         if not result.get("success"):
             self.last_load_error = result.get("error")

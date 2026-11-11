@@ -254,7 +254,10 @@ def _plan_settings(
             forced_single_gpu = True
             forced_gpu_id = int(dev_id) if dev_id.isdigit() else 0
 
-    weights_gb = facts.total_bytes / 2**30
+    # Sulla scheda finiscono solo i pesi che llama.cpp non tiene in RAM (embedding
+    # d'ingresso): contarli faceva sembrare troppo grande per una GPU sola un
+    # modello che ci sta, e lo divideva fra due schede.
+    weights_gb = max(facts.total_bytes - (getattr(facts, "host_only_bytes", 0) or 0), 0) / 2**30
     n_ctx = _clamp_context(facts, context_tokens)
     physical_cores = int(cpu.get("cores_physical", 4) or 4)
     # Never below two: a single thread makes a board that could answer
@@ -526,6 +529,15 @@ def _plan_settings(
         # evitando che il modello finisca parzialmente su CPU e mantenga le massime prestazioni.
         gpu0_usable = usable[0] if usable else 0.0
         gpu0_fits = (_layers_that_fit(weights_gb, layers, gpu0_usable, kv_gb) == -1)
+        if not gpu0_fits and not kv_quant and not env_ceiling:
+            # Prima di dividere il modello fra due schede si prova la cache q8_0 sulla
+            # principale: dimezza la cache con perdita trascurabile, mentre la divisione
+            # fa passare ogni token dal bus fra le schede. Sigma a 32k: f16 non entra
+            # nella 5070 Ti, q8_0 si', e la 5060 resta libera.
+            if _layers_that_fit(weights_gb, layers, gpu0_usable, kv_gb_f16 / 2) == -1:
+                kv_quant = _KV_QUANT_TYPE
+                kv_gb = round(kv_gb_f16 / 2, 3)
+                gpu0_fits = True
         if gpu0_fits:
             tensor_split = None
             split_mode = "none"

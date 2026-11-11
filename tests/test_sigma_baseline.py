@@ -103,11 +103,13 @@ def test_changed_protocol_not_comparable():
 
 
 def test_single_gpu_requires_context_and_full_offload():
-    settings = {"forced_single_gpu": True, "main_gpu": 0, "n_ctx": 8192}
+    settings = {"forced_single_gpu": True, "main_gpu": 0, "n_ctx": 32768, "kv_quant": "q8_0"}
     placement = {"fully_offloaded": True, "layers_on_cpu": 0}
     assert placement_matches_target(settings, placement, 0)
     assert not placement_matches_target(settings, placement, 1)
-    assert not placement_matches_target({**settings, "n_ctx": 32768}, placement, 0)
+    assert not placement_matches_target({**settings, "n_ctx": 8192}, placement, 0)
+    # La cache fa parte del vincolo: con f16 la stessa misura non e' confrontabile.
+    assert not placement_matches_target({**settings, "kv_quant": None}, placement, 0)
     assert not placement_matches_target(settings, {"fully_offloaded": False, "layers_on_cpu": 10}, 0)
     assert not placement_matches_target(settings, {}, 0)
 
@@ -123,7 +125,7 @@ def test_prepare_reloads_with_explicit_context_and_rejects_cpu(monkeypatch, cpu_
     engine.hardware_profile = {"accelerators": [{"name": "RTX 5070 Ti", "device_id": 0}]}
     engine.load_native_model.return_value = {"success": True}
     engine.active_backend_instance.telemetry.return_value = {
-        "forced_single_gpu": True, "main_gpu": 0, "n_ctx": 8192}
+        "forced_single_gpu": True, "main_gpu": 0, "n_ctx": 32768, "kv_quant": "q8_0"}
     engine.active_backend_instance.describe_placement.return_value = {
         "fully_offloaded": cpu_layers == 0, "layers_on_cpu": cpu_layers}
     monkeypatch.setattr(unified_runtime, "sigma_engine", engine)
@@ -134,8 +136,8 @@ def test_prepare_reloads_with_explicit_context_and_rejects_cpu(monkeypatch, cpu_
     assert result["success"] is expected
     engine.unload.assert_called_once()
     engine.load_native_model.assert_called_once_with(
-        model.removeprefix("sigma:"), context_tokens=8192, target_hardware="gpu:0",
-        require_full_offload=True)
+        model.removeprefix("sigma:"), context_tokens=32768, target_hardware="gpu:0",
+        require_full_offload=True, kv_quant="q8_0")
 
 
 def test_prepare_does_not_interrupt_active_run(monkeypatch):

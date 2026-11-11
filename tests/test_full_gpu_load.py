@@ -100,3 +100,21 @@ def test_cuda_failure_does_not_silently_retry_on_cpu(isolated_loader, monkeypatc
     assert not backend.load(facts, {}, require_full_offload=True)["success"]
     assert popen.call_count == 1
     fallback.assert_not_called()
+
+
+def test_cache_kv_imposta_vince_sul_pianificatore(isolated_loader):
+    """Il profilo di misura fissa la cache: la scelta non deve dipendere dalla VRAM libera."""
+    backend, facts, settings, popen = isolated_loader
+    settings["kv_quant"] = "q4_0"
+    result = backend.load(facts, {}, context_tokens=32768, require_full_offload=True, kv_quant="q8_0")
+    assert result["success"]
+    command = popen.call_args.args[0]
+    assert command[command.index("-ctk") + 1] == "q8_0"
+    assert command[command.index("-c") + 1] == "32768"
+
+
+def test_cache_kv_sconosciuta_rifiutata(isolated_loader):
+    backend, facts, _, popen = isolated_loader
+    result = backend.load(facts, {}, context_tokens=8192, kv_quant="q3")
+    assert not result["success"] and "cache KV" in result["error"]
+    popen.assert_not_called()

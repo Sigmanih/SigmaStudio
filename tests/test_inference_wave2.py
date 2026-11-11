@@ -307,11 +307,12 @@ class TestLlamaCppPlanning(unittest.TestCase):
             "q8_0",
         )
 
-        # Everything already fits: there is nothing to buy, and the penalty
-        # would be paid for no gain.
-        self.assertIsNone(
-            LlamaCppBackend._plan_settings(borderline, _HW_DUAL_GPU, 32768)["kv_quant"]
-        )
+        # Su due schede il modello entrerebbe solo diviso; con la cache q8_0 sta
+        # sulla principale. Misurato su sigma (27B, 5070 Ti + 5060): generazione
+        # 27,5 t/s divisa in f16 contro 37,2 t/s su una scheda in q8_0.
+        dual = LlamaCppBackend._plan_settings(borderline, _HW_DUAL_GPU, 32768)
+        self.assertIsNone(dual["tensor_split"])
+        self.assertEqual(dual["kv_quant"], "q8_0")
 
         # Hopeless placement: halving the cache changes almost nothing, and the
         # penalty would land on every layer left on the host. This is the 50GB

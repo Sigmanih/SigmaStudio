@@ -25,7 +25,7 @@ log = get_logger(__name__)
 # when the GGUF path began reading vocab_size, which the llama.cpp planner needs
 # to size its prefill batch.
 # Le cache precedenti non contano i parametri GGUF dalle dimensioni dei tensori.
-_FACTS_SCHEMA = 7
+_FACTS_SCHEMA = 8
 
 # Bytes per element, by safetensors dtype string.
 _DTYPE_BYTES = {
@@ -556,11 +556,17 @@ class ModelInspector:
 
                 entries.sort()
                 payload = size_on_disk - data_start
+                # llama.cpp tiene sempre in RAM il layer d'ingresso: token_embd non va
+                # contato come VRAM. Se pero' manca output.weight l'uscita riusa
+                # l'embedding e ne finisce una copia sulla GPU: allora resta in conto.
+                has_output = any(name == "output.weight" for _, name in entries)
                 for index, (offset, name) in enumerate(entries):
                     end = entries[index + 1][0] if index + 1 < len(entries) else payload
                     if "_exps" in name:
                         total += max(end - offset, 0)
                     elif "per_layer_token_embd" in name:
+                        host_only += max(end - offset, 0)
+                    elif name == "token_embd.weight" and has_output:
                         host_only += max(end - offset, 0)
             except Exception as exc:
                 log.debug("[ModelInspector] Tensor table unreadable in %s: %s", path, exc)
