@@ -191,7 +191,8 @@ class TestPromptPrefixStability(unittest.TestCase):
     def test_system_message_is_byte_identical_across_turns(self):
         history = []
         digests = set()
-        for message in ("Ciao", "scrivi una funzione python",
+        # La conversazione pura ha un prefisso proprio, senza strumenti né albero.
+        for message in ("analizza questa funzione python", "scrivi una funzione python",
                         "e ora dimostra che termina"):
             captured = self._assemble(message, list(history))
             system = captured["messages"][0]["content"]
@@ -212,7 +213,7 @@ class TestPromptPrefixStability(unittest.TestCase):
         remains volatile is the precise time when it is asked for, and
         retrieved memories, which depend on the question.
         """
-        captured = self._assemble("Ciao", [])
+        captured = self._assemble("Spiega la struttura del progetto", [])
         system = captured["messages"][0]["content"]
         self.assertIn("STRUTTURA PROGETTO", system)
         self.assertIn("Oggi è", system)
@@ -277,7 +278,7 @@ class TestPrefixReuseAcrossTurns(unittest.TestCase):
         return prompts
 
     def test_the_tree_lives_in_the_cacheable_prefix(self):
-        captured = self._assemble("Ciao", [])
+        captured = self._assemble("Spiega la struttura del progetto", [])
         system = captured["messages"][0]["content"]
         self.assertIn("STRUTTURA PROGETTO", system)
         self.assertNotIn("STRUTTURA PROGETTO", captured["messages"][-1]["content"])

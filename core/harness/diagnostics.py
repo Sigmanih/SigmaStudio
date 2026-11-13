@@ -11,6 +11,7 @@ import json
 import os
 import re
 from pathlib import Path
+from html.parser import HTMLParser
 from typing import Any, Dict, Optional
 
 from core.logger import get_logger
@@ -355,6 +356,36 @@ def _fast_lint_rust(content: str, language: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def validate_html_document(content: str) -> Dict[str, Any]:
+    """Distingue un frammento utilizzabile da una pagina ancora priva di corpo."""
+    class Document(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.opened = set()
+            self.closed_tags = set()
+
+        def handle_starttag(self, tag, attrs):
+            self.opened.add(tag)
+
+        def handle_endtag(self, tag):
+            self.closed_tags.add(tag)
+
+    parser = Document()
+    try:
+        parser.feed(content)
+    except Exception as exc:
+        return {'valid': False, 'language': 'html', 'error': str(exc)}
+    document = bool(re.search(r'<!doctype\s+html|<html\b', content, re.I))
+    incomplete = bool(parser.rawdata.strip()) or (document and (
+        'body' not in parser.opened or not {'body', 'html'} <= parser.closed_tags))
+    return {'valid': not incomplete, 'language': 'html', 'incomplete': incomplete,
+            'truncated_tag': bool(parser.rawdata.strip()),
+            'document_complete': document and not incomplete,
+            'error': ('HTML incompleto: tag troncato oppure body/chiusura html mancanti. '
+                      'Completa il file con append_file e corpo grezzo dopo ---, senza riscrivere la parte già salvata.'
+                      if incomplete else None)}
+
+
 def validate_code_syntax(file_path: str, content: Optional[str] = None) -> Dict[str, Any]:
     """Validates syntax for Python, JSON, JavaScript/JSX/TypeScript, CSS, and Rust."""
     p = Path(file_path)
@@ -367,6 +398,9 @@ def validate_code_syntax(file_path: str, content: Optional[str] = None) -> Dict[
             content = p.read_text(encoding="utf-8", errors="replace")
         except Exception as ex:
             return {"valid": False, "language": "unknown", "error": f"Impossibile leggere file: {ex}"}
+
+    if ext in ('.html', '.htm'):
+        return validate_html_document(content)
 
     # 1. Python (.py)
     if ext == ".py":

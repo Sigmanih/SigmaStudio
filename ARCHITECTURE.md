@@ -193,6 +193,34 @@ Una clip marcata `restoration_score` sostituisce l'audio originale nel proprio i
 ### 6.1 Agent Catalog
 The twenty stock agents reside in `core/agents/catalog/`: a `catalog.json` file with role metadata and one Modelfile per agent, editable as plain text.
 
+La chat Developer Studio intesta il run alla sessione, separando il produttore dallo stream HTTP.
+`core/harness/run_events.py` conserva gli eventi per il replay: fino a 1 MiB in RAM, poi file temporaneo,
+con limite di 64 MiB per run. Il modulo conserva al massimo 32 registri di sessione e rimuove prima quelli
+conclusi. Il refresh ricollega la chat senza rieseguire gli strumenti; Stop usa sessione e identificativo
+del run. Il registro di replay dura quanto il processo server; dopo un riavvio resta il ledger persistito,
+ma il calcolo interrotto richiede una ripresa esplicita. Gli eventi `pipeline_update` e `ledger` aggiornano
+anche i task nella chat principale.
+
+Anche `/api/chat` usa run ricollegabili quando il client specifica sessione e streaming.
+`/api/chat/run`, `/api/chat/events` e `/api/chat/stop` separano il recupero della risposta dall'inferenza.
+Saluti e domande di presentazione usano un contesto breve senza catalogo degli strumenti, triage o azioni,
+anche con auto-approve attivo. Il ciclo MCP rispetta `allow_actions`. La cancellazione raggiunge il runtime
+e le letture HTTP prima del primo token, senza attendere la fine del prefill o il timeout dello stream.
+
+Le chiamate di scrittura con JSON troncato non vengono completate artificialmente dal parser.
+Per HTML e codice lungo il corpo grezzo dopo `---` evita l'escape delle stringhe. Il risultato della
+scrittura riporta byte e righe salvati; il controllo HTML segnala tag troncati e documenti ancora privi
+di body/chiusura html. Un head salvato durante un lavoro a blocchi resta incompleto finché viene aggiunto
+il corpo. Una riscrittura identica viene segnalata come mancato avanzamento, senza creare altri backup.
+
+Nel laboratorio creativo il cast completo si dichiara prima delle scene: ogni soggetto ricorrente deve
+avere descrizione e riferimento esistente, e le inquadrature non possono riferire identità sconosciute.
+`production_mode=static_loop` esporta un'immagine canonica immobile con FFmpeg: una sola base temporale
+viene ripetuta fino alla durata finale, senza inferenza video né giudizi sul movimento. Il risultato resta
+da revisionare. `ambient_loop` mantiene invece il percorso animato a camera fissa. Le risposte sullo stato
+di produzione distinguono `interrupted` da `rendering` quando manca un esecutore vivo, senza modificare
+gli artefatti o il manifest salvato.
+
 ### 6.2 Dynamic DAG Planning (`core/pipeline/dynamic_swarm.py`)
 ```mermaid
 graph TD

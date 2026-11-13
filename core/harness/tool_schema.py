@@ -279,8 +279,9 @@ def ripara_corpo_json(corpo: str) -> Optional[str]:
     parte) e' una virgola, un due punti, una graffa o la fine; ogni altra
     virgoletta incontrata dentro una stringa era testo, e si protegge.
 
-    I corpi troncati si chiudono: la stringa aperta e le graffe non chiuse. Le
-    virgole finali si tolgono, perche' nel JSON non ci stanno.
+    I corpi troncati si rifiutano: chiudere una stringa aperta trasformerebbe
+    un prefisso di file in una scrittura apparentemente riuscita. Le virgole
+    finali si tolgono, perche' nel JSON non ci stanno.
 
     Restituisce None quando non cambia niente: se il corpo era gia' valido il
     parseggio sarebbe riuscito, quindi un corpo identico a se stesso e' rotto
@@ -348,9 +349,8 @@ def ripara_corpo_json(corpo: str) -> Optional[str]:
         fuori.append(c)
 
     riparato = "".join(fuori)
-    if dentro:
-        riparato += '"'
-    riparato += "}" * graffe + "]" * quadre
+    if dentro or graffe or quadre:
+        return None
     return riparato if riparato != testo else None
 
 

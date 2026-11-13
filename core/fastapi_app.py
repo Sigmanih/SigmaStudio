@@ -975,6 +975,9 @@ SSE_ENDPOINTS = (
 
 # Helper function to execute a route via the adapter
 async def _dispatch_route(request: Request, method: str):
+    if request.url.path in ('/api/chat/run', '/api/chat/events', '/api/chat/stop'):
+        from core.chat.runs import control
+        return await control(request, method)
     url_path = request.url.path
     if request.query_params:
         url_path += f"?{request.query_params}"
@@ -996,6 +999,11 @@ async def _dispatch_route(request: Request, method: str):
 
     # Check if SSE streaming is expected
     if request.url.path in SSE_ENDPOINTS:
+        if request.url.path == '/api/chat':
+            chat_body = adapter.read_json_body()
+            if chat_body.get('session_id') and chat_body.get('stream'):
+                from core.chat.runs import start
+                return start(adapter, handler_fn, chat_body, _stream_slots)
         if not _stream_slots.acquire(blocking=False):
             return JSONResponse(status_code=503, content={"error": "Troppi stream attivi. Riprova fra poco."},
                                 headers={"Retry-After": "1"})

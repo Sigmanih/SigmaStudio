@@ -140,6 +140,8 @@ export function useChatStreaming({
 
   const abortRef = useRef(null);
   const streamingSessionIdRef = useRef(null);
+  const devRunRef = useRef(null);
+  const streamHandlerRef = useRef(null);
   const loopActiveRef = useRef(loopActive);
   const loopIterationRef = useRef(loopIteration);
   const loopMaxIterationsRef = useRef(loopMaxIterations);
@@ -162,6 +164,20 @@ export function useChatStreaming({
   const stopInference = useCallback((e) => {
     if (e && typeof e.preventDefault === 'function') {
       try { e.preventDefault(); } catch {}
+    }
+    if (devRunRef.current) {
+      const run = devRunRef.current;
+      const stopRun = async () => {
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const response = await fetch(`${run.api_base || '/api/developer/agent'}/stop`, { method: 'POST',
+            headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(run) });
+          if (response.ok && (await response.json()).stopped) return;
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      };
+      stopRun().catch(err => console.warn('Arresto run non riuscito:', err));
+      localStorage.removeItem(`sigma_chat_run_${run.session_id}`);
+      devRunRef.current = null;
     }
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     if (globalAbortController) { globalAbortController.abort(); globalAbortController = null; }
@@ -219,6 +235,7 @@ export function useChatStreaming({
     let streamActionsLog = [];
     let streamToolCalls = [];
     let streamToolApprovals = [];
+    let streamPipeline = null;
     let streamRoutingTimeMs = null;
     let streamLoadDurationMs = null;
     let streamGenerationTimeMs = null;
@@ -260,6 +277,7 @@ export function useChatStreaming({
               actions_log: streamActionsLog,
               tool_calls: streamToolCalls,
               tool_approvals: streamToolApprovals,
+              pipeline_tasks: streamPipeline,
               routing_time_ms: streamRoutingTimeMs,
               load_duration_ms: streamLoadDurationMs,
               generation_time_ms: streamGenerationTimeMs,
@@ -297,6 +315,7 @@ export function useChatStreaming({
               actions_log: streamActionsLog,
               tool_calls: streamToolCalls,
               tool_approvals: streamToolApprovals,
+              pipeline_tasks: streamPipeline,
               routing_time_ms: streamRoutingTimeMs,
               load_duration_ms: streamLoadDurationMs,
               tokens_per_second: streamTps,
@@ -328,6 +347,7 @@ export function useChatStreaming({
               actions_log: streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log,
               tool_calls: streamToolCalls,
               tool_approvals: streamToolApprovals,
+              pipeline_tasks: streamPipeline,
               routing_time_ms: streamRoutingTimeMs || n[n.length - 1].routing_time_ms,
               load_duration_ms: streamLoadDurationMs || n[n.length - 1].load_duration_ms,
               tokens_per_second: streamTps || n[n.length - 1].tokens_per_second,
@@ -407,7 +427,10 @@ export function useChatStreaming({
       let streamDone = false, hasError = false, streamErrorMsg = '';
       while (!streamDone) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          if (devRunRef.current && !streamDone) throw new Error('Collegamento interrotto: riconnessione in corso');
+          break;
+        }
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n\n');
         buffer = lines.pop() || '';
@@ -421,6 +444,10 @@ export function useChatStreaming({
 
           try {
             const p = JSON.parse(raw);
+            if (p.type === 'pipeline_update' || (p.type === 'ledger' && p.state?.pipeline)) {
+              streamPipeline = p.tasks || p.state.pipeline;
+              schedulePaint();
+            }
 
             // Normalizzazione eventi provenienti dall'Harness Developer Lab (/api/developer/agent/chat)
             if (p.type === 'thinking' && p.thought) {
@@ -588,7 +615,7 @@ export function useChatStreaming({
               if (p.summary) {
                 fullText = p.summary;
               }
-              streamDone = true;
+              if (!devRunRef.current) streamDone = true;
             }
             if (p.type === 'done' || p.type === 'run_completed') {
               streamDone = true;
@@ -816,7 +843,7 @@ export function useChatStreaming({
       setLoading(false);
       const finalContent = cleanModelTags(finalOverride || fullText) || (fullThinking ? cleanModelTags(fullThinking) : (hasError ? streamErrorMsg || '⚠️ Error' : '⚠️ Nessuna risposta.'));
 
-      if (streamCreatedFiles.length === 0 && finalContent && !hasError) {
+      if (!devRunRef.current && streamCreatedFiles.length === 0 && finalContent && !hasError) {
         try {
           const extRes = await fetch('/api/chat/extract_files', {
             method: 'POST',
@@ -890,6 +917,7 @@ export function useChatStreaming({
             actions_log: isStreamError ? [] : (streamActionsLog.length > 0 ? streamActionsLog : n[n.length - 1].actions_log),
             tool_calls: isStreamError ? [] : streamToolCalls,
             tool_approvals: isStreamError ? [] : streamToolApprovals,
+            pipeline_tasks: streamPipeline,
             routing_time_ms: isStreamError ? undefined : (streamRoutingTimeMs || n[n.length - 1].routing_time_ms),
             load_duration_ms: isStreamError ? undefined : (streamLoadDurationMs || n[n.length - 1].load_duration_ms),
             generation_time_ms: isStreamError ? undefined : (streamGenerationTimeMs || n[n.length - 1].generation_time_ms),
@@ -939,6 +967,7 @@ export function useChatStreaming({
       // Cancel any frame still queued: it would repaint a partial answer on
       // top of the error the user needs to read.
       try { flushPaint(); } catch {}
+      if (devRunRef.current || e.name === 'AbortError') throw e;
       setLoading(false);
       stopSpeech();
       setSessionMessages(prev => {
@@ -963,6 +992,74 @@ export function useChatStreaming({
       });
     }
   };
+
+  streamHandlerRef.current = handleStreamResponse;
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+    let disposed = false;
+    let checking = false;
+    let discovered = false;
+    let connection = null;
+    const recover = async () => {
+      if (checking || abortRef.current) return;
+      const key = `sigma_chat_run_${activeSessionId}`;
+      let pending;
+      try { pending = JSON.parse(localStorage.getItem(key) || 'null'); } catch { return; }
+      if (!pending && discovered) return;
+      checking = true;
+      try {
+        const apiBase = pending?.api_base || (devModeEnabled ? '/api/developer/agent' : '/api/chat');
+        const statusRes = await fetch(`${apiBase}/run?session_id=${encodeURIComponent(activeSessionId)}`);
+        if (!statusRes.ok || disposed) return;
+        const status = await statusRes.json();
+        discovered = true;
+        if (!pending && status.run_id && status.running) {
+          pending = { run_id: status.run_id, started: Date.now(), api_base: apiBase };
+          localStorage.setItem(key, JSON.stringify(pending));
+        }
+        if (!pending && !status.interrupted) return;
+        if (!pending) pending = {};
+        if (!status.run_id || (pending.run_id && pending.run_id !== status.run_id)) {
+          if (Date.now() - pending.started < 30000) return;
+          localStorage.removeItem(key);
+          setSessionMessages(prev => {
+            const msgs = [...(prev[activeSessionId] || [])];
+            if (msgs.at(-1)?.role === 'assistant') msgs[msgs.length - 1] = {
+              ...msgs.at(-1), streaming: false, streamingThinking: false,
+              recovery_notice: 'Esecuzione interrotta dal riavvio del server. Il piano salvato è disponibile; invia un messaggio per riprendere.',
+              pipeline_tasks: status.pipeline?.length ? status.pipeline : msgs.at(-1).pipeline_tasks,
+            };
+            return { ...prev, [activeSessionId]: msgs };
+          });
+          return;
+        }
+        if (disposed || abortRef.current) return;
+        connection = new AbortController();
+        abortRef.current = connection;
+        streamingSessionIdRef.current = activeSessionId;
+        devRunRef.current = { session_id: activeSessionId, run_id: status.run_id, api_base: apiBase };
+        setLoading(true);
+        const res = await fetch(`${apiBase}/events?session_id=${encodeURIComponent(activeSessionId)}&run_id=${status.run_id}`, { signal: connection.signal });
+        if (!res.ok) throw new Error('Recupero eventi non riuscito');
+        await streamHandlerRef.current(res, activeSessionId);
+        if (!connection.signal.aborted) localStorage.removeItem(key);
+      } catch (err) {
+        if (err.name !== 'AbortError') console.warn('Ricollegamento chat:', err);
+      } finally {
+        checking = false;
+        if (connection && abortRef.current === connection) {
+          abortRef.current = null;
+          streamingSessionIdRef.current = null;
+          devRunRef.current = null;
+          setLoading(false);
+        }
+      }
+    };
+    recover();
+    const timer = setInterval(recover, 3000);
+    return () => { disposed = true; clearInterval(timer); connection?.abort(); };
+  }, [activeSessionId, devModeEnabled, setSessionMessages]);
 
   const handleJsonResponse = async (res, sessionId, updatedMessages) => {
     try {
@@ -1158,9 +1255,16 @@ export function useChatStreaming({
       })();
 
       const useStream = !isPlan;
+      const requestedRunId = globalThis.crypto.randomUUID().replaceAll('-', '');
+      const apiBase = devModeEnabled ? '/api/developer/agent' : '/api/chat';
+      if (devModeEnabled || useStream) {
+        devRunRef.current = { session_id: currentSessionId, run_id: requestedRunId, api_base: apiBase };
+        localStorage.setItem(`sigma_chat_run_${currentSessionId}`, JSON.stringify({ run_id: requestedRunId, started: Date.now(), api_base: apiBase }));
+      }
       let res;
       if (devModeEnabled) {
         const devBody = {
+          run_id: requestedRunId,
           messages: modelHistory(updatedMessages).map(m => ({
             role: m.role,
             content: m.content,
@@ -1187,6 +1291,7 @@ export function useChatStreaming({
         });
       } else {
         const body = {
+          session_id: currentSessionId, run_id: requestedRunId,
           message: messageText.trim(), bot_name: effectiveModel, model: effectiveModel,
           model_provider: routing.provider, model_endpoint: routing.endpoint, model_api_url: routing.api_url,
           allow_actions: true, planning_mode: isPlan, stream: useStream,
@@ -1204,9 +1309,15 @@ export function useChatStreaming({
         });
       }
 
+      if (!res.headers.get('X-Sigma-Run-ID')) {
+        localStorage.removeItem(`sigma_chat_run_${currentSessionId}`);
+        devRunRef.current = null;
+      }
+
       const contentType = res.headers.get("content-type") || "";
       if (res.ok && contentType.includes("text/event-stream")) {
         await handleStreamResponse(res, currentSessionId, 0, messageText);
+        localStorage.removeItem(`sigma_chat_run_${currentSessionId}`);
       } else {
         await handleJsonResponse(res, currentSessionId, updatedMessages);
       }
@@ -1234,6 +1345,7 @@ export function useChatStreaming({
         }
         return;
       }
+      if (devRunRef.current) return;
       if (sessionRefs.activeSessionId.current === currentSessionId) {
         const errorMsg = { role: 'assistant', content: `❌ **Errore di connessione:** ${e.message}`, timestamp: new Date().toISOString(), error: true };
         const finalMsgs = [...(sessionRefs.sessionMessages.current[currentSessionId] || []), errorMsg];
@@ -1251,6 +1363,7 @@ export function useChatStreaming({
       setLoading(false);
       abortRef.current = null;
       globalAbortController = null;
+      devRunRef.current = null;
       streamingSessionIdRef.current = null;
     }
   }, [input, loading, selectedModel, providerConfigs, quickConfig, loopMaxIterations, webSearch, attachedFiles, pcFiles, activeMode, selectedManifestoPath, externalOpenFiles, refreshConfig, saveSessionsState, setMessagesForSession, saveMessagesImmediately, sessionRefs, setActiveSessionId, devModeEnabled, devRole, workspaceRoot, onWorkspaceRequest]);

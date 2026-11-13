@@ -47,10 +47,10 @@ class TestLaRiparazione:
         assert "\n    print('ciao')\n" in params["content"]
         assert params["content"].count("\n") == 2
 
-    def test_un_corpo_troncato_si_chiude(self):
+    def test_un_corpo_troncato_non_diventa_una_scrittura(self):
         params = normalize_tool_params(CORPO_TRONCATO, "write_file")
-        assert "__malformed__" not in params, params
-        assert params["content"].startswith("x = 1")
+        assert params.get('__malformed__'), params
+        assert 'content' not in params
 
     def test_le_virgole_ttrailing_non_rompono(self):
         corpo = '{"path": "a.py", "content": "x = 1", }'

@@ -32,6 +32,7 @@ from core.harness.fs_manager import (
 from core.harness.terminal import execute_shell_command_sync, stream_shell_command
 from core.harness.loop import stream_admin_agent_turn, execute_admin_tool
 from core.harness import review
+from core.harness.run_events import RunEvents
 
 log = get_logger("developer_handlers")
 
@@ -46,6 +47,60 @@ _ORCHESTRATORS_LOCK = threading.RLock()
 # che il suo thread cooperativo esca prima di usare lo stesso ledger/workspace.
 _AGENT_RUNS: Dict[str, Dict[str, Any]] = {}
 _AGENT_RUNS_LOCK = threading.RLock()
+_AGENT_STREAMS: Dict[str, RunEvents] = {}
+
+
+async def _agent_events_stream(run, after=0):
+    while True:
+        batch = run.read(after)
+        for event in batch:
+            after = event['event_id']
+            yield f"data: {json.dumps(event)}\n\n"
+        if run.finished.is_set() and not batch:
+            yield 'data: [DONE]\n\n'
+            return
+        if not batch:
+            yield ': keep-alive\n\n'
+            await asyncio.sleep(0.5)
+
+
+async def handle_agent_run(request: Request):
+    sid = (request.query_params.get('session_id') or '').strip()
+    with _AGENT_RUNS_LOCK:
+        run = _AGENT_STREAMS.get(sid)
+    saved = {}
+    if not run and sid:
+        from core.harness import store as session_store
+        saved = session_store.load(sid) or {}
+    return JSONResponse(content={'success': True, 'run_id': run.run_id if run else None,
+                                 'running': bool(run and not run.finished.is_set()),
+                                 'interrupted': not run and saved.get('status') == 'running',
+                                 'pipeline': saved.get('pipeline') or []})
+
+
+async def handle_agent_events(request: Request):
+    sid = (request.query_params.get('session_id') or '').strip()
+    with _AGENT_RUNS_LOCK:
+        run = _AGENT_STREAMS.get(sid)
+    if run is None or request.query_params.get('run_id') != run.run_id:
+        return JSONResponse(status_code=404, content={'error': 'Run non disponibile: server riavviato o registro scaduto'})
+    try:
+        after = int(request.query_params.get('after', '0'))
+        run.read(after, limit=0)
+    except ValueError:
+        return JSONResponse(status_code=400, content={'error': 'Cursore non valido'})
+    return StreamingResponse(_agent_events_stream(run, after), media_type='text/event-stream',
+                             headers={'Cache-Control': 'no-cache', 'X-Sigma-Run-ID': run.run_id})
+
+
+async def handle_agent_stop(request: Request):
+    body = await request.json()
+    with _AGENT_RUNS_LOCK:
+        run = _AGENT_STREAMS.get(str(body.get('session_id') or ''))
+        stopped = bool(run and run.run_id == body.get('run_id') and not run.finished.is_set())
+        if stopped:
+            run.cancel.set()
+    return JSONResponse(content={'success': True, 'stopped': stopped})
 
 
 def _register_agent_run(session_id: Optional[str], cancel: threading.Event,
@@ -419,106 +474,69 @@ async def handle_agent_chat(request: Request):
     if role_id.lower() in ("auto", "sigma_assistant"):
         role_id = ""
 
-    # The agent loop is fully synchronous and blocking (model inference, filesystem
-    # search, shell commands). It MUST run on a worker thread: executing it inline on
-    # the event loop freezes every other Sigma Studio request until it finishes.
-    async def sse_stream():
-        cancel_event = threading.Event()
-        run_finished = threading.Event()
-        precedente = _register_agent_run(session_id, cancel_event, run_finished)
-        events: "queue.Queue[Any]" = queue.Queue(maxsize=512)
-        DONE = object()
-
-        def producer():
-            try:
-                if precedente is not None:
-                    try:
-                        events.put({"type": "status", "text":
-                                    "In attesa che si arresti il run precedente della sessione."},
-                                   timeout=1.0)
-                    except queue.Full:
-                        pass
-                    while not cancel_event.is_set() and not precedente.wait(timeout=0.25):
-                        pass
-                if cancel_event.is_set():
-                    return
-                for event in stream_admin_agent_turn(
-                    messages=messages,
-                    workspace_root=workspace_root,
-                    model_name=model,
-                    auto_execute_tools=auto_execute,
-                    should_cancel=cancel_event.is_set,
-                    current_pipeline=pipeline,
-                    context_tokens=context_tokens,
-                    max_tokens=max_tokens,
-                    max_turns=max_turns,
-                    thinking=thinking,
-                    session_id=session_id,
-                    profile=profile,
-                    review_writes=review_writes,
-                    isolate_worktree=isolate_worktree,
-                    review_run=review_run,
-                    role_id=role_id or None,
-                ):
-                    if cancel_event.is_set():
-                        break
-                    # Bounded queue: if the client stalls, block here instead of
-                    # accumulating the whole transcript in RAM.
-                    while not cancel_event.is_set():
-                        try:
-                            events.put(event, timeout=0.5)
-                            break
-                        except queue.Full:
-                            continue
-            except Exception as e:
-                import traceback
-                err_type = type(e).__name__
-                tb_str = traceback.format_exc()
-                log.exception("Admin agent stream failed: %s", e)
-                try:
-                    events.put({
-                        "type": "error",
-                        "error_type": err_type,
-                        "error": f"Errore stream ({err_type}): {str(e)}",
-                        "traceback": tb_str,
-                    }, timeout=1.0)
-                except queue.Full:
-                    pass
-            finally:
-                _finish_agent_run(session_id, cancel_event, run_finished)
-                try:
-                    events.put(DONE, timeout=1.0)
-                except queue.Full:
-                    pass
-
-        worker = threading.Thread(target=producer, name="admin-agent-stream", daemon=True)
-        worker.start()
-
-        try:
-            while True:
-                try:
-                    event = await asyncio.to_thread(events.get, True, 1.0)
-                except queue.Empty:
-                    if not worker.is_alive():
-                        break
-                    # Heartbeat keeps proxies from dropping a long tool execution
-                    yield ": keep-alive\n\n"
-                    continue
-
-                if event is DONE:
+    # Il lavoro appartiene alla sessione: chiudere il browser interrompe solo la consegna.
+    try:
+        run = RunEvents(run_id=body.get('run_id'))
+    except (ValueError, AttributeError, TypeError):
+        return JSONResponse(status_code=400, content={'error': 'Identificativo run non valido'})
+    cancel_event, run_finished = run.cancel, run.finished
+    with _AGENT_RUNS_LOCK:
+        # Manteniamo i run conclusi per il recupero, con un limite al numero di registri.
+        if len(_AGENT_STREAMS) >= 32:
+            for key, old in list(_AGENT_STREAMS.items()):
+                if old.finished.is_set():
+                    _AGENT_STREAMS.pop(key)
+                    # I lettori gia' collegati possono ancora terminare il replay.
                     break
-                yield f"data: {json.dumps(event)}\n\n"
-        except asyncio.CancelledError:
-            # Client aborted (Stop button / tab closed): stop the agent too.
+            else:
+                return JSONResponse(status_code=429, content={'error': 'Troppi run attivi'})
+        if session_id:
+            _AGENT_STREAMS[session_id] = run
+        precedente = _register_agent_run(session_id, cancel_event, run_finished)
+
+    def producer():
+        try:
+            if precedente is not None:
+                run.append({'type': 'status', 'text': 'In attesa del run precedente.'})
+                while not cancel_event.is_set() and not precedente.wait(timeout=0.25):
+                    continue
+            if cancel_event.is_set():
+                return
+            for event in stream_admin_agent_turn(
+                messages=messages, workspace_root=workspace_root, model_name=model,
+                auto_execute_tools=auto_execute, should_cancel=cancel_event.is_set,
+                current_pipeline=pipeline, context_tokens=context_tokens, max_tokens=max_tokens,
+                max_turns=max_turns, thinking=thinking, session_id=session_id, profile=profile,
+                review_writes=review_writes, isolate_worktree=isolate_worktree,
+                review_run=review_run, role_id=role_id or None,
+            ):
+                run.append(event)
+                if cancel_event.is_set():
+                    break
+        except Exception as exc:
+            log.exception('Admin agent stream failed: %s', exc)
             cancel_event.set()
-            raise
+            try:
+                run.append({'type': 'error', 'error': str(exc)})
+            except RuntimeError:
+                log.error('Registro eventi esaurito per il run %s', run.run_id)
         finally:
-            cancel_event.set()
+            _finish_agent_run(session_id, cancel_event, run_finished)
+
+    worker = threading.Thread(target=producer, name='admin-agent-stream', daemon=True)
+    worker.start()
+
+    async def deliver():
+        try:
+            async for event in _agent_events_stream(run):
+                yield event
+        finally:
+            if not session_id:
+                cancel_event.set()
 
     return StreamingResponse(
-        sse_stream(),
-        media_type="text/event-stream; charset=utf-8",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+        deliver(), media_type='text/event-stream; charset=utf-8',
+        headers={'Cache-Control': 'no-cache', 'X-Sigma-Run-ID': run.run_id},
     )
 
 
@@ -1584,6 +1602,9 @@ ROUTES = (
     ("/api/developer/fs/ai-create", handle_fs_ai_create, ["POST"]),
     ("/api/developer/terminal/exec", handle_terminal_exec, ["POST"]),
     ("/api/developer/agent/chat", handle_agent_chat, ["POST"]),
+    ("/api/developer/agent/run", handle_agent_run, ["GET"]),
+    ("/api/developer/agent/events", handle_agent_events, ["GET"]),
+    ("/api/developer/agent/stop", handle_agent_stop, ["POST"]),
     ("/api/developer/workspace/roots", handle_workspace_roots, ["GET"]),
     ("/api/developer/workspace/roots/add", handle_add_workspace_root, ["POST"]),
     ("/api/developer/workspace/roots/remove", handle_remove_workspace_root, ["POST"]),

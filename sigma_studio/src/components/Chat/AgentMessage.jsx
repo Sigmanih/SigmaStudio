@@ -978,6 +978,7 @@ export default function AgentMessage({
                           onClick={handleMemoizedContentClick}
                         />
                       )}
+                      {m.recovery_notice && <p role="status">{m.recovery_notice}</p>}
                       {(m.streaming || (isLoading && isLast && (!displayContent || displayContent.length < 10))) && (
                         <div className="chat-generating-indicator" style={{
                           display: 'flex',

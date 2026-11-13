@@ -313,8 +313,8 @@ offset e limit sono opzionali (default: dalla riga 1, finestra mirata di 150 rig
 
 ### Quando il contenuto e lungo: il corpo fuori dal JSON
 
-Per `write_file`, `edit_file` e `append_file` c e una seconda forma, e
-conviene ogni volta che il testo contiene virgolette, a capo o barre
+Per `write_file`, `edit_file` e `append_file` usa questa forma quando il testo
+contiene HTML, CSS, virgolette, a capo o barre
 rovesciate. L intestazione resta JSON corto, il contenuto viene dopo una
 riga di soli trattini:
 
@@ -353,6 +353,9 @@ Scrivi al massimo ~120 righe per chiamata. Oltre, la chiamata viene troncata a
 meta' e il file non viene creato affatto: per un file piu' lungo scrivi le
 prime 120 righe con write_file e aggiungi il resto con append_file, un pezzo
 per volta. E' piu' veloce che riprovare una scrittura che non entra.
+Una scrittura riuscita prova solo i byte salvati, non che il file sia completo.
+Se hai salvato head e CSS, il prossimo passo e append_file con body e chiusure:
+non riscrivere lo stesso head. Controlla line_count, size e syntax_valid del risultato.
 
 `terminal` — esegue un comando (PowerShell).
 NON usarlo per scrivere file: niente `python -c "...write_text(...)"`, niente
@@ -1996,7 +1999,9 @@ _ESEMPI_DI_CHIAMATA = {
 }
 
 #: Vale per i tool che portano un file dentro un campo, ed e' li' che si rompe.
-_AVVISO_CONTENUTO = 'Il file intero sta in `content`, su **una sola riga**: ogni a capo si scrive \\n e ogni virgoletta \\". Un a capo vero dentro la stringa e\' l\'errore piu\' frequente, e rende illeggibile tutto il blocco.'
+_AVVISO_CONTENUTO = ('Per codice e HTML usa il corpo grezzo: intestazione JSON con path, poi una riga --- '
+                     'e il contenuto completo senza escape. Non chiudere artificialmente un JSON troncato. '
+                     'Se usi content nel JSON, ogni a capo si scrive \\n e ogni virgoletta \\".')
 
 
 #: Quanti vicini si nominano in un avviso. Oltre tre l'avviso smette di essere
@@ -2349,6 +2354,21 @@ def _execute_admin_tool_impl(
         raw_path = _path_of(params)
         content = params.get("content") or params.get("raw", "")
         full_path = resolve_workspace_path(raw_path, workspace_root, active_cwd=active_cwd)
+        if Path(full_path).suffix.lower() in ('.html', '.htm'):
+            diag = validate_code_syntax(full_path, content=content)
+            if diag.get('truncated_tag'):
+                return {'tool': 'write_file', 'path': raw_path, 'success': False,
+                        'error': 'Scrittura rifiutata: il contenuto HTML termina dentro un tag. '
+                                 'Nessun byte salvato. Usa il corpo grezzo dopo --- e completa il tag.'}
+        if Path(full_path).is_file():
+            try:
+                unchanged = Path(full_path).read_text(encoding='utf-8') == content
+            except (OSError, UnicodeError):
+                unchanged = False
+            if unchanged:
+                return {'tool': 'write_file', 'path': raw_path, 'success': False, 'unchanged': True,
+                        'error': 'Il file contiene già esattamente questo testo: nessuna modifica eseguita. '
+                                 'Non riscriverlo: completa le sezioni mancanti con append_file o usa edit_file.'}
 
         # Una riscrittura che azzera un file esistente e' quasi sempre un
         # incidente, e la validazione di sintassi non la vede: un file vuoto
@@ -3810,6 +3830,8 @@ def _stream_agent_turn_impl(
         # need opposite responses. Saying which one happened is what lets the
         # model split an oversized write instead of retrying it whole.
         truncated_call = _has_unclosed_tool_fence(full_text)
+        if truncated_call:
+            tools_found = []
         hit_budget = turn_tokens >= max_tokens - 8
         if (truncated_call or (hit_budget and not tools_found)):
             if current_turn < max_turns:
@@ -4728,6 +4750,10 @@ def _stream_agent_turn_impl(
                 obs_str += result.get("message", "Eliminato.")
             elif t_name == "write_file":
                 obs_str += result.get("message", "File salvato.")
+                if result.get('syntax_valid') is False:
+                    obs_str += '\n' + str(result.get('syntax_error') or 'File da completare o correggere.')
+                if result.get('line_count') is not None:
+                    obs_str += f"\nSalvate {result['line_count']} righe, {result.get('size', 0)} byte."
             elif t_name == "screenshot":
                 obs_str = (
                     f"Tool 'screenshot': {describe_screenshot(result)}\n"

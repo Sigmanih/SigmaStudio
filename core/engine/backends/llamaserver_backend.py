@@ -885,8 +885,11 @@ class LlamaServerBackend(InferenceBackend):
         stallo = min(_STALLO_TIMEOUT_S * in_volo, _GENERAZIONE_MAX_S)
 
         try:
-            for pezzo in self._stream_http("/v1/chat/completions", corpo, stallo):
-                if cancel is not None and getattr(cancel, "is_cancelled", lambda: False)():
+            stream = (self._stream_http('/v1/chat/completions', corpo, stallo, cancel=cancel)
+                      if cancel is not None else self._stream_http('/v1/chat/completions', corpo, stallo))
+            for pezzo in stream:
+                from core.engine.cancellation import is_cancelled
+                if is_cancelled(cancel):
                     log.info("[LlamaServer] Generazione annullata dal chiamante.")
                     break
 
@@ -950,6 +953,10 @@ class LlamaServerBackend(InferenceBackend):
                 "truncated": scaduto,
             }
         except Exception as exc:
+            from core.engine.cancellation import is_cancelled
+            if is_cancelled(cancel):
+                yield {'token': '', 'done': True, 'finish_reason': 'cancelled'}
+                return
             log.error("[LlamaServer] Generazione fallita: %s", exc, exc_info=True)
             # `notice` ed `error` sono la differenza fra un guasto e una
             # risposta. Senza, questo testo veniva concatenato come se lo avesse
@@ -1417,7 +1424,13 @@ class LlamaServerBackend(InferenceBackend):
             return json.loads(risposta.read().decode("utf-8"))
 
     def _stream_http(self, percorso: str, corpo: Dict[str, Any],
-                     stallo: Optional[float] = None
+                     stallo: Optional[float] = None, cancel: Any = None
+                     ) -> Generator[Dict[str, Any], None, None]:
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            yield from self._stream_http_raw(percorso, corpo, stallo, cancel, stack)
+
+    def _stream_http_raw(self, percorso, corpo, stallo, cancel, stack
                      ) -> Generator[Dict[str, Any], None, None]:
         """Legge lo stream SSE del server e restituisce i pezzi di contenuto.
 
@@ -1432,7 +1445,9 @@ class LlamaServerBackend(InferenceBackend):
             headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
         )
         try:
-            risposta = urllib.request.urlopen(richiesta, timeout=stallo or _STALLO_TIMEOUT_S)
+            from core.engine.cancellation import cancellable_http_response
+            risposta = stack.enter_context(cancellable_http_response(
+                richiesta, stallo or _STALLO_TIMEOUT_S, cancel))
         except urllib.error.HTTPError as exc:
             corpo_dettaglio = ""
             try:
@@ -1498,8 +1513,8 @@ class LlamaServerBackend(InferenceBackend):
                     headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
                 )
                 try:
-                    risposta = urllib.request.urlopen(richiesta_fallback,
-                                                      timeout=stallo or _STALLO_TIMEOUT_S)
+                    risposta = stack.enter_context(cancellable_http_response(
+                        richiesta_fallback, stallo or _STALLO_TIMEOUT_S, cancel))
                 except urllib.error.HTTPError as exc2:
                     raw2 = ""
                     try:

@@ -470,6 +470,7 @@ def write_file_content(file_path: str, content: str, root: Optional[str] = None)
             "success": True,
             "path": str(p).replace("\\", "/"),
             "size": p.stat().st_size,
+            "line_count": len(content.splitlines()),
             "message": f"File salvato con successo: {p.name}"
         }
         if backup_info:

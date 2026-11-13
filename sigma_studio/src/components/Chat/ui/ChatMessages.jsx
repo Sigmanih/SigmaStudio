@@ -94,7 +94,15 @@ export default function ChatMessages({
     <div className="chat-messages" onScroll={handleScroll}>
       <div className="chat-messages-container">
         {/* Pipeline status bar */}
-        <AgentPipelineStatus pipeline={agentPipeline} />
+        <AgentPipelineStatus pipeline={(() => {
+          const tasks = [...displayMessages].reverse().find(m => m.pipeline_tasks)?.pipeline_tasks;
+          if (!tasks?.length) return agentPipeline;
+          const done = tasks.filter(t => ['done', 'skipped'].includes(t.status)).length;
+          return { active: true, totalSteps: tasks.length, currentStep: done,
+            agents: tasks.map(t => ({ id: t.id || t.role, name: t.role || 'Sigma',
+              task: t.description || t.title || t.task,
+              status: ['running', 'in_progress'].includes(t.status) ? 'active' : t.status })) };
+        })()} />
         
         {grouped.map((msgGroup, i) => {
           // Calcola l'indice reale di ciascun messaggio del gruppo all'interno dell'array flat 'messages'

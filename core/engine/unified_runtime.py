@@ -1645,13 +1645,18 @@ class UniversalSigmaEngine:
                     "queue_position": position,
                     "done": False,
                 }
-                acquired = self._generation_lock.acquire(
-                    timeout=self.GENERATION_QUEUE_TIMEOUT
-                )
+                deadline = time.monotonic() + self.GENERATION_QUEUE_TIMEOUT
+                while not acquired and not is_cancelled(cancel) and time.monotonic() < deadline:
+                    acquired = self._generation_lock.acquire(timeout=.2)
         finally:
             with self._waiting_lock:
                 self._generation_waiting -= 1
 
+        if is_cancelled(cancel):
+            if acquired:
+                self._generation_lock.release()
+            yield {'token': '', 'done': True, 'finish_reason': 'cancelled'}
+            return
         if not acquired:
             yield {
                 "token": (

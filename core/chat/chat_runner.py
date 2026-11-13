@@ -134,7 +134,17 @@ _THINK_TAG_RE = re.compile(
 )
 
 
-def _new_cancellation_token():
+def _identity_conversation(message: str) -> bool:
+    """Un saluto o una presentazione non autorizzano strumenti, anche con auto-approve."""
+    clean = re.sub(r'[^\w\s]', ' ', message.lower())
+    clean = ' '.join(clean.split())
+    phrases = (r'ciao|salve|buongiorno|buonasera|ehi|hey|grazie|come stai|tutto bene|'
+               r'come ti chiami|chi sei|parlami di te|presentati|cosa sai fare|che cosa sai fare|'
+               r'dimmi chi sei|un po|per favore|e')
+    return bool(clean and re.fullmatch(rf'(?:{phrases})(?:\s+(?:{phrases}))*', clean))
+
+
+def _new_cancellation_token(parent_event=None):
     """
     A token the engine can watch, or None where the engine is not installed.
 
@@ -145,7 +155,7 @@ def _new_cancellation_token():
     """
     try:
         from core.engine.cancellation import CancellationToken
-        return CancellationToken()
+        return CancellationToken(parent_event=parent_event)
     except Exception as exc:
         log.debug("Cancellation unavailable (%s); streams run to completion.", exc)
         return None
@@ -521,7 +531,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     import time
     from core.ai_providers import call_ai_model_stream
 
-    cancel = _new_cancellation_token()
+    cancel = _new_cancellation_token(getattr(handler, 'client_gone', None))
 
     handler.send_response(200)
     handler.send_header("Content-Type", "text/event-stream")
@@ -766,7 +776,7 @@ def _stream_chat_response(handler, messages, ai_cfg, model, provider,
     # outcome handed back so the answer can continue with real data. A tool that
     # acts on the world stops the turn and waits for the operator instead.
     strumenti_eseguiti = False
-    if not error_msg:
+    if not error_msg and allow_actions:
         try:
             from core.mcp.agent_loop import (MAX_TOOL_ROUNDS, execute_calls,
                                              extract_tool_calls, format_results_for_model)
@@ -1149,7 +1159,8 @@ def handle_chat(self):
         bot_name = req.get("bot_name", "SigmaBot")
         manifesto_path = req.get("manifesto_path", "")
         model_override = req.get("model", "")
-        allow_actions = req.get("allow_actions", False)
+        conversational_only = _identity_conversation(message)
+        allow_actions = bool(req.get("allow_actions", False)) and not conversational_only
         planning_mode = req.get("planning_mode", False)
 
         msg_lower = message.lower().strip()
@@ -1241,8 +1252,8 @@ def handle_chat(self):
         laya_decision = None
         try:
             from core.harness import laya_router
-            laya_decision = laya_router.triage_chat(message)
-            if not laya_decision.fallback:
+            laya_decision = laya_router.triage_chat(message) if not conversational_only else None
+            if laya_decision and not laya_decision.fallback:
                 log.info(
                     "[ChatRunner] Laya triage: intent=%s (%.2f), complexity=%s in %.1f ms su %s",
                     laya_decision.intent, laya_decision.intent_confidence,
@@ -1330,6 +1341,10 @@ def handle_chat(self):
             model, active_provider, active_prov_cfg, profile, wants_reasoning,
             thinking_budget=req_thinking_budget,
         )
+        if conversational_only:
+            wants_reasoning = False
+            if sampling is not None:
+                sampling = sampling.with_overrides(max_tokens=min(sampling.max_tokens, 1024))
         log.info(
             "Profilo '%s' (reasoning=%s) | %s",
             profile_key, wants_reasoning,
@@ -1364,7 +1379,7 @@ def handle_chat(self):
 
             # Memory MCP retrieval depends on the question, so it is volatile.
             mem_server = mcp_hub.get_server("Memory MCP")
-            if mem_server and message:
+            if mem_server and message and not conversational_only:
                 rag_res = mem_server.call_tool("query_vector_db", {"query": message, "limit": 3})
                 if rag_res and not rag_res.get("isError"):
                     retrieved_memory = (
@@ -1379,7 +1394,7 @@ def handle_chat(self):
             # hub would refuse just sends the agent into a wall.
             # Se Laya ha classificato l'intento come pura 'chat' e le azioni non sono
             # richieste, saltiamo l'iniezione del catalogo (risparmiando ~3000 token).
-            if laya_decision and laya_decision.should_skip_tools and not allow_actions:
+            if not allow_actions:
                 mcp_tools_catalogue = ""
                 log.debug("[ChatRunner] Tool catalogue saltato da Laya per intento 'chat'")
             else:
@@ -1394,7 +1409,7 @@ def handle_chat(self):
         # ~240 tokens sat at precisely the point where prefix reuse stops. A
         # tree that does change costs one invalidation, which is the right
         # price paid once rather than a fraction of it paid forever.
-        fs_context = _build_filesystem_context()
+        fs_context = '' if conversational_only else _build_filesystem_context()
         project_structure = (
             f"\n## STRUTTURA PROGETTO\n{fs_context}\n" if fs_context else ""
         )
@@ -1438,6 +1453,12 @@ Contenuto completo...
    - MAI creare un sottoargomento con lo stesso nome dell'argomento padre (es. NON creare mai `data/analisi_1/01_analisi_1`).
    - Sottoargomenti distinti sono permessi SOLO se suddividono un argomento in sotto-concetti specifici e separati (es. `data/analisi_1/insiemi_numerici/spiegazione.md`).
 {mcp_tools_catalogue}"""
+        if conversational_only:
+            full_prompt = (f'{identity_header}\nSei Sigma Assistant, assistente di Sigma Studio. '
+                           'Rispondi in italiano alla domanda su di te, in modo naturale e conciso. '
+                           'Non eseguire azioni o strumenti e non riprendere lavori precedenti. '
+                           'Descrivi le capacità disponibili senza dichiarare attività mai eseguite.\n'
+                           f'{today}\n{scheda_blocco}')
 
         # Extract and sanitize past chat history context
         raw_history = req.get("history") or req.get("context", {}).get("history", []) or req.get("messages", [])

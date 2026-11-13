@@ -238,7 +238,8 @@ class NamedPipeClient:
 
             # Ricezione sequenziale dei token frame
             while True:
-                if cancel and cancel():
+                from core.engine.cancellation import is_cancelled
+                if is_cancelled(cancel):
                     self.cancel_ipc(payload_dict.get("request_id", ""))
                     break
 
@@ -799,7 +800,8 @@ class SigmaRustBackend(InferenceBackend):
         usage_tokens: Optional[int] = None
         stop_monitor=threading.Event()
         def is_cancelled():
-            return bool(cancel and (cancel() if callable(cancel) else getattr(cancel,"is_cancelled",lambda:False)()))
+            from core.engine.cancellation import is_cancelled as check_cancelled
+            return check_cancelled(cancel)
         def monitor_cancel():
             while not stop_monitor.wait(0.05):
                 try:
@@ -811,7 +813,7 @@ class SigmaRustBackend(InferenceBackend):
                     log.debug("Controllo di annullamento non disponibile: %s",error)
                     return
         monitor=None
-        if cancel:
+        if cancel is not None:
             if is_cancelled():
                 yield {"token":"","done":True,"finish_reason":"cancelled"}
                 return
@@ -825,7 +827,8 @@ class SigmaRustBackend(InferenceBackend):
                 method="POST",
             )
             t0 = time.perf_counter()
-            with urllib.request.urlopen(req, timeout=120.0) as resp:
+            from core.engine.cancellation import cancellable_http_response
+            with cancellable_http_response(req, 120.0, cancel) as resp:
                 content_type = resp.headers.get("Content-Type", "")
                 if "text/event-stream" in content_type:
                     for raw_line in resp:
@@ -921,6 +924,9 @@ class SigmaRustBackend(InferenceBackend):
         if in_reasoning:
             yield {"token": "</think>", "content": "</think>", "done": False}
 
+        if is_cancelled():
+            yield {'token': '', 'done': True, 'finish_reason': 'cancelled'}
+            return
         if proxy_error is None and (yielded_any_token or completed):
             final = {"token": "", "done": True, "finish_reason": "cancelled" if is_cancelled() else "stop"}
             if usage_tokens is not None:
