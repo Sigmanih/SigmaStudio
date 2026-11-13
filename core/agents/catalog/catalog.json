@@ -17,6 +17,11 @@
     "is_default": true,
     "name": "Sigma Assistant",
     "numCtx": 32768,
+    "risorse": {
+      "dettagli": "sigma_assistant/modello.json",
+      "immagine": "sigma_assistant/immagine.png",
+      "personaggio": "sigma_assistant/personaggio.glb"
+    },
     "role": "Cognitive Front-Desk & Intelligent Router",
     "target": "Tutti gli utenti (Front-Desk predefinito)",
     "temperature": 0.3,
@@ -40,6 +45,10 @@
     "is_default": false,
     "name": "Sigma Admin",
     "numCtx": 65536,
+    "risorse": {
+      "dettagli": "sigma_admin/modello.json",
+      "personaggio": "sigma_admin/personaggio.glb"
+    },
     "role": "Kernel Administrator & Architecture Orchestrator",
     "target": "Sviluppatori & Amministratori di Sistema",
     "temperature": 0.2,
@@ -573,7 +582,7 @@
     "numCtx": 32768,
     "risorse": {
       "dettagli": "direttore_fotografia/modello.json",
-      "immagine": "direttore_fotografia/immagine.jpg",
+      "immagine": "direttore_fotografia/immagine.png",
       "personaggio": "direttore_fotografia/personaggio.glb"
     },
     "role": "Director of Photography & Prompt Artist",
