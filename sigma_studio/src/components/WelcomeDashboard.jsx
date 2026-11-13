@@ -355,7 +355,12 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     });
   }, [loadedRoles]);
 
-  const homeRoles = useMemo(() => groupWorkDomains(enrichedRoles), [enrichedRoles]);
+  const homeRoles = useMemo(() => groupWorkDomains(enrichedRoles).map(domain => {
+    const selected = domain.members.find(member => member.id === selectedRole);
+    // Il campo resta lo stesso, ma il corpo e il ritratto seguono lo specialista scelto.
+    return selected ? { ...domain, ...selected, name: domain.name, title: domain.title,
+      roleName: selected.name, members: domain.members, workDomain: domain.workDomain } : domain;
+  }), [enrichedRoles, selectedRole]);
 
   useEffect(() => {
     if (selectedRole === 'auto') return;

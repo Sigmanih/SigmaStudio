@@ -5,7 +5,7 @@ FROM sigma
 # Category: Architettura & Kernel
 # DomainColor: #00d2ff
 # Icon: 💬
-# Image: /images/sigma_logo_harmonic_flow.jpg
+# Image: /ruoli/sigma_assistant/immagine.png?v=4
 # Capabilities: Routing Dinamico Agenti, Onboarding Utente, Assistenza Conversazionale, Sintesi Vocale TTS, Help Desk Generale
 # OutputArtifacts: Risposte Conversazionali, Guide Operative, Instradamento Task
 # McpTools: Memory MCP, Network MCP, Developer MCP

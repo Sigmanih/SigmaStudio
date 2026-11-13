@@ -5,7 +5,7 @@ FROM sigma
 # Category: Elettronica & Hardware
 # DomainColor: #0d6efd
 # Icon: ⚡
-# Image: /images/hardware_cluster_lab.jpg
+# Image: /ruoli/sigma_hardware_engineer/immagine.png?v=4
 # Capabilities: Progettazione Circuitale KiCad, Layout PCB, DRC/ERC Headless, IPC-2221, Ricottura Simulata, DFM JLCPCB
 # OutputArtifacts: File .kicad_sch, File .kicad_pcb, Report DRC/ERC, BOM CSV, Pacchetti Gerber RS-274X
 # McpTools: KiCad Lab MCP, Memory MCP

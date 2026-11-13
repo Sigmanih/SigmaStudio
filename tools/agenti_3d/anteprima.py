@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Vector, Matrix
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from core.logger import get_logger
@@ -25,19 +25,42 @@ def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=str(args.libreria))
     source_objects = list(bpy.data.objects)
+    source_arm = next(obj for obj in source_objects if obj.type == "ARMATURE")
     actions = list(bpy.data.actions)
     action = next(action for action in actions if action.name == args.clip)
     action.use_fake_user = True
     for obj in source_objects:
-        bpy.data.objects.remove(obj, do_unlink=True)
+        if obj.type == "MESH":
+            bpy.data.objects.remove(obj, do_unlink=True)
     bpy.ops.import_scene.gltf(filepath=str(args.modello))
-    arm = next(obj for obj in bpy.data.objects if obj.type == "ARMATURE")
-    arm.animation_data_create()
-    arm.animation_data.action = action
-    if action.slots:
-        arm.animation_data.action_slot = action.slots[0]
+    arm = next(obj for obj in bpy.data.objects if obj.type == "ARMATURE" and obj is not source_arm)
     scene = bpy.context.scene
+    source_arm.animation_data_create()
+    idle = next(item for item in actions if item.name == "Idle_Loop")
+    source_arm.animation_data.action = idle
+    if idle.slots:
+        source_arm.animation_data.action_slot = idle.slots[0]
+    scene.frame_set(int(idle.frame_range[0]))
+    source_reference = {bone.name: (source_arm.matrix_world @ bone.matrix).to_quaternion() for bone in source_arm.pose.bones}
+    reference_hip = source_arm.matrix_world @ source_arm.pose.bones["DEF-hips"].head
+    target_reference = {bone.name: (arm.matrix_world @ bone.matrix).to_quaternion() for bone in arm.pose.bones}
+    source_arm.animation_data.action = action
+    if action.slots:
+        source_arm.animation_data.action_slot = action.slots[0]
     scene.frame_set(int(action.frame_range[0] + args.tempo * scene.render.fps))
+    def depth(bone):
+        return 0 if bone.parent is None else depth(bone.parent) + 1
+    for bone in sorted(arm.pose.bones, key=depth):
+        source = source_arm.pose.bones.get(bone.name)
+        if source is None:
+            continue
+        rotation = (source_arm.matrix_world @ source.matrix).to_quaternion() @ source_reference[bone.name].inverted() @ target_reference[bone.name]
+        position = arm.matrix_world @ bone.head
+        if bone.name == "DEF-hips":
+            position += source_arm.matrix_world @ source.head - reference_hip
+        bone.matrix = arm.matrix_world.inverted() @ Matrix.LocRotScale(position, rotation, Vector((1, 1, 1)))
+        bpy.context.view_layer.update()
+    bpy.context.view_layer.update()
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
     scene.cycles.samples = 24

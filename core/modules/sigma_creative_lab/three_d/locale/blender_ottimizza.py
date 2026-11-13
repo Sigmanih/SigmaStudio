@@ -64,11 +64,11 @@ def importa(percorso: Path) -> bpy.types.Object:
     return obj
 
 
-def tieni_parte_maggiore(obj: bpy.types.Object, quota_minima: float = 0.02) -> None:
+def tieni_parte_maggiore(obj: bpy.types.Object, quota_minima: float = 0.00005) -> None:
     """Toglie i frammenti volanti tipici della ricostruzione da singola foto.
 
-    Si tengono le isole con almeno il 2% delle facce: occhiali o cuffie staccati
-    dal corpo restano, la polvere di triangoli no.
+    Dita, innesti e accessori sono isole piccole ma importanti: una soglia del
+    2% eliminava dettagli anatomici interi insieme alla polvere di triangoli.
     """
     bm = bmesh.new()
     bm.from_mesh(obj.data)
@@ -160,6 +160,15 @@ def materiale_colore_vertici(obj: bpy.types.Object, riferimento: Path | None = N
         # La foto conserva occhi, cuciture e simboli che il colore per vertice
         # perde durante la ricostruzione; la proiezione copre solo il fronte.
         immagine = bpy.data.images.load(str(riferimento.resolve()), check_existing=True)
+        import numpy as np
+        pixels = np.empty(len(immagine.pixels), dtype=np.float32)
+        immagine.pixels.foreach_get(pixels)
+        pixels = pixels.reshape(immagine.size[1], immagine.size[0], immagine.channels)
+        ys, xs = np.nonzero(pixels[:, :, 3] > 0.5)
+        if not len(xs):
+            raise ValueError("il riferimento non contiene una figura visibile")
+        u_min, u_max = float(xs.min()) / immagine.size[0], float(xs.max() + 1) / immagine.size[0]
+        v_min, v_max = float(ys.min()) / immagine.size[1], float(ys.max() + 1) / immagine.size[1]
         texcoord = nt.nodes.new("ShaderNodeTexCoord")
         separate = nt.nodes.new("ShaderNodeSeparateXYZ")
         nt.links.new(texcoord.outputs["Generated"], separate.inputs["Vector"])
@@ -167,14 +176,14 @@ def materiale_colore_vertici(obj: bpy.types.Object, riferimento: Path | None = N
         mappa_x = nt.nodes.new("ShaderNodeMapRange")
         mappa_x.inputs["From Min"].default_value = 0.0
         mappa_x.inputs["From Max"].default_value = 1.0
-        mappa_x.inputs["To Min"].default_value = 0.02
-        mappa_x.inputs["To Max"].default_value = 0.98
+        mappa_x.inputs["To Min"].default_value = u_min
+        mappa_x.inputs["To Max"].default_value = u_max
         nt.links.new(separate.outputs["X"], mappa_x.inputs["Value"])
         mappa_z = nt.nodes.new("ShaderNodeMapRange")
         mappa_z.inputs["From Min"].default_value = 0.0
         mappa_z.inputs["From Max"].default_value = 1.0
-        mappa_z.inputs["To Min"].default_value = 0.05
-        mappa_z.inputs["To Max"].default_value = 0.94
+        mappa_z.inputs["To Min"].default_value = v_min
+        mappa_z.inputs["To Max"].default_value = v_max
         nt.links.new(separate.outputs["Z"], mappa_z.inputs["Value"])
         coordinate = nt.nodes.new("ShaderNodeCombineXYZ")
         nt.links.new(mappa_x.outputs["Result"], coordinate.inputs["X"])

@@ -1267,6 +1267,21 @@
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
+@media (min-width: 1100px) {
+  .holodeck-viewport.is-focused:not(.is-2d) .holodeck-dialogue-pod {
+    left: auto;
+    right: 24px;
+    bottom: 24px;
+    width: min(43%, 560px);
+    transform: none;
+    animation: dialogue-beside-agent 220ms ease;
+  }
+}
+@keyframes dialogue-beside-agent {
+  from { opacity: 0; translate: 0 12px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
 .dialogue-agent-header {
   display: flex;
   align-items: center;

@@ -372,8 +372,14 @@ def _parse_manifesto_file(fpath: str, fname: str, meta: dict, manifesto_images: 
     # Figura intera con scheletro: si muove nella plancia 3D. Senza (o in
     # modalita' leggera) la postazione mostra l'ufficiale procedurale.
     character3d = None
-    if (risorse_dir / "personaggio.glb").is_file():
-        character3d = {"url": f"/ruoli/{stem}/personaggio.glb"}
+    character_file = risorse_dir / "personaggio.glb"
+    if character_file.is_file():
+        # Una rigenerazione deve sostituire anche il GLB già nella cache del browser.
+        try:
+            revision = character_file.stat().st_mtime_ns
+            character3d = {"url": f"/ruoli/{stem}/personaggio.glb?v={revision}"}
+        except OSError as exc:
+            log.debug("Personaggio non più disponibile per %s: %s", stem, exc)
 
     # Un ruolo con l'agente sospeso non deve comparire nella Home. In
     # agents_meta.json il manifesto e' relativo ("roles/x.md") mentre qui il

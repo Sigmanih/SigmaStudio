@@ -1,13 +1,10 @@
 """Scheletro e pesi per un agente a figura intera, con le animazioni CC0 di Quaternius.
 
-Gira dentro Blender. Lo scheletro e' quello della Universal Animation Library
-(CC0): adattato alle proporzioni del personaggio, le sue animazioni valgono
-senza retargeting, perche' glTF e three.js le applicano come rotazioni locali
-assolute per nome d'osso. Un braccio ruotato a riposo (A-pose invece di
-T-pose) prende comunque la posa giusta: conta solo l'orientamento in posa.
-
-I pesi arrivano dal manichino della libreria, messo nella posa dello scheletro
-adattato: il calore delle ossa sulle mesh di TRELLIS lasciava lembi e schegge.
+Gira dentro Blender. Lo scheletro Quaternius viene adattato alla figura senza
+alterare la posa naturale della superficie. Il runtime adatta le clip nello
+spazio globale rispetto alla posa neutra: copiare le rotazioni locali di una
+T-pose su un corpo rilassato deformava due volte le articolazioni.
+I pesi seguono le superfici anatomiche separate e sono interpolati ai giunti.
 
     blender --background --factory-startup --python three_d/locale/blender_rig.py -- \
         --personaggio <cartella>/statico.glb \
@@ -171,157 +168,6 @@ def adatta_scheletro(arm: bpy.types.Object, corpo: bpy.types.Object) -> None:
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
-def pesa_dal_manichino(corpo: bpy.types.Object, manichino: bpy.types.Object,
-                       arm: bpy.types.Object, adattato: bpy.types.Object) -> None:
-    """Travasa sul personaggio i pesi puliti del manichino Quaternius.
-
-    Il calore delle ossa sulle mesh di TRELLIS (aperte, con superfici interne)
-    lasciava schegge: il manichino invece e' pesato a mano per questo scheletro.
-    Lo si mette nella posa e nelle proporzioni dello scheletro adattato, poi
-    ogni vertice del personaggio prende i pesi della superficie piu' vicina.
-    """
-    def profondita(b: bpy.types.Bone) -> int:
-        return 0 if b.parent is None else 1 + profondita(b.parent)
-
-    bpy.context.view_layer.objects.active = arm
-    bpy.ops.object.mode_set(mode="POSE")
-    for b in sorted(arm.data.bones, key=profondita):
-        arm.pose.bones[b.name].matrix = adattato.data.bones[b.name].matrix_local.copy()
-        bpy.context.view_layer.update()
-    bpy.ops.object.mode_set(mode="OBJECT")
-
-    posato = manichino.copy()
-    posato.data = manichino.data.copy()
-    bpy.context.collection.objects.link(posato)
-    bpy.ops.object.select_all(action="DESELECT")
-    posato.select_set(True)
-    bpy.context.view_layer.objects.active = posato
-    for m in list(posato.modifiers):
-        if m.type == "ARMATURE":
-            bpy.ops.object.modifier_apply(modifier=m.name)
-
-    corpo.vertex_groups.clear()
-    for g in posato.vertex_groups:
-        corpo.vertex_groups.new(name=g.name)
-    trasf = corpo.modifiers.new("pesi", "DATA_TRANSFER")
-    trasf.object = posato
-    trasf.use_object_transform = True
-    trasf.use_vert_data = True
-    trasf.data_types_verts = {"VGROUP_WEIGHTS"}
-    trasf.vert_mapping = "POLYINTERP_NEAREST"
-    trasf.layers_vgroup_select_src = "ALL"
-    trasf.layers_vgroup_select_dst = "NAME"
-    bpy.ops.object.select_all(action="DESELECT")
-    corpo.select_set(True)
-    bpy.context.view_layer.objects.active = corpo
-    bpy.ops.object.modifier_apply(modifier=trasf.name)
-    bpy.data.objects.remove(posato, do_unlink=True)
-
-    # Le dita non deformano (mani a blocco): il loro peso passa alla mano
-    gruppi = {g.name: g for g in corpo.vertex_groups}
-    for v in corpo.data.vertices:
-        for s in ("L", "R"):
-            dita = [g for g in v.groups if corpo.vertex_groups[g.group].name.endswith(f".{s}")
-                    and ("f_" in corpo.vertex_groups[g.group].name or "thumb" in corpo.vertex_groups[g.group].name)]
-            somma = sum(g.weight for g in dita)
-            if somma > 0:
-                gruppi[f"DEF-hand.{s}"].add([v.index], somma, "ADD")
-    for nome in [n for n in gruppi if "f_" in n or "thumb" in n]:
-        corpo.vertex_groups.remove(gruppi[nome])
-    bpy.ops.object.vertex_group_normalize_all(lock_active=False)
-
-    corpo.parent = adattato
-    mod = corpo.modifiers.new("Armature", "ARMATURE")
-    mod.object = adattato
-    for b in adattato.data.bones:
-        if "f_" in b.name or "thumb" in b.name:
-            b.use_deform = False
-
-
-def taglia_ponti(corpo: bpy.types.Object, quota_spalla: float, lato_max: float = 0.05) -> int:
-    """Toglie le membrane che TRELLIS lascia tra l'interno delle braccia e i fianchi.
-
-    Da ferme non si vedono; appena il braccio si muove diventano lembi stirati.
-    Una faccia e' una membrana se unisce vertici dominati dal braccio a vertici
-    dominati da busto o gambe. Sotto la spalla le braccia a riposo sono staccate
-    dal corpo, quindi ogni faccia mista e' una membrana; piu' su conta la
-    lunghezza, perche' l'attacco della spalla ha facce corte e legittime.
-    """
-    import bmesh
-
-    nomi = {g.index: g.name for g in corpo.vertex_groups}
-
-    def catena(v) -> str:
-        if not v.groups:
-            return "altro"
-        nome = nomi[max(v.groups, key=lambda g: g.weight).group]
-        for s in ("L", "R"):
-            if nome in (f"DEF-upper_arm.{s}", f"DEF-forearm.{s}", f"DEF-hand.{s}"):
-                return f"braccio.{s}"
-        return "altro"
-
-    catene = [catena(v) for v in corpo.data.vertices]
-    bm = bmesh.new()
-    bm.from_mesh(corpo.data)
-    bm.verts.ensure_lookup_table()
-    via = []
-    for f in bm.faces:
-        tipi = {catene[v.index] for v in f.verts}
-        if len(tipi) > 1 and any(t.startswith("braccio") for t in tipi):
-            sotto = max(v.co.z for v in f.verts) < quota_spalla
-            if sotto or max(e.calc_length() for e in f.edges) > lato_max:
-                via.append(f)
-    bmesh.ops.delete(bm, geom=via, context="FACES")
-    bm.to_mesh(corpo.data)
-    bm.free()
-    return len(via)
-
-
-def posa_rilassata(arm: bpy.types.Object, corpo: bpy.types.Object,
-                   apertura_gradi: float = 12.0) -> None:
-    """Porta le braccia dalla posa tecnica a una posizione naturale di riposo.
-
-    La figura generata e' gia' rilassata; si corregge solo quanto basta per
-    allinearla allo scheletro, evitando di deformare spalle e ascelle.
-    """
-    bpy.ops.object.select_all(action="DESELECT")
-    arm.select_set(True)
-    bpy.context.view_layer.objects.active = arm
-    bpy.ops.object.mode_set(mode="POSE")
-    apertura = math.radians(apertura_gradi)
-    for lato, suffisso in ((1.0, "L"), (-1.0, "R")):
-        bpy.context.view_layer.update()
-        bone = arm.pose.bones[f"DEF-upper_arm.{suffisso}"]
-        testa = bone.head.copy()
-        direzione = (bone.tail - bone.head).normalized()
-        obiettivo = Vector((lato * math.sin(apertura), 0.0, -math.cos(apertura)))
-        rotazione = direzione.rotation_difference(obiettivo)
-        attorno_spalla = (Matrix.Translation(testa) @ rotazione.to_matrix().to_4x4()
-                          @ Matrix.Translation(-testa))
-        bone.matrix = attorno_spalla @ bone.matrix
-    bpy.context.view_layer.update()
-
-    # Si congela la deformazione nella mesh prima di dichiararla posa di riposo:
-    # Blender altrimenti conserva l'A-pose nei vertici del GLB esportato.
-    bpy.ops.object.mode_set(mode="OBJECT")
-    arm.select_set(False)
-    corpo.select_set(True)
-    bpy.context.view_layer.objects.active = corpo
-    armatura = next((m for m in corpo.modifiers if m.type == "ARMATURE"), None)
-    if not armatura:
-        raise RuntimeError("modificatore Armature assente durante la posa rilassata")
-    bpy.ops.object.modifier_apply(modifier=armatura.name)
-
-    corpo.select_set(False)
-    arm.select_set(True)
-    bpy.context.view_layer.objects.active = arm
-    bpy.ops.object.mode_set(mode="POSE")
-    bpy.ops.pose.armature_apply(selected=False)
-    bpy.ops.object.mode_set(mode="OBJECT")
-    nuova_armatura = corpo.modifiers.new("Armature", "ARMATURE")
-    nuova_armatura.object = arm
-
-
 def esporta(oggetti: list[bpy.types.Object], uscita: Path, animazioni: bool) -> None:
     bpy.ops.object.select_all(action="DESELECT")
     for o in oggetti:
@@ -340,38 +186,6 @@ def esporta(oggetti: list[bpy.types.Object], uscita: Path, animazioni: bool) -> 
         export_force_sampling=True,
         export_def_bones=False,
     )
-
-
-def riposo_canonico(arm: bpy.types.Object, corpo: bpy.types.Object, riferimento: bpy.types.Object) -> None:
-    """Porta insieme superficie e ossa nella base delle clip, senza una seconda rotazione delle braccia."""
-    bpy.ops.object.select_all(action="DESELECT")
-    arm.select_set(True)
-    bpy.context.view_layer.objects.active = arm
-    bpy.ops.object.mode_set(mode="POSE")
-
-    def profondita(osso):
-        return 0 if osso.parent is None else profondita(osso.parent) + 1
-
-    for osso in sorted(arm.data.bones, key=profondita):
-        posa = arm.pose.bones[osso.name]
-        rotazione = riferimento.data.bones[osso.name].matrix_local.to_quaternion()
-        posa.matrix = Matrix.Translation(posa.head.copy()) @ rotazione.to_matrix().to_4x4()
-        bpy.context.view_layer.update()
-    bpy.ops.object.mode_set(mode="OBJECT")
-    arm.select_set(False)
-    corpo.select_set(True)
-    bpy.context.view_layer.objects.active = corpo
-    modificatore = next(m for m in corpo.modifiers if m.type == "ARMATURE")
-    bpy.ops.object.modifier_apply(modifier=modificatore.name)
-    corpo.select_set(False)
-    arm.select_set(True)
-    bpy.context.view_layer.objects.active = arm
-    bpy.ops.object.mode_set(mode="POSE")
-    bpy.ops.pose.armature_apply(selected=False)
-    bpy.ops.object.mode_set(mode="OBJECT")
-    modificatore = corpo.modifiers.new("Armature", "ARMATURE")
-    modificatore.object = arm
-    arm["sigma_rig_version"] = 3
 
 
 def regolarizza_pesi(corpo: bpy.types.Object) -> None:
@@ -456,6 +270,8 @@ def pesa_anatomia(corpo: bpy.types.Object, arm: bpy.types.Object) -> None:
             candidates = arms[label]
         elif vertex.z < hip_z - 0.12:
             candidates = ["DEF-hips", *legs[side]]
+        elif label == "body" and vertex.z < split_z - 0.035:
+            candidates = [*axial, *legs[side][:1]]
         else:
             candidates = axial + ([*arms[side], *legs[side][:1]] if vertex.z < height * 0.84 else [])
         scored = []
@@ -476,6 +292,50 @@ def pesa_anatomia(corpo: bpy.types.Object, arm: bpy.types.Object) -> None:
     modifier = corpo.modifiers.new("Armature", "ARMATURE")
     modifier.object = arm
     log.info("Pesi anatomici: %d superfici, %d vertici di ancoraggio", len(components), len(anchors))
+
+
+def ripara_microfori(corpo: bpy.types.Object) -> None:
+    """Chiude soltanto contorni piccoli e chiusi, mantenendo UV e aperture anatomiche."""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(corpo.data)
+    uv = bm.loops.layers.uv.active
+    pending = {edge for edge in bm.edges if edge.is_boundary}
+    selected_edges = []
+    while pending:
+        edges, stack = set(), [pending.pop()]
+        while stack:
+            edge = stack.pop()
+            edges.add(edge)
+            for vertex in edge.verts:
+                for adjacent in vertex.link_edges:
+                    if adjacent in pending:
+                        pending.remove(adjacent)
+                        stack.append(adjacent)
+        vertices = {vertex for edge in edges for vertex in edge.verts}
+        if len(edges) > 48 or any(sum(edge in edges for edge in vertex.link_edges) != 2 for vertex in vertices):
+            continue
+        extent = max((max(v.co[axis] for v in vertices) - min(v.co[axis] for v in vertices)) for axis in range(3))
+        if extent > 0.055:
+            continue
+        selected_edges.extend(edges)
+    original_faces = set(bm.faces)
+    coordinates = {vertex: next((loop[uv].uv.copy() for loop in vertex.link_loops), None) for edge in selected_edges for vertex in edge.verts} if uv else {}
+    materials = {vertex: next((face.material_index for face in vertex.link_faces), 0) for edge in selected_edges for vertex in edge.verts}
+    faces = bmesh.ops.holes_fill(bm, edges=selected_edges, sides=48).get("faces", []) if selected_edges else []
+    for face in faces:
+        if face in original_faces:
+            continue
+        face.material_index = materials.get(face.verts[0], 0)
+        face.smooth = True
+        if uv:
+            for loop in face.loops:
+                if coordinates.get(loop.vert) is not None:
+                    loop[uv].uv = coordinates[loop.vert]
+    repaired = len(faces)
+    bm.to_mesh(corpo.data)
+    bm.free()
+    log.info("Microfori riparati: %d superfici", repaired)
 
 
 def main() -> int:
@@ -509,14 +369,16 @@ def main() -> int:
     s = altezza / corpo.dimensions.z
     corpo.scale = (s, s, s)
     applica_trasformazioni(corpo)
-    # Una copia da adattare: l'originale serve a mettere in posa il manichino
+    # L'originale conserva la base della libreria, la copia segue il personaggio.
+    ripara_microfori(corpo)
     adattato = arm.copy()
     adattato.data = arm.data.copy()
     bpy.context.collection.objects.link(adattato)
     adatta_scheletro(adattato, corpo)
     pesa_anatomia(corpo, adattato)
     regolarizza_pesi(corpo)
-    riposo_canonico(adattato, corpo, arm)
+    adattato["sigma_rig_version"] = 4
+    adattato["sigma_reference_pose"] = "idle"
     bpy.data.objects.remove(manichino, do_unlink=True)
     bpy.data.objects.remove(arm, do_unlink=True)
     esporta([adattato, corpo], args.uscita, animazioni=False)

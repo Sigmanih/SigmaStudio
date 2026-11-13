@@ -5,6 +5,7 @@ import { roleInitials } from './roleIcons';
 import { STUDIO_VERSION } from '../../version';
 import { AGENT_ACTIVITY_EVENT, getAgentActivity } from './agentActivity';
 import { motionFor } from './agentMotion';
+import { prepareAgentAnimationLibrary, retargetAgentClips } from './agentRetarget';
 
 /**
  * CyberSpace3DCanvas — Spaceship Bridge & Command Deck 3D
@@ -40,50 +41,12 @@ let agentClipsPromise = null;
 const loadAgentClips = (loader) => {
   if (!agentClipsPromise) {
     agentClipsPromise = loader.loadAsync('/models/animazioni_agenti.glb').then(g => {
-      const restRotations = new Map();
-      g.scene.traverse(o => {
-        if (o.name) {
-          const trackNodeName = THREE.PropertyBinding.sanitizeNodeName(o.name);
-          restRotations.set(trackNodeName, o.quaternion.clone());
-        }
-      });
-      const clips = g.animations.map(c => new THREE.AnimationClip(c.name, c.duration,
-        c.tracks.filter(t => t.name.endsWith('.quaternion') || t.name === 'DEF-hips.position')));
-      return { clips, restRotations };
+      return prepareAgentAnimationLibrary(g);
     });
     agentClipsPromise.catch(() => { agentClipsPromise = null; });
   }
   return agentClipsPromise;
 };
-
-// Le clip contengono rotazioni locali del rig canonico. Il rig di ogni agente
-// adatta alcune ossa alla mesh; compensare la posa evita salti e stiramenti.
-const retargetAgentClips = (clips, sourceRestRotations, targetBody) => clips.map(clip => {
-  const retargeted = clip.clone();
-  const targetBones = new Map();
-  targetBody.traverse(o => {
-    if (o.name) targetBones.set(THREE.PropertyBinding.sanitizeNodeName(o.name), o);
-  });
-  retargeted.tracks = retargeted.tracks.map(track => {
-    if (!track.name.endsWith('.quaternion')) return track;
-    const trackNodeName = track.name.slice(0, -'.quaternion'.length);
-    const sourceRest = sourceRestRotations.get(trackNodeName);
-    const targetBone = targetBones.get(trackNodeName);
-    if (!sourceRest || !targetBone) return track;
-
-    const correction = targetBone.quaternion.clone().multiply(sourceRest.clone().invert());
-    const values = new Float32Array(track.values.length);
-    for (let i = 0; i < track.values.length; i += 4) {
-      const rotation = new THREE.Quaternion(
-        track.values[i], track.values[i + 1], track.values[i + 2], track.values[i + 3]
-      );
-      correction.clone().multiply(rotation).normalize().toArray(values, i);
-    }
-    track.values = values;
-    return track;
-  });
-  return retargeted;
-});
 
 // Testo che si restringe fino a stare nella larghezza della scheda invece di
 // uscire dai bordi con i nomi lunghi dei ruoli.
@@ -189,6 +152,7 @@ export default function CyberSpace3DCanvas({
     // =========================================================================
     const ambientLight = new THREE.AmbientLight(isLight ? 0xffffff : 0x0c1530, isLight ? 1.7 : 1.35);
     scene.add(ambientLight);
+    scene.add(new THREE.HemisphereLight(0xe4efff, 0x172235, isLight ? 0.55 : 0.8));
 
     const bridgeMainLight = new THREE.DirectionalLight(0xdbeafe, isLight ? 1.4 : 1.9);
     bridgeMainLight.position.set(8, 18, 12);
@@ -1861,25 +1825,38 @@ export default function CyberSpace3DCanvas({
       coreReactor.position.set(0, 0.72, -0.28);
       agentFigureGroup.add(coreReactor);
 
-      // Braccia e mani mecha rivolte verso la console
-      const armMat = new THREE.MeshStandardMaterial({ color: isLight ? 0x94a3b8 : 0x0f182c, metalness: 0.6 });
-      const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.75, 16), armMat);
-      leftArm.position.set(-0.42, 0.6, -0.32);
-      leftArm.rotation.x = Math.PI / 2.8;
-      agentFigureGroup.add(leftArm);
-
-      const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.75, 16), armMat);
-      rightArm.position.set(0.42, 0.6, -0.32);
-      rightArm.rotation.x = Math.PI / 2.8;
-      agentFigureGroup.add(rightArm);
-
-      const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.14), new THREE.MeshBasicMaterial({ color: roleThreeColor }));
-      leftHand.position.set(-0.35, 0.44, -0.6);
-      agentFigureGroup.add(leftHand);
-
-      const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.14), new THREE.MeshBasicMaterial({ color: roleThreeColor }));
-      rightHand.position.set(0.35, 0.44, -0.6);
-      agentFigureGroup.add(rightHand);
+      // Anche la variante leggera ha una catena articolata: le mani restano
+      // attaccate ai polsi invece di oscillare indipendentemente dal braccio.
+      const armMat = new THREE.MeshStandardMaterial({ color: isLight ? 0x94a3b8 : 0x273650, metalness: 0.55, roughness: 0.42 });
+      const jointMat = new THREE.MeshStandardMaterial({ color: 0x111927, metalness: 0.65, roughness: 0.35 });
+      const makeArm = side => {
+        const shoulder = new THREE.Group();
+        shoulder.position.set(side * 0.35, 0.94, -0.04);
+        shoulder.rotation.x = 0.45;
+        shoulder.rotation.z = side * 0.07;
+        agentFigureGroup.add(shoulder);
+        const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.23, 4, 8), armMat);
+        upper.position.y = -0.175;
+        shoulder.add(upper);
+        const elbow = new THREE.Group(); elbow.position.y = -0.35; elbow.rotation.x = 1.1;
+        shoulder.add(elbow);
+        elbow.add(new THREE.Mesh(new THREE.SphereGeometry(0.072, 10, 8), jointMat));
+        const forearm = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.2, 4, 8), armMat);
+        forearm.position.y = -0.16; elbow.add(forearm);
+        const hand = new THREE.Group(); hand.position.y = -0.32; elbow.add(hand);
+        const palm = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.085, 0.045), armMat);
+        palm.position.y = -0.04; hand.add(palm);
+        for (let digit = 0; digit < 4; digit++) {
+          const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.009, digit === 3 ? 0.032 : 0.048, 3, 6), armMat);
+          finger.position.set((digit - 1.5) * 0.024, -0.105, -0.012); hand.add(finger);
+        }
+        const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.012, 0.04, 3, 6), armMat);
+        thumb.position.set(side * 0.064, -0.055, -0.016); thumb.rotation.z = side * 0.5; hand.add(thumb);
+        return { hand, elbow };
+      };
+      const leftLimb = makeArm(-1), rightLimb = makeArm(1);
+      const leftHand = leftLimb.hand, rightHand = rightLimb.hand;
+      const leftElbow = leftLimb.elbow, rightElbow = rightLimb.elbow;
 
       // Casco con visore olografico
       const headGroup = new THREE.Group();
@@ -2057,6 +2034,7 @@ export default function CyberSpace3DCanvas({
         coreReactor,
         leftHand,
         rightHand,
+        leftElbow, rightElbow,
         badgeMesh,
         hitBox,
         role,
@@ -2101,11 +2079,11 @@ export default function CyberSpace3DCanvas({
       const next = ch.actions[name];
       if (!next) return;
       ch.afterClip = afterClip;
-      if (ch.current === name) return;
+      if (ch.current === name && next.isRunning()) return;
       const oneShot = name === 'Sitting_Enter' || name === 'Sitting_Exit';
       next.setLoop(oneShot ? THREE.LoopOnce : THREE.LoopRepeat, oneShot ? 1 : Infinity);
       next.clampWhenFinished = oneShot;
-      next.reset().fadeIn(fade).play();
+      next.reset().setEffectiveWeight(1).setEffectiveTimeScale(1).fadeIn(fade).play();
       if (ch.current && ch.actions[ch.current]) ch.actions[ch.current].fadeOut(fade);
       ch.current = name;
     };
@@ -2235,7 +2213,7 @@ export default function CyberSpace3DCanvas({
     let activeCharacter = null;
     const onAgentActivity = (e) => {
       const activity = (e && e.detail) || {};
-      const station = stationDataList.find(s => s.role.id === activity.roleId);
+      const station = stationDataList.find(s => s.role.id === activity.roleId || s.role.members?.some(member => member.id === activity.roleId));
       const ch = station && station.agentCharacter;
       if (activeCharacter && activeCharacter !== ch && activeCharacter.mode !== 'posa') {
         setCharacterMode(activeCharacter, 'posa');
@@ -2251,7 +2229,7 @@ export default function CyberSpace3DCanvas({
     const attachAgentCharacter = (st, gltf, animationData) => {
       const root = new THREE.Group();
       const body = gltf.scene;
-      body.scale.setScalar(CHARACTER_SCALE);
+
       body.traverse(o => {
         if (!o.isMesh) return;
         // I personaggi camminano: senza, a meta' strada il frustum culling li
@@ -2262,7 +2240,8 @@ export default function CyberSpace3DCanvas({
           if (m.map) {
             m.emissive = new THREE.Color(0xffffff);
             m.emissiveMap = m.map;
-            m.emissiveIntensity = isLight ? 0.12 : 0.4;
+            m.emissiveIntensity = isLight ? 0.06 : 0.14;
+            m.roughness = 0.62;
           }
         });
       });
@@ -2271,8 +2250,9 @@ export default function CyberSpace3DCanvas({
 
       const mixer = new THREE.AnimationMixer(body);
       const actions = {};
-      retargetAgentClips(animationData.clips, animationData.restRotations, body)
+      retargetAgentClips(animationData, body)
         .forEach(c => { actions[c.name] = mixer.clipAction(c); });
+      body.scale.setScalar(CHARACTER_SCALE);
       const ch = { st, root, mixer, actions, current: null, afterClip: null, isSeated: false,
         leavingSeat: false, pendingWalk: null, state: 'fermo', path: [], after: null,
         yaw: centerYaw(st), yawTarget: centerYaw(st), focused: false, mode: 'posa', modeTimer: 0 };
@@ -2292,8 +2272,9 @@ export default function CyberSpace3DCanvas({
       st.figureGroup.visible = false;
       st.agentCharacter = ch;
       agentCharacters.push(ch);
+      if (selectedAgentIdRef.current === st.role.id) flyToStationRef.current?.(st.role.id);
       const current = getAgentActivity();
-      if (current.roleId === st.role.id) onAgentActivity({ detail: current });
+      if (current.roleId === st.role.id || st.role.members?.some(member => member.id === current.roleId)) onAgentActivity({ detail: current });
     };
 
     const setAgentCharactersVisible = (show) => {
@@ -2409,6 +2390,11 @@ export default function CyberSpace3DCanvas({
       const hasCharacter = Boolean(station.agentCharacter && station.agentCharacter.root.visible);
       targetCamPos.set(camX, hasCharacter ? 0.2 : 1.6, camZ);
       targetLookAt.set(station.posX, hasCharacter ? -0.75 : 1.4, station.posZ);
+      if (hasCharacter && window.innerWidth >= 1100 && width >= 800) {
+        // Il personaggio occupa la metà libera dello schermo, accanto al dialogo.
+        targetLookAt.x -= Math.sin(station.angle) * 1.05;
+        targetLookAt.z += Math.cos(station.angle) * 1.05;
+      }
 
       if (!silent && onSelectAgentRef.current) {
         onSelectAgentRef.current(station.role);
@@ -2418,7 +2404,7 @@ export default function CyberSpace3DCanvas({
     // Le selezioni esterne (chip, menu, radar) arrivano come id: prima venivano
     // tradotte in una stazione fittizia all'origine e la camera puntava il centro.
     flyToStationRef.current = (roleId) => {
-      const match = roleId ? stationDataList.find(st => st.role.id === roleId) : null;
+      const match = roleId ? stationDataList.find(st => st.role.id === roleId || st.role.members?.some(member => member.id === roleId)) : null;
       flyToAgent(match || null, { silent: true });
     };
 
@@ -2677,14 +2663,17 @@ export default function CyberSpace3DCanvas({
       const focusedId = selectedAgentIdRef.current;
       stationDataList.forEach((st, idx) => {
         if (!reducedMotion) {
-          const breath = Math.sin(elapsedTime * 2.2 + idx) * 0.025;
+          const breath = Math.sin(elapsedTime * 1.45 + idx) * 0.008;
           st.headGroup.position.y = 1.25 + breath;
 
           const reactorPulse = 0.8 + Math.abs(Math.sin(elapsedTime * 3.5 + idx)) * 0.4;
           st.coreReactor.scale.set(reactorPulse, reactorPulse, reactorPulse);
 
-          st.leftHand.position.y = 0.44 + Math.sin(elapsedTime * 8 + idx) * 0.015;
-          st.rightHand.position.y = 0.44 + Math.cos(elapsedTime * 8 + idx) * 0.015;
+          const activity = getAgentActivity();
+          const typing = ['thinking', 'writing', 'tool'].includes(activity.state) && (st.role.id === activity.roleId || st.role.members?.some(member => member.id === activity.roleId));
+          const amplitude = typing ? 0.035 : 0.006;
+          st.leftElbow.rotation.x = 1.1 + Math.sin(elapsedTime * (typing ? 3.8 : 0.8) + idx) * amplitude;
+          st.rightElbow.rotation.x = 1.1 + Math.sin(elapsedTime * (typing ? 4.1 : 0.75) + idx + 1.2) * amplitude;
 
         }
 
