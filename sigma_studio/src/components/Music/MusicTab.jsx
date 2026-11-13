@@ -221,7 +221,7 @@ export default function MusicTab() {
       {/* Intestazione Universale Kernel Sigma Studio */}
       <TabHeader
         icon={RadioTower}
-        title="Musica & Radio"
+        title="Radio"
         highlight="LIVE STREAM"
         description="Dirette Radio FM Nazionali, YouTube Live, Brani Locali e Sintetizzatore 432Hz"
         actions={

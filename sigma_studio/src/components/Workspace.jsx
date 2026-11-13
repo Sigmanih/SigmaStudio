@@ -1,7 +1,9 @@
 import React from 'react';
-import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, CloudDownload, Settings, Sliders, Menu, Award, CircuitBoard, Clapperboard } from 'lucide-react';
+import { X, FileText, Terminal, PieChart, BookOpen, Trash2, ChevronRight, Home, MessageSquare, FlaskConical, Brain, Zap, User, Palette, Blocks, Image, Store, Key, Music, DownloadCloud, CloudDownload, Settings, Sliders, PanelLeft, Award, CircuitBoard, Clapperboard } from 'lucide-react';
 import WelcomeDashboard from './WelcomeDashboard';
-const SkillsHub = React.lazy(() => import('./SkillsHub'));
+const SkillsHub = React.lazy(() => import('./SkillsWorkspace'));
+const ModelsWorkspace = React.lazy(() => import('./Workspace/ModelsWorkspace'));
+const MultimediaWorkspace = React.lazy(() => import('./MultimediaWorkspace'));
 const StudioEditor = React.lazy(() => import('./Workspace/StudioEditor'));
 const ImageViewer = React.lazy(() => import('./Workspace/ImageViewer'));
 const ManifestiGallery = React.lazy(() => import('./Workspace/ManifestiGallery'));
@@ -44,6 +46,7 @@ const FileIcon = ({ type }) => {
     case 'account': case 'settings': return <Settings size={16} />;
     case 'creative_studio': return <Palette size={16} />;
     case 'video_studio': return <Clapperboard size={16} />;
+    case 'multimedia': return <Clapperboard size={16} />;
     case 'skills_hub': return <Blocks size={16} />;
     case 'marketplace': return <Store size={16} />;
     case 'image_viewer': return <Image size={16} />;
@@ -116,6 +119,7 @@ export default function Workspace({
   const getActiveContent = () => {
     const tab = openTabs.find(t => t.id === activeTabId);
     if (!tab) return <WelcomeDashboard modules={modules} openTab={openTab} />;
+    if (tab.type === 'multimedia') return <MultimediaWorkspace openTab={openTab} />;
 
     if (tab.type === 'module') {
       const folderName = tab.id.replace('module-', '');
@@ -232,36 +236,6 @@ export default function Workspace({
       );
     }
 
-    if (tab.type === 'benchmark_lab' || tab.type === 'benchmark') {
-      const isBenchmarkInstalled = modulesState.sigma_benchmark_lab === true;
-      const LazyBenchmark = getLazyModule('benchmark_lab');
-      if (!isBenchmarkInstalled || !LazyBenchmark) {
-        return <ModuleNotInstalled tabType="benchmark_lab" openTab={openTab} />;
-      }
-      return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Benchmark Lab...</div>}>
-          <LazyBenchmark addToast={(msg, type, dur) => {}} openTab={openTab} activeTabId={activeTabId} />
-        </React.Suspense>
-      );
-    }
-
-    if (tab.type === 'training_lab') {
-      const isTrainingInstalled = modulesState.sigma_training_lab === true;
-      const LazyTraining = getLazyModule('training_lab');
-      if (!isTrainingInstalled || !LazyTraining) {
-        return <ModuleNotInstalled tabType="training_lab" openTab={openTab} />;
-      }
-      return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Training Lab...</div>}>
-          <LazyTraining
-            addToast={(msg, type, dur) => {}}
-            onTasksUpdated={() => {}}
-            openTab={openTab}
-          />
-        </React.Suspense>
-      );
-    }
-
     if (tab.type === 'hardware_lab' || tab.type === 'hardware') {
       const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
       const LazyHardware = getLazyModule('hardware_lab');
@@ -275,17 +249,8 @@ export default function Workspace({
       );
     }
 
-    if (tab.type === 'model_hub' || tab.type === 'hf_hub') {
-      const isModelHubInstalled = modulesState.sigma_model_hub === true;
-      const LazyModelHub = getLazyModule('model_hub');
-      if (!isModelHubInstalled || !LazyModelHub) {
-        return <ModuleNotInstalled tabType="model_hub" openTab={openTab} />;
-      }
-      return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Modelli Hub...</div>}>
-          <LazyModelHub addToast={(msg, type, dur) => {}} openTab={openTab} />
-        </React.Suspense>
-      );
+    if (['model_hub', 'hf_hub', 'benchmark_lab', 'benchmark', 'training_lab'].includes(tab.type)) {
+      return <ModelsWorkspace openTab={openTab} activeTabId={activeTabId} />;
     }
 
     if (tab.type === 'mcp_hub') {
@@ -308,7 +273,7 @@ export default function Workspace({
         return <ModuleNotInstalled tabType="creative_studio" openTab={openTab} />;
       }
       return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Creative Lab...</div>}>
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Immagini...</div>}>
           <LazyCreative openTab={openTab} />
         </React.Suspense>
       );
@@ -320,7 +285,7 @@ export default function Workspace({
         return <ModuleNotInstalled tabType="creative_studio" openTab={openTab} />;
       }
       return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Video Studio...</div>}>
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Video...</div>}>
           <LazyVideo openTab={openTab} />
         </React.Suspense>
       );
@@ -332,7 +297,7 @@ export default function Workspace({
         return <ModuleNotInstalled tabType="voice_studio" openTab={openTab} />;
       }
       return (
-        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento AudioStudio...</div>}>
+        <React.Suspense fallback={<div style={{ padding: '32px', color: '#94a3b8', textAlign: 'center' }}>Caricamento Audio...</div>}>
           <LazyVoice openTab={openTab} />
         </React.Suspense>
       );
@@ -409,7 +374,7 @@ export default function Workspace({
 
 
     if (tab.type === 'skills_hub') {
-      return <SkillsHub />;
+      return <SkillsHub openTab={openTab} />;
     }
     if (tab.type === 'marketplace') {
       return <MarketplaceTab openTab={openTab} />;
@@ -433,7 +398,7 @@ export default function Workspace({
     return <div className="placeholder-content">Content type {tab.type} not implemented in preview.</div>;
   };
 
-  const { theme, toggleMobileSidebar } = useApp();
+  const { theme, sidebarOpen, toggleSidebar } = useApp();
   const isLight = theme === 'light';
 
   const activeTab = openTabs.find(t => t.id === activeTabId);
@@ -446,13 +411,14 @@ export default function Workspace({
       <TechSpaceCanvas isLight={isLight} />
 
       <div className="tab-bar">
-        {/* Mobile Hamburger Toggle Button */}
         <button
-          className="mobile-menu-btn"
-          onClick={toggleMobileSidebar}
-          title="Apri Menu Navigazione"
+          type="button" className="studio-sidebar-toggle"
+          onClick={toggleSidebar} data-agent-action="toggle-sidebar"
+          aria-label={sidebarOpen ? 'Chiudi navigazione' : 'Apri navigazione'}
+          aria-expanded={sidebarOpen} aria-controls="studio-sidebar"
+          title={sidebarOpen ? 'Chiudi navigazione (Esc)' : 'Apri navigazione'}
         >
-          <Menu size={18} />
+          <PanelLeft size={19} />
         </button>
 
         <div className="tabs-scroll-container">

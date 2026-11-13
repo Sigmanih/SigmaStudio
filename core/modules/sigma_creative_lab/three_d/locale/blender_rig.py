@@ -342,6 +342,142 @@ def esporta(oggetti: list[bpy.types.Object], uscita: Path, animazioni: bool) -> 
     )
 
 
+def riposo_canonico(arm: bpy.types.Object, corpo: bpy.types.Object, riferimento: bpy.types.Object) -> None:
+    """Porta insieme superficie e ossa nella base delle clip, senza una seconda rotazione delle braccia."""
+    bpy.ops.object.select_all(action="DESELECT")
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="POSE")
+
+    def profondita(osso):
+        return 0 if osso.parent is None else profondita(osso.parent) + 1
+
+    for osso in sorted(arm.data.bones, key=profondita):
+        posa = arm.pose.bones[osso.name]
+        rotazione = riferimento.data.bones[osso.name].matrix_local.to_quaternion()
+        posa.matrix = Matrix.Translation(posa.head.copy()) @ rotazione.to_matrix().to_4x4()
+        bpy.context.view_layer.update()
+    bpy.ops.object.mode_set(mode="OBJECT")
+    arm.select_set(False)
+    corpo.select_set(True)
+    bpy.context.view_layer.objects.active = corpo
+    modificatore = next(m for m in corpo.modifiers if m.type == "ARMATURE")
+    bpy.ops.object.modifier_apply(modifier=modificatore.name)
+    corpo.select_set(False)
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.mode_set(mode="POSE")
+    bpy.ops.pose.armature_apply(selected=False)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    modificatore = corpo.modifiers.new("Armature", "ARMATURE")
+    modificatore.object = arm
+    arm["sigma_rig_version"] = 3
+
+
+def regolarizza_pesi(corpo: bpy.types.Object) -> None:
+    """I pesi devono variare sulla superficie senza aperture artificiali nelle ascelle."""
+    bpy.ops.object.select_all(action="DESELECT")
+    corpo.select_set(True)
+    bpy.context.view_layer.objects.active = corpo
+    bpy.ops.object.mode_set(mode="WEIGHT_PAINT")
+    bpy.ops.object.vertex_group_smooth(group_select_mode="ALL", factor=0.45, repeat=4)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.ops.object.vertex_group_limit_total(group_select_mode="ALL", limit=4)
+    bpy.ops.object.vertex_group_normalize_all(lock_active=False)
+
+
+def pesa_anatomia(corpo: bpy.types.Object, arm: bpy.types.Object) -> None:
+    """Separa le superfici degli arti prima di interpolare i pesi delle articolazioni.
+
+    La sola superficie più vicina del manichino assegnava lembi di giacca al
+    polso: un errore invisibile a riposo, distruttivo durante la rotazione.
+    """
+    from mathutils.kdtree import KDTree
+
+    vertices = vertici_mondo(corpo)
+    height = max(v.z for v in vertices)
+    split_z = height * 0.66
+    parents = list(range(len(vertices)))
+
+    def root(index):
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    for edge in corpo.data.edges:
+        a, b = edge.vertices
+        if vertices[a].z < split_z and vertices[b].z < split_z:
+            ra, rb = root(a), root(b)
+            if ra != rb:
+                parents[rb] = ra
+    components = {}
+    for i, vertex in enumerate(vertices):
+        if vertex.z < split_z:
+            components.setdefault(root(i), []).append(i)
+    labels = {}
+    anchors = []
+    for indices in components.values():
+        if len(indices) < 80:
+            continue
+        minimum = min(vertices[i].z for i in indices)
+        center_x = sum(vertices[i].x for i in indices) / len(indices)
+        label = ("L" if center_x > 0 else "R") if minimum > height * 0.32 and abs(center_x) > height * 0.095 else "body"
+        for index in indices:
+            labels[index] = label
+            anchors.append(index)
+    tree = KDTree(len(anchors))
+    for index in anchors:
+        tree.insert(vertices[index], index)
+    tree.balance()
+    axial = ["DEF-hips", "DEF-spine.001", "DEF-spine.002", "DEF-spine.003", "DEF-neck", "DEF-head"]
+    axial = [name for name in axial if name in arm.data.bones]
+    arms = {side: [f"DEF-{name}.{side}" for name in ("upper_arm", "forearm", "hand")] for side in "LR"}
+    legs = {side: [f"DEF-{name}.{side}" for name in ("thigh", "shin", "foot", "toe")] for side in "LR"}
+    bones = {bone.name: (arm.matrix_world @ bone.head_local, arm.matrix_world @ bone.tail_local)
+             for bone in arm.data.bones if bone.name in axial + sum(arms.values(), []) + sum(legs.values(), [])}
+    corpo.vertex_groups.clear()
+    groups = {name: corpo.vertex_groups.new(name=name) for name in bones}
+    hip_z = bones["DEF-hips"][0].z
+
+    def distance(point, segment):
+        a, b = segment
+        delta = b - a
+        fraction = max(0, min(1, (point - a).dot(delta) / max(delta.length_squared, 1e-10)))
+        return (point - a - delta * fraction).length
+
+    for index, vertex in enumerate(vertices):
+        label = labels.get(index)
+        if label is None and vertex.z < split_z and anchors:
+            _, nearest, _ = tree.find(vertex)
+            label = labels[nearest]
+        side = "L" if vertex.x >= 0 else "R"
+        if label in arms and vertex.z < split_z - 0.035:
+            candidates = arms[label]
+        elif vertex.z < hip_z - 0.12:
+            candidates = ["DEF-hips", *legs[side]]
+        else:
+            candidates = axial + ([*arms[side], *legs[side][:1]] if vertex.z < height * 0.84 else [])
+        scored = []
+        for name in candidates:
+            if name not in bones:
+                continue
+            radius = height * (0.072 if name in axial else 0.027)
+            d = max(0, distance(vertex, bones[name]) - radius)
+            scored.append((name, d))
+        scored.sort(key=lambda item: item[1])
+        nearest_distance = scored[0][1]
+        weights = [(name, math.exp(-min(60, (d * d - nearest_distance ** 2) / (height * 0.026) ** 2))) for name, d in scored[:4]]
+        total = sum(value for _, value in weights)
+        for name, value in weights:
+            if value / total > 0.0001:
+                groups[name].add([index], value / total, "REPLACE")
+    corpo.parent = arm
+    modifier = corpo.modifiers.new("Armature", "ARMATURE")
+    modifier.object = arm
+    log.info("Pesi anatomici: %d superfici, %d vertici di ancoraggio", len(components), len(anchors))
+
+
 def main() -> int:
     args = argomenti()
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -378,10 +514,9 @@ def main() -> int:
     adattato.data = arm.data.copy()
     bpy.context.collection.objects.link(adattato)
     adatta_scheletro(adattato, corpo)
-    pesa_dal_manichino(corpo, manichino, arm, adattato)
-    spalla_z = min((adattato.matrix_world @ adattato.data.bones[f"DEF-upper_arm.{s}"].head_local).z for s in "LR")
-    log.info("membrane tolte: %d facce", taglia_ponti(corpo, spalla_z - 0.04))
-    posa_rilassata(adattato, corpo)
+    pesa_anatomia(corpo, adattato)
+    regolarizza_pesi(corpo)
+    riposo_canonico(adattato, corpo, arm)
     bpy.data.objects.remove(manichino, do_unlink=True)
     bpy.data.objects.remove(arm, do_unlink=True)
     esporta([adattato, corpo], args.uscita, animazioni=False)

@@ -1,3 +1,4 @@
+import { WORKSPACE_TITLES, selectModelSection } from '../services/studioNavigation';
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 // ==============================================================================
@@ -19,8 +20,8 @@ const TITOLI_DA_URL = {
   mcp_hub: 'MCP Tools',
   account: 'Impostazioni',
   settings: 'Impostazioni',
-  creative_studio: 'Creative',
-  video_studio: 'Video Studio',
+  creative_studio: 'Immagini',
+  video_studio: 'Video',
   domotica: 'Domotica',
   music: 'Musica',
   audio_studio: 'Musica',
@@ -35,7 +36,7 @@ const TITOLI_DA_URL = {
   network_lab: 'AI Web Browser',
   sigma_network: 'Sigma Network',
   roadmap: 'Pianificazione & Task',
-  voice_studio: 'AudioStudio',
+  voice_studio: 'Audio',
   email_client: 'Email Hub',
   messaging_hub: 'Messaging Hub',
   youtube_studio: 'YouTube',
@@ -69,9 +70,16 @@ export function useTabs() {
       }
     }
 
+    // I collegamenti precedenti confluiscono nella stessa scheda Modelli.
+    if (['benchmark', 'benchmark_lab', 'training_lab', 'hf_hub'].includes(normType)) {
+      selectModelSection(normType === 'training_lab' ? 'training' : normType === 'hf_hub' ? 'models' : 'benchmark');
+      normType = 'model_hub';
+      normItem = { name: 'Modelli' };
+    }
+
     // Singleton types (no path needed — one tab per type)
     const SINGLETON_TYPES = [
-      'chat', 'benchmark_lab', 'benchmark', 'research_lab', 'training_lab', 'hardware_lab', 'hardware',
+      'chat', 'multimedia', 'research_lab', 'hardware_lab', 'hardware',
       'roadmap', 'whitepapers_lib', 'knowledge', 'mappa_argomenti',
       'account', 'settings', 'marketplace', 'skills_hub',
       'model_hub', 'hf_hub', 'ai_config', 'config', 'mcp_hub',
@@ -87,7 +95,7 @@ export function useTabs() {
       if (prev.find(t => t.id === tabId)) return prev;
       return [...prev, {
         id: tabId,
-        name: normItem?.filename || normItem?.name || `Mod ${normItem?.number || ''}`,
+        name: WORKSPACE_TITLES[normType] || normItem?.filename || normItem?.name || `Mod ${normItem?.number || ''}`,
         type: normType,
         path: normItem?.path,
         folder: normItem?.folder

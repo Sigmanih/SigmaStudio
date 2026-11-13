@@ -13,7 +13,7 @@ import TabHeader from './common/TabHeader';
  * cosa c'è davvero sul sistema. Qui l'utente vede il perché e può agire —
  * avviare un motore, collegarlo, o spegnere una skill che non usa.
  */
-export default function SkillsHub() {
+export default function SkillsHub({ enginesOnly = false }) {
   const { theme } = useApp();
   const [skills, setSkills] = useState([]);
   const [apps, setApps] = useState([]);
@@ -49,9 +49,10 @@ export default function SkillsHub() {
       .then(d => {
         if (!d.success) setMessage({ type: 'error', text: d.error });
         window.dispatchEvent(new CustomEvent('sigma_skills_updated'));
-        window.dispatchEvent(new CustomEvent('sigma_modules_updated', { detail: { moduleId: id, installed: enabled } }));
+        window.dispatchEvent(new CustomEvent('sigma_modules_updated'));
         return load();
       })
+      .catch(e => setMessage({ type: 'error', text: e.message }))
       .finally(() => setBusy(''));
   };
 
@@ -69,6 +70,7 @@ export default function SkillsHub() {
         // L'app impiega qualche secondo a rispondere: si ricontrolla dopo.
         setTimeout(load, 4000);
       })
+      .catch(e => setMessage({ type: 'error', text: e.message }))
       .finally(() => setBusy(''));
   };
 
@@ -81,15 +83,16 @@ export default function SkillsHub() {
         setMessage({ type: 'ok', text: n ? `Collegati: ${Object.keys(d.changed).join(', ')}` : 'Tutto già collegato' });
         return load();
       })
+      .catch(e => setMessage({ type: 'error', text: e.message }))
       .finally(() => setBusy(''));
   };
 
   return (
-    <div className="skills-hub" style={{ padding: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="skills-hub support-engines">
       {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
         icon={Wrench}
-        title="Skills & Motori"
+        title={enginesOnly ? "Motori di supporto" : "Skills & Motori"}
         highlight="Catalogo Capacità"
         description="Capacità componibili e dipendenze di calcolo locale per gli Agenti AI del Kernel."
         actions={
@@ -115,7 +118,7 @@ export default function SkillsHub() {
       />
 
       {/* Main Workspace Body Wrapper */}
-      <div style={{ padding: '16px 24px 24px 24px', display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, overflowY: 'auto' }}>
+      <div className="support-engines-body">
         {message && (
           <div className={`skills-message ${message.type}`}>
             {message.type === 'ok' ? <CheckCircle2 size={15} /> : <AlertTriangle size={15} />}
@@ -124,7 +127,7 @@ export default function SkillsHub() {
           </div>
         )}
 
-      <section>
+      {!enginesOnly && <section>
         <h2><Puzzle size={16} /> Skill</h2>
         <div className="skills-grid">
           {skills.map(skill => (
@@ -178,7 +181,7 @@ export default function SkillsHub() {
             </article>
           ))}
         </div>
-      </section>
+      </section>}
 
       <section>
         <h2><Wrench size={16} /> Motori di supporto</h2>

@@ -10,6 +10,7 @@ import {
 
 import { useApp } from '../contexts/AppContext';
 import TabHeader from './common/TabHeader';
+import SkillsWorkspace from './SkillsWorkspace';
 
 // ==============================================================================
 // Built-in Kernel Modules Data
@@ -1156,9 +1157,9 @@ export default function MarketplaceTab({ openTab }) {
   // Active View Tab: 'installed' | 'remote'
   const [activeSubTab, setActiveSubTab] = useState(() => {
     try {
-      return localStorage.getItem('sigma_marketplace_active_subtab') || 'installed';
+      return localStorage.getItem('sigma_marketplace_active_subtab') || 'capabilities';
     } catch {
-      return 'installed';
+      return 'capabilities';
     }
   });
 
@@ -1497,8 +1498,10 @@ export default function MarketplaceTab({ openTab }) {
       {/* Unified Tab Header */}
       <TabHeader
         icon={activeSubTab === 'installed' ? Cpu : Sparkles}
-        title="Skills & Catalogo Moduli"
+        title="Skills"
         tabs={[
+          { id: 'capabilities', label: 'Capacità e agenti', icon: Sparkles,
+            active: activeSubTab === 'capabilities', onClick: () => setActiveSubTab('capabilities') },
           { 
             id: 'installed', 
             label: `Moduli Installati (${totalInstalledCount})`, 
@@ -1515,11 +1518,11 @@ export default function MarketplaceTab({ openTab }) {
           }
         ]}
         description={
-          activeSubTab === 'installed'
+          activeSubTab === 'capabilities' ? 'Le capacità degli agenti e i tuoi spazi di lavoro, in un solo posto.' : activeSubTab === 'installed'
             ? 'Gestisci i moduli integrati nel kernel e le estensioni opzionali attive con scheda tecnica dettagliata.'
             : 'Catalogo dinamico collegato in tempo reale al repository GitHub Sigmanih/SigmaStudio-Moduli.'
         }
-        actions={
+        actions={activeSubTab === 'capabilities' ? null :
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               onClick={handleRefreshGitHubCatalog}
@@ -1552,7 +1555,7 @@ export default function MarketplaceTab({ openTab }) {
       />
 
       {/* Main Body */}
-      <div className="marketplace-body">
+      {activeSubTab === 'capabilities' ? <SkillsWorkspace embedded openTab={openTab} /> : <div className="marketplace-body">
         {/* Quick Stats Strip */}
         <div className="marketplace-stats-bar">
           <div className="marketplace-stat-group">
@@ -1909,7 +1912,7 @@ export default function MarketplaceTab({ openTab }) {
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Module Detail Modal Inspector */}
       {selectedModuleForModal && (

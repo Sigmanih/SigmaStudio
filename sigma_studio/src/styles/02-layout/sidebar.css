@@ -3,13 +3,16 @@
    ============================================================================== */
 
 .sidebar {
+  width: var(--sidebar-w);
+  transform: translateX(0);
+  visibility: visible;
   background: var(--sigma-surface);
   backdrop-filter: var(--glass);
   -webkit-backdrop-filter: var(--glass);
   display: flex;
   flex-direction: column;
   position: relative;
-  transition: var(--trans-smooth);
+  transition: transform 230ms ease, visibility 0s;
   border-right: 1px solid var(--sigma-border);
   z-index: var(--z-sidebar);
   height: 100%;
@@ -26,6 +29,12 @@
   overflow-y: auto;
   overflow-x: hidden;
 }
+
+.studio-sidebar-close { position: absolute; right: 10px; top: 9px; z-index: 1; display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border-radius: 9px; border: 1px solid var(--sigma-border); background: var(--sigma-surface); color: var(--sigma-text-dim); cursor: pointer; }
+.studio-sidebar-close:hover { color: var(--sigma-primary); border-color: var(--sigma-primary-border); background: var(--sigma-primary-glow); }
+.sidebar :is(button, [role="button"]):focus-visible { outline: 2px solid var(--sigma-primary); outline-offset: -2px; }
+.sidebar button.sidebar-subitem { width: 100%; border: 0; background: transparent; font: inherit; font-size: .76rem; text-align: left; cursor: pointer; }
+.sidebar button.sidebar-subitem.active { background: var(--sigma-primary-glow); }
 
 /* Sidebar Logo & Navigation */
 .logo {

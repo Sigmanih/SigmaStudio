@@ -5,7 +5,7 @@
   margin: 12px 0;
 }
 
-.work-domain-actions button {
+.work-domain-actions > button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -32,12 +32,12 @@
   outline-offset: 3px;
 }
 
-.work-domain-actions span {
+.work-domain-actions > span {
   flex-basis: 100%;
   color: var(--text-secondary, #94a3b8);
   font-size: 0.75rem;
 }
 
 @media (max-width: 600px) {
-  .work-domain-actions button { flex: 1 1 100%; }
+  .work-domain-actions > button { flex: 1 1 100%; }
 }

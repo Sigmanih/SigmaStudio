@@ -3,6 +3,10 @@ import { User, Upload, Check, Sparkles, ShieldCheck, HardDrive, Key, CheckCircle
 import { useApp } from '../contexts/AppContext';
 import TechSpaceCanvas from './common/TechSpaceCanvas';
 import TabHeader from './common/TabHeader';
+import WorkspaceIcon from './common/WorkspaceIcon';
+import { settingsEntries, navigateStudio } from '../services/studioNavigation';
+import { useCapabilities } from '../hooks/useCapabilities';
+import '../styles/03-modules/studio-areas.css';
 
 const PRESET_AVATARS = [
   { id: 'user_default', name: 'Utente Cyber', url: '/images/default.png' },
@@ -15,6 +19,7 @@ const PRESET_AVATARS = [
 ];
 
 export default function AccountTab({ openTab }) {
+  const { skills } = useCapabilities();
   const { theme } = useApp();
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -179,7 +184,7 @@ export default function AccountTab({ openTab }) {
       {/* Unified Kernel Tab Header — Stile Compatto Bacheca & Chat */}
       <TabHeader
         icon={User}
-        title="Profilo Utente"
+        title="Impostazioni"
         highlight="Account & Credenziali"
         description="Personalizza avatar, credenziali e token di integrazione per modelli e dataset."
         actions={
@@ -193,6 +198,11 @@ export default function AccountTab({ openTab }) {
           </button>
         }
       />
+
+      <nav className="studio-settings-links" aria-label="Sezioni Impostazioni" data-agent-component="SettingsNavigation">
+        {settingsEntries(skills).filter(entry => entry.tabType !== 'account').map(entry =>
+          <button type="button" key={entry.id} onClick={() => navigateStudio(entry, openTab)}><WorkspaceIcon name={entry.icon} size={16} />{entry.name}</button>)}
+      </nav>
 
       {/* Content Grid */}
       <div style={{ padding: '20px 24px 32px 24px', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto' }}>

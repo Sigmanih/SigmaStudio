@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Home, FileText, Activity, PieChart, Layers, ChevronRight, ChevronDown, MessageSquare,
+  Home, FileText, Activity, PieChart, Layers, ChevronRight, ChevronDown, MessageSquare, X,
   FlaskConical, Brain, Zap, User, Server, Wrench, Palette, Blocks, Sun, Clapperboard,
   Moon, Store, Package, Sliders, Key, Sparkles, FolderGit2, Compass,
   Cpu, Box, Radio, Music, Mic, Terminal, Globe, Mail, Send, DownloadCloud, Settings, Trash2,
@@ -8,6 +8,11 @@ import {
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { useModuleState } from '../hooks/useModuleState';
+import { useCapabilities } from '../hooks/useCapabilities';
+import { workspaceEntries, multimediaEntries, settingsEntries, coreNavigation, navigateStudio } from '../services/studioNavigation';
+import { WORK_DOMAINS, workDomainFor } from '../utils/workDomains';
+import WorkspaceIcon from './common/WorkspaceIcon';
+import '../styles/03-modules/home-navigation.css';
 
 export const SidebarItem = ({
   icon: Icon,
@@ -21,6 +26,7 @@ export const SidebarItem = ({
   isKernel = false,
   expandable = false,
   expanded = false,
+  groupOnly = false,
   onToggleExpand = null
 }) => {
   const { theme } = useApp();
@@ -29,7 +35,10 @@ export const SidebarItem = ({
   const computedBadgeSecondaryColor = isLight ? '#2e2820' : (badgeSecondaryColor || '#d29922');
 
   return (
-    <div className={`sidebar-item ${isKernel ? 'kernel-item' : ''} ${active ? 'active' : ''}`} onClick={onClick} title={label}>
+    <div className={`sidebar-item ${isKernel ? 'kernel-item' : ''} ${active ? 'active' : ''}`} onClick={onClick} title={label}
+      role="button" tabIndex={0} aria-label={label} aria-current={active ? 'page' : undefined}
+      aria-expanded={expandable ? expanded : undefined} data-sidebar-group-only={groupOnly || undefined}
+      onKeyDown={event => { if (event.target === event.currentTarget && ['Enter', ' '].includes(event.key)) { event.preventDefault(); onClick?.(); } }}>
       <Icon size={15} style={{ flexShrink: 0 }} />
       <span style={{
         flex: 1,
@@ -87,6 +96,8 @@ export const SidebarItem = ({
       )}
       {expandable && (
         <span
+          role="button" tabIndex={0} aria-label={`Sezioni ${label}`} aria-expanded={expanded}
+          onKeyDown={event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); event.stopPropagation(); onToggleExpand?.(); } }}
           onClick={(e) => {
             e.stopPropagation();
             if (onToggleExpand) onToggleExpand();
@@ -115,8 +126,6 @@ export default function Sidebar({
   modules = [],
   manifestiCount = 0,
   activeTabId,
-  leftVisible,
-  setLeftVisible,
   setActiveTabId,
   openTab,
   goHome,
@@ -129,7 +138,7 @@ export default function Sidebar({
     clearSystemMemory,
     openCleanupModal,
     mobileSidebarOpen,
-    setMobileSidebarOpen
+    setMobileSidebarOpen, sidebarOpen, isMobileLayout, closeSidebar
   } = useApp();
   const isLight = theme === 'light' || theme === 'cream';
 
@@ -157,9 +166,12 @@ export default function Sidebar({
 
   const [chatExpanded, setChatExpanded] = useState(false);
   const [modelsExpanded, setModelsExpanded] = useState(false);
+  const [multimediaExpanded, setMultimediaExpanded] = useState(false);
+  const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [activeModelTab, setActiveModelTab] = useState(() => {
     try {
-      return localStorage.getItem('sigma_model_hub_active_subtab') || 'inventory';
+      const area = sessionStorage.getItem('sigma_model_workspace_section');
+      return ['benchmark', 'training'].includes(area) ? area : 'inventory';
     } catch {
       return 'inventory';
     }
@@ -177,7 +189,7 @@ export default function Sidebar({
   const [skillsExpanded, setSkillsExpanded] = useState(false);
   const [activeSkillsTab, setActiveSkillsTab] = useState(() => {
     try {
-      return localStorage.getItem('sigma_marketplace_active_subtab') || 'installed';
+      return localStorage.getItem('sigma_marketplace_active_subtab') || 'capabilities';
     } catch {
       return 'installed';
     }
@@ -203,8 +215,9 @@ export default function Sidebar({
       }
     };
     const handleModelTabChange = (e) => {
-      if (e?.detail) setActiveModelTab(e.detail);
+      if (e?.detail) setActiveModelTab('inventory');
     };
+    const handleModelAreaChange = event => setActiveModelTab(event.detail === 'models' ? 'inventory' : event.detail);
     const handleProvidersTabChange = (e) => {
       if (e?.detail) setActiveProvidersTab(e.detail);
     };
@@ -217,12 +230,14 @@ export default function Sidebar({
 
     window.addEventListener('sigma-chat-sessions-updated', handleSessionsUpdate);
     window.addEventListener('sigma-model-hub-tab-changed', handleModelTabChange);
+    window.addEventListener('sigma-model-workspace-section', handleModelAreaChange);
     window.addEventListener('sigma-providers-tab-changed', handleProvidersTabChange);
     window.addEventListener('sigma-marketplace-tab-changed', handleSkillsTabChange);
     window.addEventListener('sigma-manifesti-tab-changed', handleManifestiTabChange);
     return () => {
       window.removeEventListener('sigma-chat-sessions-updated', handleSessionsUpdate);
       window.removeEventListener('sigma-model-hub-tab-changed', handleModelTabChange);
+      window.removeEventListener('sigma-model-workspace-section', handleModelAreaChange);
       window.removeEventListener('sigma-providers-tab-changed', handleProvidersTabChange);
       window.removeEventListener('sigma-marketplace-tab-changed', handleSkillsTabChange);
       window.removeEventListener('sigma-manifesti-tab-changed', handleManifestiTabChange);
@@ -272,11 +287,7 @@ export default function Sidebar({
 
   const handleSelectModelTab = (tabId) => {
     setActiveModelTab(tabId);
-    try {
-      localStorage.setItem('sigma_model_hub_active_subtab', tabId);
-    } catch { }
-    openTab({ name: 'Modelli' }, 'model_hub');
-    window.dispatchEvent(new CustomEvent('sigma-model-hub-set-tab', { detail: tabId }));
+    navigateStudio({ tabType: 'model_hub', name: 'Modelli' }, openTab, tabId);
     if (setMobileSidebarOpen) setMobileSidebarOpen(false);
   };
 
@@ -292,11 +303,7 @@ export default function Sidebar({
 
   const handleSelectSkillsTab = (tabId) => {
     setActiveSkillsTab(tabId);
-    try {
-      localStorage.setItem('sigma_marketplace_active_subtab', tabId);
-    } catch { }
-    openTab({ name: 'Skills' }, 'marketplace');
-    window.dispatchEvent(new CustomEvent('sigma-marketplace-set-tab', { detail: tabId }));
+    navigateStudio({ tabType: 'marketplace', name: 'Skills' }, openTab, tabId);
     if (setMobileSidebarOpen) setMobileSidebarOpen(false);
   };
 
@@ -331,11 +338,6 @@ export default function Sidebar({
     };
   }, []);
 
-  const [researchCount, setResearchCount] = useState(0);
-  const [trainingCompleted, setTrainingCompleted] = useState(0);
-  const [localTopicsCount, setLocalTopicsCount] = useState(0);
-  const [assetCount, setAssetCount] = useState(0);
-
   // Collapsible sub-sections inside the Skills Catalog (chiuse di default per mantenere la visualizzazione pulita)
   const [collapsedSections, setCollapsedSections] = useState({
     multimodal: true,
@@ -345,143 +347,36 @@ export default function Sidebar({
   });
 
   const toggleSubtopic = (key) => {
-    setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] }));
+    setCollapsedSections(prev => ({ ...prev, [key]: !(prev[key] ?? true) }));
   };
 
-  const { modulesState } = useModuleState();
-  const isAudioInstalled = modulesState.audio_studio === true;
-  const isDomoticaInstalled = modulesState.sigma_domotica === true;
-  const isCreativeInstalled = modulesState.sigma_creative_lab === true;
-  const isHardwareInstalled = modulesState.sigma_hardware_lab === true;
-  // PCB Lab e Monitor Hardware sono moduli diversi: il primo progetta
-  // circuiti stampati con KiCad, il secondo osserva come gli agenti
-  // usano la macchina. Nomi e icone vanno tenuti distinti.
-  const isPcbLabInstalled = modulesState.sigma_kicad_lab === true;
-  const isModelHubInstalled = modulesState.sigma_model_hub === true;
-  const isResearchInstalled = modulesState.sigma_research_lab === true;
-  const isTrainingInstalled = modulesState.sigma_training_lab === true;
-  const isBenchmarkInstalled = modulesState.sigma_benchmark_lab === true;
-  const isRoadmapInstalled = modulesState.sigma_roadmap === true;
-  const isKnowledgeInstalled = modulesState.sigma_knowledge === true;
-  const isVoiceInstalled = modulesState.sigma_voice_studio === true;
-  const isDevInstalled = modulesState.sigma_developer_lab === true;
-  const isNetworkInstalled = modulesState.sigma_network_lab === true;
-  const isSigmaNetworkInstalled = modulesState.sigma_network === true;
-  const isEmailInstalled = modulesState.sigma_email_client === true;
-  const isMessagingInstalled = modulesState.sigma_messaging_hub === true;
-  const isYouTubeInstalled = modulesState.sigma_youtube_studio === true;
+  const { moduleCatalog } = useModuleState();
+  const { skills: capabilitySkills } = useCapabilities();
+  const sidebarWorkspaces = workspaceEntries(moduleCatalog, capabilitySkills)
+    .filter(entry => !['model_hub', 'creative_studio', 'video_studio', 'voice_studio', 'music', 'developer_studio'].includes(entry.tabType));
+  const mediaEntries = multimediaEntries(moduleCatalog, capabilitySkills);
+  const modelSections = coreNavigation(moduleCatalog, capabilitySkills).find(e => e.tabType === 'model_hub')?.children || [];
 
-  // Moduli opzionali remoti (Catalogo Git)
-  const isAudioEngineInstalled = modulesState.audio_engine === true;
-  const isVisionInstalled = modulesState.vision_agent === true;
-  const isRoboticsInstalled = modulesState.robotics_ros2 === true;
-  const isQuantInstalled = modulesState.financial_quant === true;
-
-  // Verifica se ci sono skill installate per ciascun macro-sottoargomento (allineato con il catalogo Skills)
-  const hasMultimodal = isCreativeInstalled || isVoiceInstalled || isDomoticaInstalled || isAudioInstalled || isAudioEngineInstalled || isVisionInstalled;
-  const hasStudio = isBenchmarkInstalled || isTrainingInstalled || isResearchInstalled || isRoadmapInstalled || isKnowledgeInstalled || isQuantInstalled;
-  const hasInfra = isDevInstalled || isHardwareInstalled || isPcbLabInstalled || isNetworkInstalled || isSigmaNetworkInstalled || isRoboticsInstalled;
-  const hasComms = isEmailInstalled || isMessagingInstalled || isYouTubeInstalled;
-
-  // Poll for counts (chat sessions, manifesti, topics, etc.)
   useEffect(() => {
-    const updateCounts = () => {
-      try {
-        const chatSessions = localStorage.getItem('sigma_chat_sessions');
-        if (chatSessions) {
-          const parsed = JSON.parse(chatSessions);
-          if (Array.isArray(parsed)) setChatCount(parsed.length);
-        } else {
-          setChatCount(0);
-        }
-      } catch {
-        setChatCount(0);
-      }
-
-      if (isResearchInstalled) {
-        fetch('/api/research/list')
-          .then(res => res.json())
-          .then(data => {
-            if (data.success && Array.isArray(data.sessions)) {
-              setResearchCount(data.sessions.length);
-            }
-          })
-          .catch(() => { });
-      }
-
-      if (isTrainingInstalled) {
-        fetch('/api/training/jobs')
-          .then(res => res.json())
-          .then(data => {
-            if (data.success && Array.isArray(data.jobs)) {
-              setTrainingCompleted(data.jobs.filter(j => j.status === 'completed' || j.status === 'running').length);
-            }
-          })
-          .catch(() => { });
-      }
-
-      if (isKnowledgeInstalled) {
-        fetch('/api/topics')
-          .then(res => res.json())
-          .then(data => {
-            if (data.topics && Array.isArray(data.topics)) {
-              setLocalTopicsCount(data.topics.length);
-            }
-          })
-          .catch(() => {
-            try {
-              const k = localStorage.getItem('sigma_knowledge_topics');
-              if (k) {
-                const parsed = JSON.parse(k);
-                if (Array.isArray(parsed)) setLocalTopicsCount(parsed.length);
-              }
-            } catch { }
-          });
-      }
-
-      if (isCreativeInstalled) {
-        fetch('/api/creative/stats')
-          .then(res => res.json())
-          .then(data => {
-            if (data.assets) {
-              setAssetCount(data.assets);
-            }
-          })
-          .catch(() => { });
-      }
-    };
-
-    updateCounts();
-    const interval = setInterval(() => {
-      if (document.visibilityState !== 'hidden') {
-        updateCounts();
-      }
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [isResearchInstalled, isTrainingInstalled, isCreativeInstalled, isKnowledgeInstalled]);
-
-  const taskInCorso = tasks.filter(t => t.status === 'in_corso' || !t.status).length;
-  const taskDone = tasks.filter(t => t.status === 'done').length;
-  const taskTotal = tasks.length;
-
-  // Custom installed marketplace modules (excluding base standard modules)
-  const builtinModuleIds = new Set(['creative_studio', 'research_lab', 'training_lab', 'hardware_lab', 'mcp_hub', 'config', 'account', 'marketplace']);
-  const dynamicInstalledModules = modules.filter(m => m.installed && !builtinModuleIds.has(m.id));
-
-  // Count total active modular skills
-  const totalActiveSkills = [
-    isCreativeInstalled, isVoiceInstalled, isDomoticaInstalled, isAudioInstalled, isAudioEngineInstalled, isVisionInstalled,
-    isTrainingInstalled, isResearchInstalled, isRoadmapInstalled, isKnowledgeInstalled, isBenchmarkInstalled, isQuantInstalled,
-    isDevInstalled, isHardwareInstalled, isNetworkInstalled, isSigmaNetworkInstalled, isRoboticsInstalled,
-    isEmailInstalled, isMessagingInstalled,
-    ...dynamicInstalledModules.map(() => true)
-  ].filter(Boolean).length;
+    if (!mobileSidebarOpen || !isMobileLayout) return;
+    const previous = document.activeElement;
+    document.querySelector('[data-sidebar-close]')?.focus();
+    return () => previous?.focus();
+  }, [mobileSidebarOpen, isMobileLayout]);
 
   return (
-    <aside className={`sidebar ${mobileSidebarOpen ? 'mobile-open' : ''}`}>
-      <button className="collapse-btn left" onClick={() => setLeftVisible(!leftVisible)}>
-        {leftVisible ? <ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> : <ChevronRight size={14} />}
-      </button>
+    <aside id="studio-sidebar" className={`sidebar ${mobileSidebarOpen ? 'mobile-open' : ''}`}
+      aria-label="Navigazione Sigma Studio" aria-hidden={!sidebarOpen} inert={!sidebarOpen}
+      role={isMobileLayout ? 'dialog' : undefined} aria-modal={isMobileLayout && sidebarOpen ? true : undefined}
+      onClick={event => { if (event.target.closest('.sidebar-item') && !event.target.closest('.sidebar-expand-arrow, [data-sidebar-group-only]')) setMobileSidebarOpen(false); }}
+      onKeyDown={event => {
+        if (!isMobileLayout || !mobileSidebarOpen || event.key !== 'Tab') return;
+        const controls = [...event.currentTarget.querySelectorAll('button:not([disabled]), [role="button"], input, select, a[href]')].filter(node => node.getClientRects().length);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }}>
+      <button type="button" className="studio-sidebar-close" data-sidebar-close onClick={closeSidebar} aria-label="Chiudi pannello di navigazione"><X size={17} /></button>
       <div className="sidebar-content">
 
         {/* SIDEBAR HEADER & LOGO */}
@@ -537,6 +432,90 @@ export default function Sidebar({
             active={activeTabId === null}
             onClick={goHome}
           />
+
+          <SidebarItem
+            icon={DownloadCloud}
+            label="Modelli"
+            isKernel={true}
+            badge="LOCAL"
+            badgeColor="rgba(255,184,108,0.2)"
+            active={activeTabId != null && activeTabId.startsWith('model_hub')}
+            onClick={() => {
+              handleSelectModelTab('inventory');
+              setModelsExpanded(true);
+            }}
+            expandable={true}
+            expanded={modelsExpanded}
+            onToggleExpand={() => setModelsExpanded(prev => !prev)}
+          />
+
+          {modelsExpanded && (
+            <div className="sidebar-subnav sidebar-models-subnav">
+              {[
+                { id: 'inventory', label: 'Modelli', icon: HardDrive },
+                { id: 'benchmark', label: 'Benchmark', icon: Award },
+                { id: 'training', label: 'Training', icon: Brain },
+              ].filter(sub => modelSections.some(section => section.id === sub.id)).map(sub => {
+                const isSelected = activeTabId != null && activeTabId.startsWith('model_hub') && activeModelTab === sub.id;
+                const SubIcon = sub.icon;
+                return (
+                  <button type="button"
+                    key={sub.id}
+                    className={`sidebar-subitem ${isSelected ? 'active' : ''}`}
+                    onClick={() => handleSelectModelTab(sub.id)}
+                  >
+                    <SubIcon size={12} style={{ flexShrink: 0 }} />
+                    <span className="sidebar-subitem-label">{sub.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <SidebarItem icon={Clapperboard} label="Multimedia" isKernel={true}
+            active={activeTabId?.startsWith('multimedia') || ['creative_studio', 'video_studio', 'voice_studio', 'music'].some(type => activeTabId?.startsWith(type))}
+            onClick={() => { handleNavClick(() => openTab({ name: 'Multimedia' }, 'multimedia')); setMultimediaExpanded(true); }}
+            expandable expanded={multimediaExpanded} onToggleExpand={() => setMultimediaExpanded(value => !value)} />
+          {multimediaExpanded && <div className="sidebar-subnav">{mediaEntries.map(entry =>
+            <button type="button" key={entry.id} className="sidebar-subitem studio-sidebar-child"
+              onClick={() => handleNavClick(() => navigateStudio(entry, openTab))}><WorkspaceIcon name={entry.icon} size={13} /><span>{entry.name}</span></button>)}</div>}
+
+          <SidebarItem
+            icon={Brain}
+            label="Agenti"
+            isKernel={true}
+            badge={manifestiCount + modules.reduce((acc, m) => acc + (m.whitepapers?.length || 0), 0)}
+            badgeColor="rgba(188,140,255,0.15)"
+            active={activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib'))}
+            onClick={() => {
+              openTab({ name: 'Ruoli AI' }, 'whitepapers_lib');
+              setManifestiExpanded(true);
+            }}
+            expandable={true}
+            expanded={manifestiExpanded}
+            onToggleExpand={() => setManifestiExpanded(prev => !prev)}
+          />
+          {manifestiExpanded && (
+            <div className="sidebar-subnav sidebar-models-subnav">
+              {[
+                { id: 'installed', label: 'Agenti disponibili', icon: UserCheck },
+                { id: 'hub', label: 'Hub Community', icon: Globe },
+              ].map(sub => {
+                const isSelected = activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib')) && activeManifestiTab === sub.id;
+                const SubIcon = sub.icon;
+                return (
+                  <div
+                    key={sub.id}
+                    className={`sidebar-subitem ${isSelected ? 'active' : ''}`}
+                    onClick={() => handleSelectManifestiTab(sub.id)}
+                  >
+                    <SubIcon size={12} style={{ flexShrink: 0 }} />
+                    <span className="sidebar-subitem-label">{sub.label}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <SidebarItem
             icon={MessageSquare}
@@ -608,46 +587,6 @@ export default function Sidebar({
           )}
 
           <SidebarItem
-            icon={DownloadCloud}
-            label="Modelli"
-            isKernel={true}
-            badge="LOCAL"
-            badgeColor="rgba(255,184,108,0.2)"
-            active={activeTabId != null && activeTabId.startsWith('model_hub')}
-            onClick={() => {
-              handleSelectModelTab('inventory');
-              setModelsExpanded(true);
-            }}
-            expandable={true}
-            expanded={modelsExpanded}
-            onToggleExpand={() => setModelsExpanded(prev => !prev)}
-          />
-
-          {modelsExpanded && (
-            <div className="sidebar-subnav sidebar-models-subnav">
-              {[
-                { id: 'inventory', label: 'Modelli Locali', icon: HardDrive },
-                { id: 'browse', label: 'Download Modelli', icon: Search },
-                { id: 'converter', label: 'Convertitore GGUF', icon: Zap },
-                { id: 'settings', label: 'Impostazioni & Token', icon: Settings },
-              ].map(sub => {
-                const isSelected = activeTabId != null && activeTabId.startsWith('model_hub') && activeModelTab === sub.id;
-                const SubIcon = sub.icon;
-                return (
-                  <div
-                    key={sub.id}
-                    className={`sidebar-subitem ${isSelected ? 'active' : ''}`}
-                    onClick={() => handleSelectModelTab(sub.id)}
-                  >
-                    <SubIcon size={12} style={{ flexShrink: 0 }} />
-                    <span className="sidebar-subitem-label">{sub.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <SidebarItem
             icon={Sliders}
             label="Providers"
             isKernel={true}
@@ -691,7 +630,7 @@ export default function Sidebar({
             badge="STORE"
             badgeColor="rgba(234,179,8,0.2)"
             active={activeTabId != null && activeTabId.startsWith('marketplace')}
-            onClick={() => setSkillsExpanded(prev => !prev)}
+            onClick={() => { handleSelectSkillsTab('capabilities'); setSkillsExpanded(true); }}
             expandable={true}
             expanded={skillsExpanded}
             onToggleExpand={() => setSkillsExpanded(prev => !prev)}
@@ -699,6 +638,7 @@ export default function Sidebar({
           {skillsExpanded && (
             <div className="sidebar-subnav sidebar-models-subnav">
               {[
+                { id: 'capabilities', label: 'Capacità e agenti', icon: Sparkles },
                 { id: 'installed', label: 'Moduli Installati', icon: Cpu },
                 { id: 'remote', label: 'Catalogo Moduli', icon: Sparkles },
               ].map(sub => {
@@ -719,55 +659,6 @@ export default function Sidebar({
           )}
 
           <SidebarItem
-            icon={Brain}
-            label="Ruoli AI"
-            isKernel={true}
-            badge={manifestiCount + modules.reduce((acc, m) => acc + (m.whitepapers?.length || 0), 0)}
-            badgeColor="rgba(188,140,255,0.15)"
-            active={activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib'))}
-            onClick={() => {
-              openTab({ name: 'Ruoli AI' }, 'whitepapers_lib');
-              setManifestiExpanded(true);
-            }}
-            expandable={true}
-            expanded={manifestiExpanded}
-            onToggleExpand={() => setManifestiExpanded(prev => !prev)}
-          />
-          {manifestiExpanded && (
-            <div className="sidebar-subnav sidebar-models-subnav">
-              {[
-                { id: 'installed', label: 'Ruoli Kernel', icon: UserCheck },
-                { id: 'hub', label: 'Hub Community', icon: Globe },
-              ].map(sub => {
-                const isSelected = activeTabId != null && (activeTabId.startsWith('whitepaper') || activeTabId.startsWith('whitepapers_lib')) && activeManifestiTab === sub.id;
-                const SubIcon = sub.icon;
-                return (
-                  <div
-                    key={sub.id}
-                    className={`sidebar-subitem ${isSelected ? 'active' : ''}`}
-                    onClick={() => handleSelectManifestiTab(sub.id)}
-                  >
-                    <SubIcon size={12} style={{ flexShrink: 0 }} />
-                    <span className="sidebar-subitem-label">{sub.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {!hiddenTabs.has('mcp_hub') && (
-            <SidebarItem
-              icon={Wrench}
-              label="MCP Tools"
-              isKernel={true}
-              badge={6}
-              badgeColor="rgba(63,185,80,0.15)"
-              active={activeTabId != null && activeTabId.startsWith('mcp_hub')}
-              onClick={() => openTab({ name: 'MCP Tools' }, 'mcp_hub')}
-            />
-          )}
-
-          <SidebarItem
             icon={Terminal}
             label="Developer Sigma"
             isKernel={true}
@@ -780,415 +671,41 @@ export default function Sidebar({
           <SidebarItem
             icon={Settings}
             label="Impostazioni"
+            groupOnly
             isKernel={true}
             badge="CONFIG"
             badgeColor="rgba(188,140,255,0.15)"
-            active={activeTabId != null && (activeTabId.startsWith('account') || activeTabId.startsWith('settings'))}
-            onClick={() => handleNavClick(() => openTab({ name: 'Impostazioni' }, 'account'))}
+            active={['account', 'settings', 'mcp_hub', 'theme', 'palette'].some(type => activeTabId?.startsWith(type))}
+            onClick={() => setSettingsExpanded(value => !value)}
+            expandable expanded={settingsExpanded} onToggleExpand={() => setSettingsExpanded(value => !value)}
           />
-
-          <SidebarItem
-            icon={Palette}
-            label="Tema"
-            isKernel={true}
-            badge="COLORI"
-            badgeColor="rgba(0,210,255,0.18)"
-            active={activeTabId != null && (activeTabId.startsWith('theme') || activeTabId.startsWith('palette'))}
-            onClick={() => handleNavClick(() => openTab({ name: 'Tema' }, 'theme'))}
-          />
+          {settingsExpanded && <div className="sidebar-subnav">{settingsEntries(capabilitySkills).map(entry =>
+            <button type="button" className="sidebar-subitem studio-sidebar-child" key={entry.id}
+              onClick={() => handleNavClick(() => navigateStudio(entry, openTab))}><WorkspaceIcon name={entry.icon} size={13} /><span>{entry.name}</span></button>)}</div>}
         </nav>
 
         {/* ================================================================= */}
         {/* 2. SEZIONE MODULARE: CATALOGO SKILLS (SUDDIVISO PER SOTTOARGOMENTI) */}
         {/* ================================================================= */}
-        <nav className="nav-section" style={{ marginBottom: '14px' }}>
-          <div className="section-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>🧩</span> CATALOGO SKILLS
-            </span>
-            <span style={{
-              fontSize: '0.58rem',
-              fontWeight: 800,
-              padding: '1px 6px',
-              borderRadius: '6px',
-              background: isLight ? 'rgba(124, 91, 240, 0.12)' : 'rgba(188, 140, 255, 0.15)',
-              color: isLight ? '#6d28d9' : '#bc8cff'
-            }}>
-              {totalActiveSkills} ATTIVE
-            </span>
-          </div>
-
-          {/* SOTTOARGOMENTO 1: MULTIMODALE & CREATIVITÀ (Mostra solo se ha skill) */}
-          {hasMultimodal && (
-            <div style={{ marginBottom: '6px' }}>
-              <div
-                onClick={() => toggleSubtopic('multimodal')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '4px 8px',
-                  fontSize: '0.64rem',
-                  fontWeight: 800,
-                  color: isLight ? '#6b5e4c' : 'rgba(255, 255, 255, 0.45)',
-                  letterSpacing: '0.6px',
-                  cursor: 'pointer',
-                  borderRadius: '6px',
-                  textTransform: 'uppercase',
-                  userSelect: 'none',
-                  transition: 'color 0.2s ease'
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span>🎨</span> MULTIMODALE & CREATIVITÀ
-                </span>
-                <ChevronDown size={11} style={{ transform: collapsedSections.multimodal ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }} />
-              </div>
-
-              {!collapsedSections.multimodal && (
-                <div style={{ paddingLeft: '4px', marginTop: '2px' }}>
-                  {isCreativeInstalled && (
-                    <SidebarItem
-                      icon={Palette}
-                      label="Creative"
-                      badge={assetCount > 0 ? assetCount : 0}
-                      badgeColor="rgba(255,80,100,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('creative_studio')}
-                      onClick={() => openTab({ name: 'Creative' }, 'creative_studio')}
-                    />
-                  )}
-                  {isCreativeInstalled && (
-                    <SidebarItem
-                      icon={Clapperboard}
-                      label="Video Studio"
-                      active={activeTabId != null && activeTabId.startsWith('video_studio')}
-                      onClick={() => openTab({ name: 'Video Studio' }, 'video_studio')}
-                    />
-                  )}
-
-                  {isVoiceInstalled && (
-                    <SidebarItem
-                      icon={Music}
-                      label="AudioStudio"
-                      badge="AUDIO"
-                      badgeColor="rgba(255,121,198,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('voice_studio')}
-                      onClick={() => openTab({ name: 'AudioStudio' }, 'voice_studio')}
-                    />
-                  )}
-
-                  {isDomoticaInstalled && (
-                    <SidebarItem
-                      icon={Home}
-                      label="Domotica"
-                      badge="HA"
-                      badgeColor="rgba(167,139,250,0.2)"
-                      active={activeTabId != null && (activeTabId.startsWith('domotica') || activeTabId.startsWith('home_assistant'))}
-                      onClick={() => openTab({ name: 'Domotica' }, 'domotica')}
-                    />
-                  )}
-
-                  {isAudioInstalled && (
-                    <SidebarItem
-                      icon={Radio}
-                      label="Musica"
-                      badge="LOUNGE"
-                      badgeColor="rgba(0,242,254,0.2)"
-                      active={activeTabId != null && (activeTabId.startsWith('music') || activeTabId === 'audio_studio' || activeTabId === 'music_lounge')}
-                      onClick={() => openTab({ name: 'Musica' }, 'music')}
-                    />
-                  )}
-
-                  {isAudioEngineInstalled && (
-                    <SidebarItem
-                      icon={Sparkles}
-                      label="Audio Engine"
-                      badge="VOICE"
-                      badgeColor="rgba(255,121,198,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('audio_studio')}
-                      onClick={() => openTab({ name: 'Audio Engine' }, 'audio_studio')}
-                    />
-                  )}
-
-                  {isVisionInstalled && (
-                    <SidebarItem
-                      icon={Sparkles}
-                      label="Vision Lab"
-                      badge="VL"
-                      badgeColor="rgba(0,210,255,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('vision_lab')}
-                      onClick={() => openTab({ name: 'Vision Lab' }, 'vision_lab')}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* SOTTOARGOMENTO 2: STUDIO & INTELLIGENZA ARTIFICIALE (Mostra solo se ha skill) */}
-          {hasStudio && (
-            <div style={{ marginBottom: '6px' }}>
-              <div
-                onClick={() => toggleSubtopic('studio')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '4px 8px',
-                  fontSize: '0.64rem',
-                  fontWeight: 800,
-                  color: isLight ? '#6b5e4c' : 'rgba(255, 255, 255, 0.45)',
-                  letterSpacing: '0.6px',
-                  cursor: 'pointer',
-                  borderRadius: '6px',
-                  textTransform: 'uppercase',
-                  userSelect: 'none',
-                  transition: 'color 0.2s ease'
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span>🧠</span> STUDIO, RICERCA & AI
-                </span>
-                <ChevronDown size={11} style={{ transform: collapsedSections.studio ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }} />
-              </div>
-
-              {!collapsedSections.studio && (
-                <div style={{ paddingLeft: '4px', marginTop: '2px' }}>
-                  {isBenchmarkInstalled && (
-                    <SidebarItem
-                      icon={Award}
-                      label="Benchmark"
-                      badgeColor="rgba(0,210,255,0.15)"
-                      active={activeTabId != null && (activeTabId.startsWith('benchmark_lab') || activeTabId.startsWith('benchmark'))}
-                      onClick={() => openTab({ name: 'Benchmark' }, 'benchmark_lab')}
-                    />
-                  )}
-
-                  {isTrainingInstalled && (
-                    <SidebarItem
-                      icon={Brain}
-                      label="Training"
-                      badge={trainingCompleted > 0 ? trainingCompleted : 0}
-                      badgeColor="rgba(0,210,255,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('training_lab')}
-                      onClick={() => openTab({ name: 'Training' }, 'training_lab')}
-                    />
-                  )}
-
-                  {isResearchInstalled && (
-                    <SidebarItem
-                      icon={FlaskConical}
-                      label="Pipelines"
-                      badge={researchCount > 0 ? researchCount : 0}
-                      badgeColor="rgba(188,140,255,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('research_lab')}
-                      onClick={() => openTab({ name: 'Pipelines' }, 'research_lab')}
-                    />
-                  )}
-
-                  {isRoadmapInstalled && (
-                    <SidebarItem
-                      icon={Activity}
-                      label="Pianificazione & Task"
-                      badge={taskInCorso > 0 ? taskInCorso : (taskTotal === 0 ? 0 : undefined)}
-                      badgeColor="rgba(210,153,34,0.15)"
-                      badgeSecondary={taskDone > 0 ? taskDone : undefined}
-                      badgeSecondaryColor="rgba(63,185,80,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('roadmap')}
-                      onClick={() => openTab({ name: 'Pianificazione & Task' }, 'roadmap')}
-                    />
-                  )}
-
-                  {isQuantInstalled && (
-                    <SidebarItem
-                      icon={Sparkles}
-                      label="Quant Lab"
-                      badge="QUANT"
-                      badgeColor="rgba(210,153,34,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('quant_lab')}
-                      onClick={() => openTab({ name: 'Quant Lab' }, 'quant_lab')}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* SOTTOARGOMENTO 3: INFRASTRUTTURA & RETE (Mostra solo se ha skill) */}
-          {hasInfra && (
-            <div style={{ marginBottom: '6px' }}>
-              <div
-                onClick={() => toggleSubtopic('infra')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '4px 8px',
-                  fontSize: '0.64rem',
-                  fontWeight: 800,
-                  color: isLight ? '#6b5e4c' : 'rgba(255, 255, 255, 0.45)',
-                  letterSpacing: '0.6px',
-                  cursor: 'pointer',
-                  borderRadius: '6px',
-                  textTransform: 'uppercase',
-                  userSelect: 'none',
-                  transition: 'color 0.2s ease'
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span>⚡</span> INFRASTRUTTURA & RETE
-                </span>
-                <ChevronDown size={11} style={{ transform: collapsedSections.infra ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }} />
-              </div>
-
-              {!collapsedSections.infra && (
-                <div style={{ paddingLeft: '4px', marginTop: '2px' }}>
-                  {isHardwareInstalled && (
-                    <SidebarItem
-                      icon={Zap}
-                      label="Monitor Hardware"
-                      badge="VRAM"
-                      badgeColor="rgba(0,242,254,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('hardware_lab')}
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('sigma-quick-tool', { detail: { id: 'hardware' } }));
-                      }}
-                    />
-                  )}
-
-                  {isPcbLabInstalled && (
-                    <SidebarItem
-                      icon={CircuitBoard}
-                      label="PCB Lab"
-                      badge="KICAD"
-                      badgeColor="rgba(13,110,253,0.25)"
-                      active={activeTabId != null && (activeTabId.startsWith('kicad_lab') || activeTabId.startsWith('pcb_lab'))}
-                      onClick={() => openTab({ name: 'PCB Lab' }, 'kicad_lab')}
-                    />
-                  )}
-
-                  {isNetworkInstalled && (
-                    <SidebarItem
-                      icon={Globe}
-                      label="AI Web Browser"
-                      badge="NET"
-                      badgeColor="rgba(63,185,80,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('network_lab')}
-                      onClick={() => openTab({ name: 'AI Web Browser' }, 'network_lab')}
-                    />
-                  )}
-
-                  {isSigmaNetworkInstalled && (
-                    <SidebarItem
-                      icon={Share2}
-                      label="Sigma Network"
-                      badge="P2P"
-                      badgeColor="rgba(88,101,242,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('sigma_network')}
-                      onClick={() => openTab({ name: 'Sigma Network' }, 'sigma_network')}
-                    />
-                  )}
-
-                  {isRoboticsInstalled && (
-                    <SidebarItem
-                      icon={Sparkles}
-                      label="Robotica ROS2"
-                      badge="ROS2"
-                      badgeColor="rgba(63,185,80,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('robotics_tab')}
-                      onClick={() => openTab({ name: 'Robotica ROS2' }, 'robotics_tab')}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* SOTTOARGOMENTO 4: COMUNICAZIONE & SOCIAL (Mostra solo se ha skill) */}
-          {hasComms && (
-            <div style={{ marginBottom: '6px' }}>
-              <div
-                onClick={() => toggleSubtopic('comms')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '4px 8px',
-                  fontSize: '0.64rem',
-                  fontWeight: 800,
-                  color: isLight ? '#6b5e4c' : 'rgba(255, 255, 255, 0.45)',
-                  letterSpacing: '0.6px',
-                  cursor: 'pointer',
-                  borderRadius: '6px',
-                  textTransform: 'uppercase',
-                  userSelect: 'none',
-                  transition: 'color 0.2s ease'
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span>📬</span> COMUNICAZIONE & SOCIAL
-                </span>
-                <ChevronDown size={11} style={{ transform: collapsedSections.comms ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }} />
-              </div>
-
-              {!collapsedSections.comms && (
-                <div style={{ paddingLeft: '4px', marginTop: '2px' }}>
-                  {isEmailInstalled && (
-                    <SidebarItem
-                      icon={Mail}
-                      label="Email Hub"
-                      badge="MAIL"
-                      badgeColor="rgba(255,180,84,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('email_client')}
-                      onClick={() => openTab({ name: '✉️ Email Hub' }, 'email_client')}
-                    />
-                  )}
-
-                  {isMessagingInstalled && (
-                    <SidebarItem
-                      icon={Send}
-                      label="Messaging Hub"
-                      badge="BOT"
-                      badgeColor="rgba(188,140,255,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('messaging_hub')}
-                      onClick={() => openTab({ name: '💬 Messaging Hub' }, 'messaging_hub')}
-                    />
-                  )}
-
-                  {isYouTubeInstalled && (
-                    <SidebarItem
-                      icon={MonitorPlay}
-                      label="YouTube"
-                      badge="YT"
-                      badgeColor="rgba(255,80,80,0.15)"
-                      active={activeTabId != null && activeTabId.startsWith('youtube_studio')}
-                      onClick={() => openTab({ name: '📺 YouTube' }, 'youtube_studio')}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Dynamic Extra Installed Modules from Marketplace */}
-          {dynamicInstalledModules.length > 0 && (
-            <div style={{ marginTop: '6px', paddingLeft: '4px' }}>
-              <div style={{ fontSize: '0.6rem', color: isLight ? '#7a7060' : 'rgba(255,255,255,0.4)', fontWeight: 800, letterSpacing: '0.6px', textTransform: 'uppercase', marginBottom: '4px', paddingLeft: '8px' }}>
-                PLUGINS EXTRA
-              </div>
-              {dynamicInstalledModules.map(mod => (
-                <SidebarItem
-                  key={mod.id}
-                  icon={Box}
-                  label={mod.name || mod.id}
-                  badge="PLUGIN"
-                  badgeColor="rgba(188,140,255,0.15)"
-                  active={activeTabId === mod.tabType || activeTabId === mod.id}
-                  onClick={() => openTab({ name: mod.name || mod.id }, mod.tabType || mod.id)}
-                />
-              ))}
-            </div>
-          )}
+        <nav className="nav-section studio-sidebar-capabilities" aria-label="Laboratori disponibili">
+          <div className="section-title">SKILLS E LABORATORI · {sidebarWorkspaces.length}</div>
+          {WORK_DOMAINS.map(domain => {
+            const entries = sidebarWorkspaces.filter(e => workDomainFor(e).id === domain.id);
+            if (!entries.length) return null;
+            const expanded = collapsedSections[domain.id] === false;
+            return <section key={domain.id}>
+              <button type="button" className="sidebar-group-button" aria-expanded={expanded}
+                onClick={() => toggleSubtopic(domain.id)}>{domain.name}{expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</button>
+              {expanded && entries.map(entry => <div key={entry.id}>
+                <SidebarItem icon={({ size }) => <WorkspaceIcon name={entry.icon} size={size} />}
+                  label={entry.name} active={activeTabId?.startsWith(entry.tabType)}
+                  onClick={() => handleNavClick(() => navigateStudio(entry, openTab))} />
+                {!!entry.children?.length && <div className="sidebar-subnav">{entry.children.map(child =>
+                  <button type="button" className="sidebar-subitem studio-sidebar-child" key={child.id}
+                    onClick={() => handleNavClick(() => navigateStudio(entry, openTab, child.id))}>{child.name}</button>)}</div>}
+              </div>)}
+            </section>;
+          })}
 
           {/* Quick System Cleanup Action */}
           <div style={{ marginTop: '14px', paddingTop: '10px', borderTop: isLight ? '1px solid #e0d8cc' : '1px solid rgba(255,255,255,0.06)' }}>

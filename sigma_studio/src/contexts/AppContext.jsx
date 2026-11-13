@@ -128,13 +128,30 @@ export function AppProvider({ children }) {
   };
 
   // UI layout state & Mobile Drawer
-  const [leftVisible, setLeftVisible] = useState(true);
+  const [leftVisible, setLeftVisible] = useState(false);
   const [rightVisible, setRightVisible] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(() => window.matchMedia('(max-width: 1024px)').matches);
+  const sidebarOpen = isMobileLayout ? mobileSidebarOpen : leftVisible;
+  const closeSidebar = useCallback(() => { setLeftVisible(false); setMobileSidebarOpen(false); }, []);
+  const toggleSidebar = useCallback(() => {
+    if (window.matchMedia('(max-width: 1024px)').matches) setMobileSidebarOpen(previous => !previous);
+    else setLeftVisible(previous => !previous);
+  }, []);
 
-  const toggleMobileSidebar = () => {
-    setMobileSidebarOpen(prev => !prev);
-  };
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1024px)');
+    const resize = event => { setIsMobileLayout(event.matches); setMobileSidebarOpen(false); };
+    const escape = event => {
+      if (event.key === 'Escape' && !event.defaultPrevented && sidebarOpen) {
+        closeSidebar();
+        document.querySelector('[data-agent-action="toggle-sidebar"]')?.focus();
+      }
+    };
+    media.addEventListener('change', resize);
+    window.addEventListener('keydown', escape);
+    return () => { media.removeEventListener('change', resize); window.removeEventListener('keydown', escape); };
+  }, [sidebarOpen, closeSidebar]);
 
   // Fetch topics count
   const fetchTopicsCount = async () => {
@@ -309,7 +326,7 @@ export function AppProvider({ children }) {
     setRightVisible,
     mobileSidebarOpen,
     setMobileSidebarOpen,
-    toggleMobileSidebar,
+    sidebarOpen, isMobileLayout, toggleSidebar, closeSidebar,
     
     // Sub operations
     fileOps,

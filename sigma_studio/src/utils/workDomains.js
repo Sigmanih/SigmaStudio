@@ -1,8 +1,9 @@
+import { WORKSPACE_TITLES } from '../services/studioNavigation';
 // La Home propone campi di lavoro; i singoli specialisti restano selezionabili in chat.
 export const WORK_DOMAINS = [
   { id: 'development', name: 'Sviluppo', title: 'Architettura, codice e verifiche', match: /svilupp|programm|code|coder|developer|software|test.engineer|revis.*codice/i },
   { id: 'hardware', name: 'Hardware', title: 'Circuiti, schede e dispositivi', match: /hardware|elettronic|circuit|kicad|pcb|\beda\b|domotic|iot/i },
-  { id: 'creative', name: 'Creatività', title: 'Film, immagini, audio e storie', match: /creativ|regis|scenegg|fotograf|montagg|video|audio|music|sound|voce|voice|design|artist|multimodal|grafica/i },
+  { id: 'creative', name: 'Multimedia', title: 'Immagini, video, audio e storie', match: /creativ|regis|scenegg|fotograf|montagg|video|audio|music|sound|voce|voice|design|artist|multimed|multimodal|grafica/i },
   { id: 'health', name: 'Salute', title: 'Studio e analisi in ambito medico', match: /medic|clin|salute|biolog/i },
   { id: 'legal', name: 'Diritto ed economia', title: 'Analisi giuridica e finanziaria', match: /avvocat|giur|legale|diritto|finanz|econom|quant.law/i },
   { id: 'research', name: 'Ricerca e studio', title: 'Scienza, conoscenza e formazione', match: /ricerc|research|matemat|math|fisic|scienz|statist|professor|teacher|tutor|knowledge|training|benchmark|valutazione/i },
@@ -45,7 +46,7 @@ export function modulesForDomain(domainId, catalog = []) {
       return [{ id: entry.tabType, name: entry.name }, ...tabs].flatMap(tab => {
         if (!tab || typeof tab.id !== 'string' || !tab.id || seen.has(tab.id)) return [];
         seen.add(tab.id);
-        return [{ ...entry, tabType: tab.id, name: tab.name || entry.name }];
+        return [{ ...entry, tabType: tab.id, name: WORKSPACE_TITLES[tab.id] || tab.name || entry.name }];
       });
     });
 }

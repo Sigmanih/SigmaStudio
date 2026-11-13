@@ -738,7 +738,7 @@ export default function ModelHub({ addToast: addToastProp, openTab }) {
       <TabHeader
         icon={CloudDownload}
         iconColor="#38bdf8"
-        title="Model Hub"
+        title="Modelli"
         tabs={[
           { id: 'inventory', label: 'Modelli Locali', icon: HardDrive, active: activeTab === 'inventory', onClick: () => setActiveTab('inventory') },
           { id: 'browse', label: 'Download Hugging Face', icon: Search, active: activeTab === 'browse', onClick: () => setActiveTab('browse') },

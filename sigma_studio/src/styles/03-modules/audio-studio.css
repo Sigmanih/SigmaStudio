@@ -3,6 +3,10 @@
 .as-tabs button, .as-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; border: 1px solid var(--border-color, #ffffff20); border-radius: 9px; color: inherit; background: transparent; cursor: pointer; }
 .as-tabs button[aria-pressed="true"] { background: #00d2ff14; border-color: #00d2ff66; color: var(--primary, #00d2ff); }
 .as-content { flex: 1; min-height: 0; overflow: auto; }
+.as-tabs { overflow-x: auto; gap: 10px; }
+.as-tabs button { flex: 0 0 auto; padding: 12px 16px; transition: background 160ms ease, border-color 160ms ease; }
+.as-tabs button[aria-selected="true"] { background: color-mix(in srgb, var(--accent-color, #00d2ff) 10%, transparent); border-color: var(--accent-color, #00d2ff); color: var(--accent-color, #00d2ff); }
+.as-tabs button:focus-visible { outline: 2px solid var(--accent-color, #00d2ff); outline-offset: 2px; }
 .as-music { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 28px; max-width: 1600px; margin: auto; padding: 28px; }
 .as-compose { min-width: 0; }
 .as-intro h2 { font-size: clamp(22px, 2.5vw, 34px); font-weight: 650; margin: 10px 0; letter-spacing: -.5px; }

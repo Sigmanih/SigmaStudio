@@ -60,7 +60,6 @@ function AppContent() {
     aiConfigOpen,
     setAiConfigOpen,
     leftVisible,
-    setLeftVisible,
     mobileSidebarOpen,
     setMobileSidebarOpen,
     fileOps,
@@ -111,8 +110,9 @@ function AppContent() {
   const handleDockMouseDown = (e) => {
     if (e.button !== 0) return;
     hasMovedRef.current = false;
-    const initialX = dockPos.x !== undefined ? dockPos.x : 20;
-    const initialY = dockPos.y !== undefined ? dockPos.y : window.innerHeight - 70;
+    const bounds = e.currentTarget.closest('.ai-float-dock-container')?.getBoundingClientRect();
+    const initialX = dockPos.x !== undefined ? dockPos.x : bounds?.left ?? 20;
+    const initialY = dockPos.y !== undefined ? dockPos.y : bounds?.top ?? window.innerHeight - 70;
     setDockPos({ x: initialX, y: initialY });
     setDockDragStart({ x: e.clientX, y: e.clientY });
     setDockDragging(true);
@@ -198,7 +198,7 @@ function AppContent() {
   return (
     <div className={`app-container ${!leftVisible ? 'left-collapsed' : ''}`}>
       {/* Mobile Drawer Backdrop */}
-      <div 
+      <button type="button" aria-label="Chiudi navigazione esterna" tabIndex={-1} aria-hidden="true"
         className={`mobile-sidebar-backdrop ${mobileSidebarOpen ? 'active' : ''}`} 
         onClick={() => setMobileSidebarOpen(false)} 
       />
@@ -207,8 +207,6 @@ function AppContent() {
         modules={modules}
         manifestiCount={manifesti.length}
         activeTabId={activeTabId}
-        leftVisible={leftVisible}
-        setLeftVisible={setLeftVisible}
         setActiveTabId={setActiveTabId}
         openTab={openTab}
         goHome={closeAllTabs}
@@ -265,7 +263,7 @@ function AppContent() {
 
       {/* FLOATING ACTION SPEED-DIAL CONTAINER */}
       <div
-        className="ai-float-dock-container"
+        className={`ai-float-dock-container${activeTabId === null && dockPos.x === undefined && dockPos.y === undefined ? ' is-home-default' : ''}`}
         style={{
           position: 'fixed',
           zIndex: 9990,
@@ -281,7 +279,7 @@ function AppContent() {
           
           {/* EXPANDED SPEED-DIAL MENU CARD POPOVER — ABSOLUTE ABOVE FAB */}
           {!dockMinimized && (
-            <div 
+            <div className="ai-float-menu"
               style={{
                 position: 'absolute',
                 bottom: 'calc(100% + 12px)',
@@ -566,11 +564,7 @@ function AppContent() {
             >
               <GripVertical size={14} color="#00f2fe" />
               <span>Strumenti AI</span>
-              <button className="as-secondary" onPointerDown={event => event.stopPropagation()} onClick={event => {
-                event.stopPropagation(); window.sessionStorage.setItem('sigmaAudioStudioSection', 'radio');
-                openTab({ name: 'AudioStudio' }, 'voice_studio');
-                window.dispatchEvent(new CustomEvent('sigma_audio_studio_section', {detail: 'radio'}));
-              }}>Audio e radio</button>
+
               {tasks?.length > 0 && (
                 <span style={{ fontSize: '0.62rem', background: '#00f2fe', color: '#000', padding: '1px 6px', borderRadius: '10px', fontWeight: 800 }}>
                   {tasks.length}

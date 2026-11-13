@@ -1,0 +1,12 @@
+.studio-area { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.studio-area-tabs { display: flex; gap: 6px; flex-shrink: 0; padding: 10px 18px; overflow-x: auto; background: var(--sigma-surface, #101727); border-bottom: 1px solid var(--sigma-border, #ffffff18); }
+.studio-area-tabs button { display: inline-flex; align-items: center; gap: 9px; padding: 10px 17px; border: 1px solid transparent; border-radius: 10px; color: var(--sigma-text-dim, #98a7bf); background: transparent; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 220ms ease, border-color 220ms ease; }
+.studio-area-tabs button:hover { background: var(--sigma-surface-bright, #1b263b); }
+.studio-area-tabs button[aria-selected="true"] { color: var(--sigma-primary, #00d2ff); border-color: var(--sigma-primary-border, #00d2ff40); background: var(--sigma-primary-glow, #00d2ff12); }
+.studio-area-tabs button:focus-visible { outline: 2px solid var(--sigma-primary, #00d2ff); outline-offset: 2px; }
+.studio-area-panel { flex: 1; min-height: 0; overflow: hidden; }
+.studio-area-panel[hidden] { display: none; }
+.studio-settings-links { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--sigma-border); }
+.studio-settings-links button { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--sigma-border); border-radius: 8px; background: var(--sigma-surface); color: var(--sigma-text); font: inherit; font-size: .76rem; cursor: pointer; }
+.studio-settings-links button:hover { border-color: var(--sigma-primary-border); color: var(--sigma-primary); }
+.studio-settings-links button:focus-visible { outline: 2px solid var(--sigma-primary); outline-offset: 2px; }

@@ -1093,9 +1093,9 @@ Creato per l'ecosistema sovrano Sigma AI Studio.
       {/* ── UNIFIED KERNEL TAB HEADER — Stile Compatto Bacheca & Chat ──────── */}
       <TabHeader
         icon={activeGalleryView === 'installed' ? Brain : Globe}
-        title="Ruoli AI"
+        title="Agenti"
         tabs={[
-          { id: 'installed', label: `Ruoli Kernel (${manifestiList.length})`, icon: Brain, active: activeGalleryView === 'installed', onClick: () => setActiveGalleryView('installed') },
+          { id: 'installed', label: `Agenti disponibili (${manifestiList.length})`, icon: Brain, active: activeGalleryView === 'installed', onClick: () => setActiveGalleryView('installed') },
           { id: 'hub', label: 'Hub Community', icon: Globe, active: activeGalleryView === 'hub', onClick: () => setActiveGalleryView('hub') }
         ]}
         description={

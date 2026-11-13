@@ -128,9 +128,9 @@
   color: #ff5555 !important;
 }
 
-/* Mobile Hamburger Toggle Button */
-.mobile-menu-btn {
-  display: none;
+/* Il controllo resta raggiungibile anche quando la sidebar è chiusa. */
+.studio-sidebar-toggle {
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 38px;
@@ -145,11 +145,12 @@
   transition: var(--trans-fast);
 }
 
-.mobile-menu-btn:hover {
+.studio-sidebar-toggle:hover, .studio-sidebar-toggle[aria-expanded="true"] {
   background: var(--sigma-primary-glow);
   color: var(--sigma-primary);
   border-color: var(--sigma-primary-border);
 }
+.studio-sidebar-toggle:focus-visible { outline: 2px solid var(--sigma-primary); outline-offset: 2px; }
 
 /* Workspace Content Area */
 .content-area {

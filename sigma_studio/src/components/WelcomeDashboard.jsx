@@ -14,6 +14,7 @@ import { detectLowEndGpu } from '../utils/graphicsQuality';
 import { groupWorkDomains } from '../utils/workDomains';
 import { prepareRoleChat } from '../services/chatNavigation';
 import WorkDomainActions from './Home/WorkDomainActions';
+import HomeNavigation from './Home/HomeNavigation';
 import Plancia2D from './common/Plancia2D';
 const CyberSpace3DCanvas = React.lazy(() => import('./common/CyberSpace3DCanvas'));
 import { resolveRoleLucide, roleInitials } from './common/roleIcons';
@@ -45,11 +46,7 @@ const readViewPref = () => {
 
 // Footer della Home: laboratori (aprono una scheda) e strumenti flottanti (si resta
 // sulla plancia). Le immagini rendono riconoscibile ogni voce a colpo d'occhio.
-const FOOTER_TILES = [
-  { key: 'chat', label: 'Chat AI', hint: 'Chat flottante', image: '/images/chat_swarm_banner.jpg', Icon: MessageSquare, color: '#bc8cff', tool: 'chat' },
-  { key: 'providers', label: 'Providers', hint: 'Modelli e API', image: '/images/mcp_protocol_hub.jpg', Icon: Settings, color: '#ffb86c', tool: 'providers' },
-  { key: 'cleanup', label: 'Pulisci', hint: 'RAM e cronologia', image: '/images/swarm_graphic.jpg', Icon: Trash2, color: '#94a3b8', tool: 'cleanup' }
-];
+
 
 const readQualityPref = () => {
   try {
@@ -138,7 +135,7 @@ const loadRecentChats = () => loadSessions()
 
 export default function WelcomeDashboard({ modules = [], openTab }) {
   const { theme, manifesti: contextManifesti, aiChatOpen, setAiChatOpen, addToast } = useApp();
-  const { moduleCatalog } = useModuleState();
+  const { moduleCatalog, isLoaded: navigationLoaded, error: navigationError } = useModuleState();
   // Anche "cream" e' un tema chiaro: prima la plancia restava scura sotto un'interfaccia chiara
   const isLight = theme === 'light' || theme === 'cream';
 
@@ -182,11 +179,16 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
 
   const adjustHeight = (el) => {
     if (!el) return;
-    el.style.height = '0px';
-    const scrollH = el.scrollHeight;
-    const newHeight = Math.min(Math.max(scrollH, 36), 260);
+    const style = window.getComputedStyle(el);
+    const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.45;
+    const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    const maxHeight = Math.ceil(lineHeight * 8 + padding + borders);
+    el.style.height = 'auto';
+    const scrollH = el.scrollHeight + borders;
+    const newHeight = Math.min(Math.max(scrollH, lineHeight + padding + borders), maxHeight);
     el.style.height = `${newHeight}px`;
-    el.style.overflowY = scrollH > 260 ? 'auto' : 'hidden';
+    el.style.overflowY = scrollH > maxHeight ? 'auto' : 'hidden';
   };
 
   const adjustDialogueHeight = (el) => {
@@ -208,6 +210,8 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
       adjustHeight(dialogueTextareaRef.current);
     }
   }, [quickPrompt]);
+
+
 
 
   // Registrazione vocale standard (STT)
@@ -453,6 +457,18 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
   // Agente selezionato e focalizzato nell'ambiente 3D
   const [focusedAgent, setFocusedAgent] = useState(null);
 
+  useEffect(() => {
+    // Il testo va rimisurato anche quando cambia la larghezza disponibile.
+    const widths = new WeakMap();
+    const observer = new ResizeObserver(entries => entries.forEach(({ target, contentRect }) => {
+      if (widths.get(target) === contentRect.width) return;
+      widths.set(target, contentRect.width);
+      adjustHeight(target);
+    }));
+    [textareaRef.current, dialogueTextareaRef.current].filter(Boolean).forEach(element => observer.observe(element));
+    return () => observer.disconnect();
+  }, [focusedAgent]);
+
 
 
   const dialoguePodWidth = useMemo(() => {
@@ -666,16 +682,6 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
     else setAiChatOpen(true);
   };
 
-  const handleFooterTile = (tile) => {
-    if (tile.tool) {
-      window.dispatchEvent(new CustomEvent('sigma-quick-tool', { detail: { id: tile.tool } }));
-      return;
-    }
-    if (tile.event) window.dispatchEvent(new CustomEvent(tile.event));
-    openTab?.({ name: tile.tab.name }, tile.tab.id);
-  };
-
-  const footerTiles = FOOTER_TILES;
 
   const handleQuickPromptSubmit = (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -1195,6 +1201,7 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
                   <button
                     type="submit"
                     className="holodeck-submit-btn"
+                    aria-label="Invia messaggio"
                     disabled={!quickPrompt.trim() && attachedFiles.length === 0}
                   >
                     <span>Invia</span>
@@ -1204,24 +1211,8 @@ export default function WelcomeDashboard({ modules = [], openTab }) {
               </form>
             </div>
 
-            <nav className="holodeck-footer" aria-label="Laboratori e strumenti">
-              {footerTiles.map(tile => (
-                <button
-                  key={tile.key}
-                  type="button"
-                  className={`holodeck-tile ${tile.tool === 'chat' && aiChatOpen ? 'is-active' : ''}`}
-                  style={{ '--tile-color': tile.color, '--tile-image': `url('${tile.image}')` }}
-                  onClick={() => handleFooterTile(tile)}
-                  title={`${tile.label} · ${tile.hint}${tile.tool ? ' (resta sulla Home)' : ''}`}
-                >
-                  <span className="tile-image" aria-hidden="true" />
-                  <span className="tile-body">
-                    <tile.Icon size={14} aria-hidden="true" />
-                    <span className="tile-label">{tile.label}</span>
-                  </span>
-                </button>
-              ))}
-            </nav>
+            <HomeNavigation catalog={moduleCatalog} openTab={openTab}
+              loading={!navigationLoaded} error={navigationError} />
           </footer>
         )}
 
